@@ -3,6 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src wss://broker.emqx.io:8084 wss://test.mosquitto.org:8081; worker-src 'self' blob:; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#0d1117">
+<meta name="color-scheme" content="dark">
 <title>DASSH Console — sessão ao vivo</title>
 <meta name="description" content="Acompanhe pelo navegador uma sessão compartilhada do DASSH Console, com criptografia de ponta a ponta.">
 <link rel="icon" href="img/favicon.ico">
@@ -391,19 +395,34 @@
 <script src="app/vendor/addon-serialize.js"></script>
 <script src="app/app.js"></script>
 <script src="app/demo.js"></script>
-<div id="vidro"><form autocomplete="off">
+<div id="vidro" role="dialog" aria-modal="true" aria-labelledby="v-tit"><form autocomplete="off" novalidate>
   <a class="v-voltar" href="./">← Página do DASSH Console</a>
-  <h1>📡 Sessão ao vivo</h1>
-  <p>Digite o código do convite. A sessão só abre depois que quem compartilhou <b>aprovar</b> a sua entrada.</p>
-  <label for="v-nome">Seu nome</label><input id="v-nome" maxlength="40" placeholder="Ex.: Ana — NOC" required>
-  <label for="v-cod">Código do convite</label><input id="v-cod" maxlength="16" placeholder="ABCD-EFGH-JKLM" required spellcheck="false">
-  <button id="v-btn" type="submit">Entrar</button>
-  <div id="v-msg"></div>
-  <small>🔒 Criptografia de ponta a ponta (AES-256-GCM + X25519). Você entra como observador.</small>
+  <div class="v-cab">
+    <img class="v-logo" src="app/logo.svg" alt="" width="44" height="44">
+    <div><h1 id="v-tit">Sessão ao vivo</h1><span class="v-sub"><i class="v-pt" aria-hidden="true"></i>Modo observador · somente leitura</span></div>
+  </div>
+  <ol class="v-passos" aria-label="Etapas para entrar">
+    <li><span>1</span>Código</li><li><span>2</span>Aprovação</li><li><span>3</span>Assistir</li>
+  </ol>
+  <p class="v-intro">Digite o código que quem compartilhou enviou. A sessão só abre depois que essa pessoa <b>aprovar</b> a sua entrada.</p>
+  <label for="v-nome">Seu nome <em>(quem compartilhou vai ver)</em></label>
+  <input id="v-nome" maxlength="40" placeholder="Ex.: Ana — NOC" required autocomplete="nickname" aria-describedby="v-msg">
+  <label for="v-cod">Código do convite</label>
+  <input id="v-cod" maxlength="16" placeholder="ABCD-EFGH-JKLM" required spellcheck="false" autocapitalize="characters" autocorrect="off" autocomplete="off" inputmode="text" aria-describedby="v-dica v-msg">
+  <span class="v-dica" id="v-dica">12 letras e números, com ou sem hífens.</span>
+  <button id="v-btn" type="submit"><span class="v-rot">Entrar na sessão</span><span class="v-rot-espera">Aguardando aprovação…</span></button>
+  <div id="v-msg" role="status" aria-live="polite"></div>
+  <a class="v-cancelar" href="ao-vivo.html">Cancelar e voltar</a>
+  <small>🔒 Criptografia de ponta a ponta (AES-256-GCM + X25519). Você entra só como observador: nada do seu computador é compartilhado.</small>
 </form></div>
+<div id="fim-sessao" role="alert">
+  <div class="fs-txt"><b>Sessão encerrada</b><span>Quem compartilhou saiu ou a conexão foi interrompida. O que já apareceu continua na tela.</span></div>
+  <div class="fs-acoes"><a class="fs-prim" href="ao-vivo.html">Entrar de novo</a><a href="./">Página do produto</a></div>
+</div>
 <a id="btn-site" href="./" title="Voltar para a página do produto (sai da sessão)">← Página do DASSH Console</a>
 <div id="aviso-web">👁 Você está acompanhando pelo navegador. Aqui só o shell compartilhado responde — o resto fica com quem compartilhou.</div>
-<script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
-<script type="module" src="app/ponte-web.js"></script>
+<script src="app/vendor/mqtt.min.js" integrity="sha384-u4uqeACkFcoKl57rBQJHVGDd1pqhW4w8X3WjTu1ZksPdxoLqdt34jpoNkJisE25W" crossorigin="anonymous"></script>
+<script src="app/ao-vivo-ui.js"></script>
+<script type="module" src="app/ponte-web.js" integrity="sha384-g9uTIlEnBpYcMUQif7lf4UMiM6fRGGiIUkSFrwmcTVJ4Tja0S081MJFDsNzvlqJD" crossorigin="anonymous"></script>
 </body>
 </html>

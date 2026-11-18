@@ -2,10 +2,8 @@
 // compartilhada. Substitui o backend Python (window.pywebview.api) pelo protocolo dassh/v1 (mesmo do compartilhar.py):
 // cada código = um tópico próprio (sessões independentes); vários observadores por sessão, cada um aprovado pelo dono.
 // Nada do computador de quem compartilha (cofre, outras abas, pastas, WhatsApp) é exposto: só o shell compartilhado.
-import { x25519 } from "https://esm.sh/@noble/curves@1.6.0/ed25519";
-import { scryptAsync } from "https://esm.sh/@noble/hashes@1.5.0/scrypt";
-import { hkdf } from "https://esm.sh/@noble/hashes@1.5.0/hkdf";
-import { sha256 } from "https://esm.sh/@noble/hashes@1.5.0/sha256";
+// Bibliotecas locais (sem CDN): ver app/vendor/VERSOES.md. O mqtt.js (global `mqtt`) vem de app/vendor/mqtt.min.js.
+import { x25519, scryptAsync, hkdf, sha256 } from "./vendor/noble/index.js";
 
 const SERVIDORES = ["wss://broker.emqx.io:8084/mqtt", "wss://test.mosquitto.org:8081/mqtt"];
 const te = new TextEncoder(), td = new TextDecoder();
@@ -24,14 +22,42 @@ async function cifrar(chave, obj) {
   const c = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv: n }, k, await fluxo(te.encode(JSON.stringify(obj)), CompressionStream)));
   const out = new Uint8Array(12 + c.length); out.set(n); out.set(c, 12); return out;
 }
+// Limites (defesa contra "bomba de descompressão" e mensagens absurdas vindas de quem tem a chave)
+const MAX_BLOB = 2 ** 20, MAX_TXT = 4 * 2 ** 20;
+async function descomprimir(dados) {
+  const rd = new Response(new Blob([dados]).stream().pipeThrough(new DecompressionStream("deflate"))).body.getReader();
+  const partes = []; let total = 0;
+  for (;;) {
+    const { done, value } = await rd.read(); if (done) break;
+    total += value.length;
+    if (total > MAX_TXT) { rd.cancel().catch(() => {}); throw new Error("mensagem grande demais"); }
+    partes.push(value);
+  }
+  const out = new Uint8Array(total); let o = 0; for (const p of partes) { out.set(p, o); o += p.length; }
+  return out;
+}
 async function decifrar(chave, blob) {
+  if (blob.length < 29 || blob.length > MAX_BLOB) throw new Error("tamanho inválido");
   const k = await crypto.subtle.importKey("raw", chave, "AES-GCM", false, ["decrypt"]);
   const p = await crypto.subtle.decrypt({ name: "AES-GCM", iv: blob.slice(0, 12) }, k, blob.slice(12));
-  return JSON.parse(td.decode(await fluxo(new Uint8Array(p), DecompressionStream)));
+  return JSON.parse(td.decode(await descomprimir(new Uint8Array(p))));
 }
+// Dados que vêm do dono/colegas nunca entram na página sem passar por aqui (o app.js monta HTML com ids/nomes).
+const idOk = (s) => typeof s === "string" && /^[A-Za-z0-9_-]{1,32}$/.test(s);
+const limpa = (s, n) => String(s ?? "").replace(/[\u0000-\u001f\u007f-\u009f‎‏‪-‮⁦-⁩]/g, "").slice(0, n);
+function estadoSeguro(m) {
+  const lista = Array.isArray(m.participantes) ? m.participantes.slice(0, 64) : [];
+  return {
+    t: "estado", codigo: limpa(m.codigo, 20), servidor: limpa(m.servidor, 100),
+    controle: m.controle === "host" || idOk(m.controle) ? m.controle : "host",
+    participantes: lista.filter((p) => p && (p.id === "host" || idOk(p.id))).map((p) => ({
+      id: p.id, nome: limpa(p.nome, 40), papel: p.papel === "dono" ? "dono" : "convidado", ativo: p.ativo === true })),
+  };
+}
+const semZeros = (u) => u.some((x) => x !== 0);
 
 class Convidado {
-  constructor(sid, codigo, nome) { Object.assign(this, { sid, codigo, nome, k: null, wrap: null, clientes: [], vivo: true, controle: false }); }
+  constructor(sid, codigo, nome) { Object.assign(this, { sid, codigo, nome, k: null, wrap: null, clientes: [], todos: [], vistos: new Set(), vivo: true, controle: false }); }
   async iniciar() {
     this.portaria = await scryptAsync(te.encode(this.codigo), te.encode("dassh-share-v1"), { N: 2 ** 15, r: 8, p: 1, dkLen: 32 });
     this.topico = "dassh/v1/" + hex(sha256(te.encode("topico|" + this.codigo))).slice(0, 40);
@@ -39,8 +65,9 @@ class Convidado {
     this.id = hex(crypto.getRandomValues(new Uint8Array(5)));
     await Promise.any(SERVIDORES.map((url) => new Promise((ok, falha) => {
       const c = mqtt.connect(url, { clientId: "dassh-web-" + hex(crypto.getRandomValues(new Uint8Array(6))), reconnectPeriod: 2000, connectTimeout: 12000 });
+      this.todos.push(c);
       c.on("connect", () => { c.subscribe(this.topico + "/h", { qos: 1 }); if (!this.clientes.includes(c)) this.clientes.push(c); ok(); });
-      c.on("message", (_t, m) => this.receber(new Uint8Array(m)));
+      c.on("message", (_t, m) => { this.receber(new Uint8Array(m)).catch(() => {}); });
       c.on("error", falha); setTimeout(() => falha(new Error("tempo")), 13000);
     }))).catch(() => { throw new Error("Sem acesso ao servidor de compartilhamento (internet/firewall)."); });
     await this.publicar(await cifrar(this.portaria, { t: "entrar", id: this.id, nome: this.nome, pub: b64(x25519.getPublicKey(this.priv)) }));
@@ -54,28 +81,47 @@ class Convidado {
   publicar(blob) { for (const c of this.clientes) if (c.connected) c.publish(this.topico + "/c", blob, { qos: 1 }); }
   async enviar(obj) { if (this.k) this.publicar(await cifrar(this.k, { ...obj, id: this.id })); }
   async receber(blob) {
-    if (!this.vivo) return;
-    let msg = null;
-    if (this.k) msg = await decifrar(this.k, blob).catch(() => null);
+    if (!this.vivo || !(blob.length >= 29 && blob.length <= MAX_BLOB)) return;
+    const nonce = hex(blob.subarray(0, 12));
+    if (this.vistos.has(nonce)) return;                       // repetição exata (replay/duplicata do broker): descarta
+    // A origem da mensagem define o que ela pode fazer: a chave de "portaria" (derivada do código) só vale para
+    // aprovado/negado/rechave endereçados a MIM; o conteúdo da sessão (tela/estado/fim) só vale se vier cifrado com a chave K.
+    let msg = null, viaK = false;
+    if (this.k) { msg = await decifrar(this.k, blob).catch(() => null); viaK = !!msg; }
     if (!msg) msg = await decifrar(this.portaria, blob).catch(() => null);
-    if (!msg || (msg.para && msg.para !== this.id)) return;
+    if (!msg || typeof msg !== "object") return;
+    this.vistos.add(nonce); if (this.vistos.size > 5000) this.vistos.delete(this.vistos.values().next().value);
     const t = msg.t;
-    if (t === "aprovado" || t === "rechave") {
-      if (t === "aprovado") this.wrap = hkdf(sha256, x25519.getSharedSecret(this.priv, unb64(msg.hpub)), undefined, te.encode("dassh-share-wrap"), 32);
-      if (!this.wrap) return;
-      this.k = unb64((await decifrar(this.wrap, unb64(msg.k))).k);
-      if (t === "aprovado") window.onShare(this.sid, "aprovado", {});
-    } else if (t === "negado") this.fim("O dono da sessão recusou a entrada.");
-    else if (t === "out") window.termWrite(this.sid, msg.d || "");
-    else if (t === "snap") window.termWrite(this.sid, "\x1bc" + (msg.d || ""));
-    else if (t === "estado") { this.controle = msg.controle === this.id; window.onShare(this.sid, "estado", { ...msg, eu: this.id }); }
+    if (!viaK) {
+      if (msg.para !== this.id) return;                       // portaria: sempre endereçada a este convidado
+      if (t === "aprovado" && !this.k) {
+        const hpub = unb64(String(msg.hpub));
+        if (hpub.length !== 32) return;
+        const seg = x25519.getSharedSecret(this.priv, hpub);
+        if (!semZeros(seg)) return;
+        const wrap = hkdf(sha256, seg, undefined, te.encode("dassh-share-wrap"), 32);
+        const k = unb64(String((await decifrar(wrap, unb64(String(msg.k)))).k));
+        if (k.length !== 32) return;
+        this.wrap = wrap; this.k = k;
+        window.onShare(this.sid, "aprovado", {});
+      } else if (t === "rechave" && this.wrap && this.k) {
+        const k = unb64(String((await decifrar(this.wrap, unb64(String(msg.k)))).k));
+        if (k.length === 32) this.k = k;
+      } else if (t === "negado" && !this.k) this.fim("O dono da sessão recusou a entrada.");
+      return;
+    }
+    if (msg.para !== undefined && msg.para !== this.id) return;
+    const texto = typeof msg.d === "string" && msg.d.length <= MAX_TXT ? msg.d : "";
+    if (t === "out") window.termWrite(this.sid, texto);
+    else if (t === "snap") window.termWrite(this.sid, "\x1bc" + texto);
+    else if (t === "estado") { const e = estadoSeguro(msg); this.controle = e.controle === this.id; window.onShare(this.sid, "estado", { ...e, eu: this.id }); }
     else if (t === "fim") this.fim("O dono encerrou o compartilhamento.");
   }
   fim(motivo) { if (!this.vivo) return; this.fechar(); window.onDesconectado(this.sid, motivo); }
   async fechar(avisar) {
     if (avisar && this.vivo && this.k) try { await this.enviar({ t: "sair" }); } catch {}
     this.vivo = false; clearInterval(this.timer);
-    setTimeout(() => this.clientes.forEach((c) => c.end(true)), 300);
+    setTimeout(() => this.todos.forEach((c) => { try { c.end(true); } catch {} }), 300);
   }
 }
 
@@ -143,9 +189,16 @@ window.onDesconectado = (sid, motivo) => {
          /não respondeu/.test(motivo) ? "Sem resposta: confira o código ou peça a quem compartilhou para aprovar." : motivo, true);
   }
 };
-$v("#v-cod").value = decodeURIComponent(location.hash.slice(1) || "");
+// O código vem no #fragmento (nunca vai ao servidor nem ao Referer). Depois de lido, é apagado da barra de endereços
+// e do histórico (history.replaceState) para não ficar em histórico sincronizado, favoritos nem captura de tela.
+const codigoDoHash = () => {
+  let c = ""; try { c = decodeURIComponent(location.hash.slice(1)); } catch { c = location.hash.slice(1); }
+  if (location.hash) try { history.replaceState(null, "", location.pathname + location.search); } catch {}
+  return c.slice(0, 32);
+};
+$v("#v-cod").value = codigoDoHash();
 $v("#v-nome").value = lsGet("dassh-nome", "");
-addEventListener("hashchange", () => { if (!abaRemota) $v("#v-cod").value = decodeURIComponent(location.hash.slice(1)); });
+addEventListener("hashchange", () => { if (!abaRemota) $v("#v-cod").value = codigoDoHash(); });
 $v("form").onsubmit = async (e) => {
   e.preventDefault();
   const nome = $v("#v-nome").value.trim().slice(0, 40), cod = $v("#v-cod").value.toUpperCase().replace(/[^A-Z0-9]/g, "");

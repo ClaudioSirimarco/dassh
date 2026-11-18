@@ -24,5 +24,11 @@ A conexão é criptografada de ponta a ponta.
 > **Aviso do Windows:** enquanto o instalador não tiver assinatura digital, o Windows pode mostrar
 > "O Windows protegeu o computador". Nesse caso, clique em **Mais informações → Executar assim mesmo**.
 
+## Estrutura do site
+
+`/` vitrine · `/baixar/` instaladores · `/docs/` guias · `/ao-vivo.html` assistir sessão (o convite `…/ao-vivo.html#CODIGO` não pode quebrar) ·
+`/agente/` e `/app/` (páginas "em breve") · `/status/` · `/privacidade/` e `/termos/` (rascunhos, revisar com advogado) · `404.html`,
+`sitemap.xml`, `robots.txt`. A pasta `app/` também guarda os arquivos da interface usados pela página ao vivo.
+
 ---
 Este repositório contém apenas os instaladores. O código-fonte é privado.

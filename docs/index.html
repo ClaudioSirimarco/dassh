@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Documentação — DASSH Console</title>
+<meta name="description" content="Guias curtos do DASSH Console: instalar, primeira conexão, evidências e relatório, compartilhar e assistir ao vivo, Skills.">
+
+<link rel="icon" href="../img/favicon.ico">
+<style>
+:root{--fundo:#0b1015;--fundo2:#10171e;--painel:#141d26;--borda:#22303c;--texto:#e6edf3;--suave:#93a1ad;--verde:#00c896;--verde-cl:#5ee0b5;--aviso:#f6c86b;--raio:14px}
+*{box-sizing:border-box}
+body{margin:0;background:var(--fundo);color:var(--texto);font:16px/1.6 "Segoe UI",system-ui,-apple-system,Roboto,"Helvetica Neue",Arial,sans-serif}
+a{color:var(--verde-cl)}
+.cont{max-width:860px;margin:0 auto;padding:0 20px}
+header.topo{position:sticky;top:0;z-index:5;background:rgba(11,16,21,.92);backdrop-filter:blur(10px);border-bottom:1px solid var(--borda)}
+header.topo .cont{max-width:1080px;display:flex;align-items:center;justify-content:space-between;min-height:62px;gap:12px;flex-wrap:wrap;padding-top:8px;padding-bottom:8px}
+.marca{display:flex;align-items:center;gap:10px;text-decoration:none;color:var(--texto);font-weight:700;font-family:ui-monospace,Consolas,monospace}
+.marca svg{width:30px;height:30px}
+nav.menu{display:flex;flex-wrap:wrap;gap:4px 18px}
+nav.menu a{color:var(--suave);text-decoration:none;font-size:14.5px}
+nav.menu a:hover,nav.menu a[aria-current]{color:var(--texto)}
+nav.menu a[aria-current]{border-bottom:2px solid var(--verde)}
+nav.indice{display:flex;flex-wrap:wrap;gap:6px 16px;margin:0 0 10px}
+main{padding:44px 0 56px}
+h1{font-size:clamp(28px,5vw,40px);line-height:1.15;margin:0 0 10px;letter-spacing:-.4px}
+h2{font-size:clamp(20px,3vw,25px);margin:38px 0 8px}
+h3{font-size:18px;margin:22px 0 6px}
+.sub{color:var(--suave);font-size:18px;margin:0 0 24px}
+p,li{color:#c9d3db}
+li{margin:6px 0}
+kbd,code{font:13px Consolas,monospace;background:#0b1218;border:1px solid var(--borda);border-radius:6px;padding:1px 7px;color:var(--texto);overflow-wrap:anywhere}
+.cartao{background:var(--painel);border:1px solid var(--borda);border-radius:var(--raio);padding:20px 22px;margin:18px 0}
+.cartao h3{margin-top:0}
+.aviso{border-left:4px solid var(--aviso);background:#1b1a12;border-radius:8px;padding:14px 18px;margin:20px 0;color:#e9dcb4}
+.aviso b{color:var(--aviso)}
+.rascunho{border:2px dashed var(--aviso);background:#1b1a12;border-radius:10px;padding:14px 18px;margin:0 0 26px;color:var(--aviso);font-weight:600}
+.btn{display:inline-flex;align-items:center;gap:10px;padding:13px 24px;border-radius:12px;font-weight:650;text-decoration:none;font-size:16px;border:1px solid var(--borda);color:var(--texto);background:var(--painel)}
+.btn:hover{border-color:var(--verde)}
+.btn.prim{background:linear-gradient(135deg,var(--verde),#00a07a);color:#04231b;border:0;box-shadow:0 10px 30px rgba(0,200,150,.25)}
+.botoes{display:flex;gap:12px;flex-wrap:wrap;margin:18px 0}
+.selo{display:inline-block;font-size:12.5px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:#04231b;background:var(--aviso);border-radius:999px;padding:3px 12px;margin-bottom:12px}
+.grade{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px}
+footer{padding:30px 0 40px;text-align:center;color:var(--suave);font-size:13.5px;border-top:1px solid var(--borda)}
+footer a{margin:0 8px;white-space:nowrap;display:inline-block;line-height:2}
+</style>
+</head>
+<body>
+<header class="topo"><div class="cont">
+  <a class="marca" href="../"><svg viewBox="0 0 100 100" aria-hidden="true"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#00c896"/><stop offset="1" stop-color="#004e40"/></linearGradient></defs><rect x="6" y="6" width="88" height="88" rx="22" fill="url(#g)"/><polyline points="24,30 46,50 24,70" fill="none" stroke="#fff" stroke-width="9.5" stroke-linecap="round" stroke-linejoin="round"/><rect x="52" y="63.5" width="24" height="9" rx="4.5" fill="#fff"/><circle cx="73" cy="27" r="13" fill="#fff"/><polyline points="66.5,27.5 71.5,32.5 80,21.5" fill="none" stroke="#004e40" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>DASSH Console</span></a>
+  <nav class="menu"><a href="../baixar/">Baixar</a><a href="../docs/" aria-current="page">Documentação</a><a href="../ao-vivo.html">Assistir ao vivo</a><a href="../status/">Status</a></nav>
+</div></header>
+<main><div class="cont">
+
+<h1>Documentação</h1>
+<p class="sub">Guias curtos para começar. Os detalhes de cada tela estão dentro do próprio app.</p>
+<nav class="indice"><a href="#instalar">Instalar</a><a href="#conexao">Primeira conexão</a><a href="#evidencias">Evidências e relatório</a><a href="#ao-vivo">Compartilhar e assistir ao vivo</a><a href="#skills">Skills</a></nav>
+
+<h2 id="instalar">1. Instalar</h2>
+<p>Baixe o instalador na <a href="../baixar/">página de download</a>, execute e, se o Windows avisar, use <b>Mais informações → Executar assim mesmo</b> (a versão atual ainda não tem assinatura digital). Não precisa ser administrador.</p>
+
+<h2 id="conexao">2. Primeira conexão</h2>
+<ol>
+  <li>Abra o DASSH Console e escolha o tipo de conexão no topo: Serial, SSH, PowerShell, CMD, Cloud ou Web (iDRAC/iLO).</li>
+  <li>Informe o destino (porta COM, endereço, etc.). As senhas podem ficar no <b>cofre de credenciais</b>, protegido pelo Windows.</li>
+  <li>Clique em <b>Conectar</b>. Várias sessões podem ficar abertas em abas.</li>
+  <li>Cabo console sem resposta? Use o botão 🩺 ao lado da porta COM (diagnóstico de cabo e driver) e o 🔓 para liberar uma porta presa.</li>
+</ol>
+
+<h2 id="evidencias">3. Evidências e relatório</h2>
+<ul>
+  <li><kbd>Ctrl+Alt+E</kbd> gera uma evidência padronizada, com número, data e fuso, equipamento e hash SHA-256.</li>
+  <li>Ao final do atendimento, o app monta um <b>relatório em PDF</b> com capa, evidências, logs originais, hashes e cadeia de custódia, pronto para assinatura.</li>
+  <li>Os arquivos ficam no computador do técnico. A adequação a normas (ex.: ISO/IEC 27037) deve ser validada por quem audita: a confirmar caso a caso.</li>
+</ul>
+
+<h2 id="ao-vivo">4. Compartilhar e assistir ao vivo</h2>
+<h3>Quem compartilha</h3>
+<p>No app, inicie o compartilhamento e envie o <b>convite</b> (um link com código) aos participantes. Você aprova cada entrada e decide quem digita. O tráfego é cifrado de ponta a ponta (AES-256 + X25519).</p>
+<h3>Quem assiste</h3>
+<ol>
+  <li>Abra o link do convite (ele termina em <code>#CÓDIGO</code>) ou acesse <a href="../ao-vivo.html">Assistir ao vivo</a> e digite o código.</li>
+  <li>Aguarde a aprovação de quem convidou. Você entra como <b>observador</b>.</li>
+  <li>O controle do terminal só é passado com autorização.</li>
+</ol>
+<p>Também é possível entrar pelo app instalado, em <b>🔗 Entrar</b>.</p>
+
+<h2 id="skills">5. Skills</h2>
+<p>No botão <b>Automação → Skills</b>, o app guarda procedimentos técnicos reutilizáveis (hoje, roteiros por fabricante como Huawei, Cisco, HPE, Fortinet, Juniper, Aruba, Dell, MikroTik, ESXi, Windows e Linux). É possível ter roteiros próprios em arquivos <code>.json</code>. Criar Skill pela interface e converter uma sessão em Skill ainda são planos, não recursos prontos.</p>
+<div class="aviso"><b>Cuidado.</b> Execute procedimentos apenas em ambientes que você está autorizado a administrar.</div>
+
+</div></main>
+<footer><div class="cont"><a href="../baixar/">Baixar</a><a href="../docs/">Docs</a><a href="../agente/">Agente local</a><a href="../app/">Plataforma web</a><a href="../status/">Status</a><a href="../privacidade/">Privacidade</a><a href="../termos/">Termos</a><br>DASSH Console · DASSH IT Services</div></footer>
+</body>
+</html>

@@ -1041,7 +1041,7 @@ function desenharShare(a) {
   const chips = (s.participantes || []).map((p) => {
     const eu = s.papel === "dono" ? p.id === "host" : p.id === s.eu;
     const acoes = s.papel === "dono" && p.id !== "host"
-      ? `${p.ativo ? "" : `<button data-ctrl="${p.id}" title="Passar o controle">⇄</button>`}<button data-rm="${p.id}" title="Remover da sessão">✕</button>` : "";
+      ? `${p.ativo ? "" : `<button data-ctrl="${esc(p.id)}" title="Passar o controle">⇄</button>`}<button data-rm="${esc(p.id)}" title="Remover da sessão">✕</button>` : "";
     return `<span class="pessoa ${p.ativo ? "ativo" : "passivo"}" title="${p.ativo ? "ATIVO: está digitando" : "OBSERVANDO"}">
       <span class="bola"></span>${esc(p.nome)}${eu ? " (você)" : ""} <small>${p.ativo ? "digitando" : "observando"}</small>${acoes}</span>`;
   }).join("");
