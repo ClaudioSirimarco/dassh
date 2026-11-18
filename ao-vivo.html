@@ -41,6 +41,7 @@
 </style>
 <link rel="stylesheet" href="app/vendor/xterm.css">
 <link rel="stylesheet" href="app/app.css">
+<link rel="stylesheet" href="app/ao-vivo.css">
 </head>
 <body>
 <div id="splash"><img src="app/logo.svg" alt=""><b>DASSH Console</b><span>preparando o ambiente…</span><i></i></div>
@@ -56,15 +57,29 @@
 
   <div class="conexao">
     <div class="abas" id="abas">
-      <button data-tipo="serial" class="ativa">Serial</button>
-      <button data-tipo="powershell">PowerShell</button>
-      <button data-tipo="cmd">CMD</button>
-      <button data-tipo="ssh">SSH</button>
-      <button data-tipo="azure" title="Azure CLI (instala sozinho se faltar)">Azure</button>
-      <button data-tipo="gcp" title="Google Cloud CLI (instala sozinho se faltar)">GCP</button>
-      <button data-tipo="web" title="Interfaces web: iDRAC, iLO, iBMC, XClarity, IPMI, firewalls...">🌐 Web</button>
+      <div class="grupo" data-grupo="equip"><button class="grupo-btn" title="Equipamentos: precisam de um destino (porta COM, endereço)">🔌 <span class="gn">Serial</span> ▾</button>
+        <div class="submenu oculto">
+          <button data-tipo="serial"><b>Serial</b><small>console de switch/roteador (porta COM)</small></button>
+          <button data-tipo="ssh"><b>SSH</b><small>usuario@ip</small></button>
+          <button data-tipo="web"><b>🌐 Web</b><small>iDRAC, iLO, iBMC, firewalls…</small></button></div></div>
+      <div class="grupo" data-grupo="shell"><button class="grupo-btn" title="Terminais do próprio computador: abrem na hora">💻 <span class="gn">Shell</span> ▾</button>
+        <div class="submenu oculto">
+          <button data-tipo="powershell" data-direto="1"><b>PowerShell</b><small>abre na hora</small></button>
+          <button data-tipo="cmd" data-direto="1"><b>CMD</b><small>abre na hora</small></button></div></div>
+      <div class="grupo" data-grupo="nuvem"><button class="grupo-btn" title="CLIs de nuvem (instalam sozinhas se faltar)">☁ <span class="gn">Nuvem</span> ▾</button>
+        <div class="submenu oculto">
+          <button data-tipo="azure" data-direto="1"><b>Azure</b><small>Azure CLI</small></button>
+          <button data-tipo="gcp" data-direto="1"><b>Google Cloud</b><small>gcloud</small></button>
+          <button data-tipo="aws" data-direto="1"><b>AWS</b><small>AWS CLI</small></button></div></div>
+      <div class="grupo" data-grupo="ia"><button class="grupo-btn" title="Assistentes de IA de linha de comando">🤖 <span class="gn">IA</span> ▾</button>
+        <div class="submenu oculto">
+          <button data-tipo="claude" data-direto="1"><b>Claude Code</b><small>Anthropic</small></button>
+          <button data-tipo="codex" data-direto="1"><b>Codex</b><small>OpenAI / ChatGPT</small></button>
+          <button data-tipo="gemini" data-direto="1"><b>Gemini CLI</b><small>Google</small></button>
+          <button data-tipo="copilot" data-direto="1"><b>Copilot CLI</b><small>GitHub</small></button></div></div>
     </div>
-    <div class="campos" id="campos-serial">
+    <div class="slot-con" id="slot-con" title="Destino da conexão: fica sempre neste mesmo lugar, qualquer que seja o tipo">
+<div class="campos" id="campos-serial">
       <select id="porta" title="Porta COM"></select>
       <button class="icone" id="atualizar-portas" title="Atualizar portas">⟳</button>
       <button class="icone" id="liberar-porta" title="🔓 Liberar porta travada (“acesso negado”) sem reiniciar o app">🔓</button>
@@ -81,8 +96,11 @@
       <input id="web-url" placeholder="https://IP do iDRAC / iLO / iBMC" spellcheck="false">
       <button class="icone" data-rede="web" title="Rede do equipamento (IP temporário no notebook)">🛜</button>
     </div>
+      <div class="campos livre oculto" id="campos-livre"><span id="livre-txt"></span></div>
+    </div>
     <div class="atalhos-con">
       <button class="btn icone-txt" id="btn-equip" title="Equipamentos salvos: conectar com 1 clique, importar e exportar">📚<span class="rot"> Equipamentos</span></button>
+      <button class="btn icone-txt" id="btn-licenca" title="Licença: ver o plano e ativar um convite">🪪<span class="rot"> Licença</span></button>
       <button class="btn icone-txt" id="btn-cofre" title="Cofre de usuários e senhas (sugere o login na hora)">🔑<span class="rot"> Cofre</span></button>
     </div>
     <button class="btn primario" id="conectar">Conectar</button>
@@ -141,7 +159,7 @@
       </div>
       <button class="acao enviar" id="enviar"><span>Enviar evidência</span><kbd>Ctrl+Alt+E</kbd></button>
       <div class="acoes-2 extra">
-        <button class="acao" id="btn-roteiro" title="Automações: o app executa uma lista de comandos de coleta e tira as evidências sozinho"><span>⚡ Automações</span></button>
+        <button class="acao" id="btn-roteiro" title="Skills são procedimentos técnicos que executam tarefas, diagnósticos, configurações, verificações e rotinas operacionais em diferentes plataformas e equipamentos."><span>⚡ Skills</span></button>
         <button class="acao" id="btn-relatorio" title="PDF do atendimento: evidências, logs, hashes e assinaturas"><span>📄 Relatório</span></button>
       </div>
     </div>
@@ -216,7 +234,7 @@
 <!-- Roteiros de coleta -->
 <div class="modal oculto" id="modal-roteiro">
   <div class="janela">
-    <div class="jan-topo"><b>⚡ Automações de coleta <button class="info" data-info="roteiro" title="Como funciona">i</button></b>
+    <div class="jan-topo"><b>⚡ Skills de coleta <button class="info" data-info="roteiro" title="Como funciona">i</button></b>
       <button class="sug-x" data-fecha>✕</button></div>
     <div class="jan-corpo rot-corpo">
       <div><div class="rot-busca"><input id="rot-busca" placeholder="🔍 Pesquisar (ex.: huawei, entrega, stack…)" spellcheck="false">
@@ -261,6 +279,20 @@
   </div>
 </div>
 
+<!-- Licença / convite -->
+<div class="modal oculto" id="modal-lic">
+  <div class="janela">
+    <div class="jan-topo"><b>🪪 Licença</b><button class="sug-x" data-fecha>✕</button></div>
+    <div class="jan-corpo">
+      <div class="lic-estado" id="lic-estado"></div>
+      <label class="ajuda" for="lic-token" style="display:block;margin:14px 0 6px">Recebeu um convite? Cole aqui o código (começa com <b>DASSH1.</b>):</label>
+      <textarea id="lic-token" rows="3" spellcheck="false" placeholder="DASSH1.…" style="width:100%;font:12px Consolas,monospace"></textarea>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:10px"><button class="btn primario" id="lic-ativar">Ativar</button><span id="lic-msg" class="ajuda"></span></div>
+      <p class="ajuda">O código é conferido aqui no seu computador, sem internet. Plano Grátis continua disponível quando o teste ou o convite terminam: seus dados nunca são apagados.</p>
+    </div>
+  </div>
+</div>
+
 <div class="modal oculto" id="modal-fila">
   <div class="janela">
     <div class="jan-topo"><b>📤 Fila de envio para o WhatsApp</b><button class="sug-x" data-fecha>✕</button></div>
@@ -275,8 +307,8 @@
 <div class="modal oculto" id="modal-lb">
   <div class="janela larga">
     <div class="jan-topo"><b id="lb-tit">Evidência</b><button class="sug-x" data-fecha>✕</button></div>
-    <div class="jan-corpo lb-corpo"><img id="lb-img" alt=""></div>
-    <div class="jan-rodape"><small id="lb-arq" style="margin-right:auto;color:var(--suave)"></small>
+    <div class="jan-corpo lb-corpo"><button class="lb-nav lb-ant" id="lb-ant" title="Evidência anterior (←)">‹</button><img id="lb-img" alt=""><button class="lb-nav lb-prox" id="lb-prox" title="Próxima evidência (→)">›</button></div>
+    <div class="jan-rodape"><small id="lb-arq" style="margin-right:auto;color:var(--suave)"></small><small id="lb-pos" style="color:var(--suave)"></small>
       <button class="btn" id="lb-reenviar">↻ Reenviar no WhatsApp</button>
       <button class="btn" id="lb-excluir" title="Excluir esta evidência (vai para a Lixeira; fica registrado no manifesto)">🗑 Excluir</button>
       <button class="btn" id="lb-pasta">📂 Pasta</button><button class="btn primario" id="lb-abrir">Abrir imagem</button></div>
@@ -423,6 +455,6 @@
 <div id="aviso-web">👁 Você está acompanhando pelo navegador. Aqui só o shell compartilhado responde — o resto fica com quem compartilhou.</div>
 <script src="app/vendor/mqtt.min.js" integrity="sha384-u4uqeACkFcoKl57rBQJHVGDd1pqhW4w8X3WjTu1ZksPdxoLqdt34jpoNkJisE25W" crossorigin="anonymous"></script>
 <script src="app/ao-vivo-ui.js"></script>
-<script type="module" src="app/ponte-web.js" integrity="sha384-ko7IIk+H510U25XLwYFWMwXjiszFLBt3M6bymgPZyK5/nwokV1nbc/Yll8kF74nq" crossorigin="anonymous"></script>
+<script type="module" src="app/ponte-web.js" integrity="sha384-lZOGTrwHm08tKd5hwXGODN4Tvga0Ptj6ocsNedS+aqXVBdveHEf7bRtJEWl33KoP" crossorigin="anonymous"></script>
 </body>
 </html>

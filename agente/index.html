@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Agente local — DASSH Console</title>
-<meta name="description" content="Agente local do DASSH Console: página em preparação (em breve).">
+<meta name="description" content="O agente local é o próprio DASSH Console rodando em segundo plano só no seu computador, para a interface web usar serial, SSH, PowerShell e mais.">
 
 <link rel="icon" href="../img/favicon.ico">
 <style>
@@ -52,18 +52,39 @@ footer a{margin:0 8px;white-space:nowrap;display:inline-block;line-height:2}
 </div></header>
 <main><div class="cont">
 
-<span class="selo">Em breve</span>
 <h1>Agente local</h1>
-<p class="sub">Esta página ainda não distribui nada. Ela descreve o que está em proposta.</p>
-<div class="cartao"><h3>A ideia</h3>
-<p>Um navegador não consegue sozinho abrir PowerShell, SSH ou algumas portas seriais. O <b>agente local</b> seria um serviço leve no Windows, falando apenas com o próprio computador (127.0.0.1), para entregar à futura <a href="../app/">plataforma web</a> o que o navegador não faz. Seria o mesmo motor do aplicativo atual, empacotado como serviço.</p></div>
-<h3>O que se planeja (proposta, sem data)</h3>
+<p class="sub">O próprio DASSH Console, rodando em segundo plano só no seu computador, para a interface web usar o que o navegador não alcança.</p>
+<div class="cartao"><h3>O que é</h3>
+<p>Um navegador sozinho não abre porta serial, SSH ou PowerShell. O <b>agente local</b> é o <b>mesmo DASSH Console</b> do Windows, iniciado em modo de segundo plano (sem a janela principal). Ele escuta <b>apenas em 127.0.0.1</b> (o próprio computador, sem abrir portas na rede) e a <a href="../app/">interface web</a> conversa com ele. O pareamento entre o navegador e o agente é feito por <b>código</b>.</p></div>
+
+<h2>Como iniciar</h2>
+<ol>
+  <li>Instale o DASSH Console pela <a href="../baixar/">página de download</a> (versão 1.0.5 ou mais nova).</li>
+  <li>Inicie o agente de um destes jeitos:
+    <ul>
+      <li>pelo atalho <b>“DASSH Console (agente)”</b> no Menu Iniciar; ou</li>
+      <li>executando <code>DASSH Console.exe --agente</code>.</li>
+    </ul></li>
+  <li>Abra a <a href="../app/">interface web</a> e informe o código de pareamento do agente quando ela pedir.</li>
+</ol>
+
+<h2>Para que serve</h2>
+<p>A interface web usa o agente para o que depende do seu computador: <b>serial</b> (portas COM), <b>SSH</b>, <b>PowerShell</b> e <b>CMD</b>, CLIs de <b>nuvem</b>, assistentes de <b>IA</b> de linha de comando, <b>WhatsApp</b> e as demais funções do aplicativo. Sem o agente em execução, a interface web não consegue acessar essas funções.</p>
+
+<h2>Limites</h2>
 <ul>
-  <li>Instalação e atualização por esta página.</li>
-  <li>Pareamento navegador ↔ agente com código de uso único.</li>
-  <li>Aceitar conexões somente da origem oficial do site e somente de dentro do computador, sem abrir portas na rede.</li>
+  <li>Chrome, Edge e Firefox funcionam. O <b>Safari pode bloquear</b> a conexão com o computador local.</li>
+  <li>A aba <b>Web</b> (iDRAC, iLO, iBMC, firewalls…) abre o navegador do agente em <b>janela separada</b>, não embutida na página.</li>
+  <li>O agente roda no Windows, no mesmo computador em que você usa o navegador. Ele não atende outros computadores.</li>
 </ul>
-<div class="aviso"><b>Nada disso está pronto.</b> Para trabalhar hoje, use o aplicativo para Windows na <a href="../baixar/">página de download</a>.</div>
+
+<h2>Privacidade e segurança</h2>
+<ul>
+  <li><b>Nada sai do computador por causa do agente:</b> a conversa entre a página e o agente acontece dentro da sua máquina, em 127.0.0.1.</li>
+  <li>O agente <b>só aceita a origem do site oficial</b> e <b>exige o código de pareamento</b>; sem ele, a conexão é recusada.</li>
+  <li>Não há portas abertas na rede. Para encerrar o agente, feche o processo do DASSH Console.</li>
+</ul>
+<div class="aviso"><b>Aviso honesto.</b> O agente é o mesmo programa do aplicativo, e a interface web é a mesma do aplicativo. Algumas coisas continuam exclusivas do aplicativo no Windows (veja a <a href="../docs/">documentação</a>). Para trabalhar sem depender do navegador, use o aplicativo na <a href="../baixar/">página de download</a>.</div>
 
 </div></main>
 <footer><div class="cont"><a href="../baixar/">Baixar</a><a href="../docs/">Docs</a><a href="../agente/">Agente local</a><a href="../app/">Plataforma web</a><a href="../status/">Status</a><a href="../privacidade/">Privacidade</a><a href="../termos/">Termos</a><br>DASSH Console · DASSH IT Services</div></footer>

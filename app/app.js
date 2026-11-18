@@ -346,11 +346,23 @@ function atualizarBotaoConectar() {
 
 // ================= conexão =================
 function tipoTopo() { const b = document.querySelector("#abas button.ativa"); return b ? b.dataset.tipo : "serial"; }
+const DIRETOS = ["powershell", "cmd", "azure", "gcp", "aws", "claude", "codex", "gemini", "copilot"];   // abrem na hora: não têm destino a preencher
 function selecionarTipo(tipo, silencioso) {
-  document.querySelectorAll("#abas button").forEach((x) => x.classList.toggle("ativa", x.dataset.tipo === tipo));
+  document.querySelectorAll("#abas [data-tipo]").forEach((x) => x.classList.toggle("ativa", x.dataset.tipo === tipo));
+  document.querySelectorAll("#abas .grupo").forEach((g) => {   // o botão do grupo mostra o item escolhido
+    const it = g.querySelector(`[data-tipo="${tipo}"]`); g.classList.toggle("ativa", !!it);
+    if (it) g.querySelector(".gn").textContent = it.querySelector("b").textContent.replace("🌐 ", "");
+  });
+  $("#conectar").classList.toggle("invisivel", DIRETOS.includes(tipo));   // some (mas guarda o lugar) quando não há o que conectar
   $("#campos-serial").classList.toggle("oculto", tipo !== "serial");
   $("#campos-ssh").classList.toggle("oculto", tipo !== "ssh");
   $("#campos-web").classList.toggle("oculto", tipo !== "web");
+  const LIVRE = { powershell: "Terminal local — abre ao clicar", cmd: "Terminal local — abre ao clicar",
+                  azure: "Azure CLI — instala sozinho se faltar", gcp: "Google Cloud CLI — instala sozinho se faltar",
+                  aws: "AWS CLI — instala sozinho se faltar", claude: "Assistente de IA (Claude Code)", codex: "Assistente de IA (Codex)",
+                  gemini: "Assistente de IA (Gemini CLI)", copilot: "Assistente de IA (Copilot CLI)" };
+  $("#campos-livre").classList.toggle("oculto", ["serial", "ssh", "web"].includes(tipo));   // o espaço do destino nunca some: não há "pulo" de layout
+  $("#livre-txt").textContent = LIVRE[tipo] || "";
   const a = A(); if (a && !silencioso) a.tipo = tipo;
 }
 
@@ -449,13 +461,29 @@ async function conectarWeb(a, pularRede = false) {
 function montarWeb(a) {
   if (a.pane.querySelector(".web-barra")) return;
   a.pane.insertAdjacentHTML("afterbegin", `<div class="web-barra">
-      <span class="wb-host" title="Endereço">🌐 <b></b></span>
-      <div class="wb-janelas"></div>
-      <button class="btn mini primario" data-wb="cap" title="Salvar a evidência da janela à vista">📸 Capturar</button>
-      <button class="btn mini" data-wb="env" title="Capturar e enviar ao WhatsApp">📤 Enviar</button>
+      <input class="wb-url" spellcheck="false" title="Endereço da página à vista — clique, digite outro e tecle Enter para abrir" placeholder="Endereço">
+      <div class="wb-janelas" title="Subabas: cada janela que o equipamento abre (console virtual, popups) aparece aqui"></div>
+      <span class="wb-modo" title="O que o print captura">
+        <button data-modo="tela" class="on" title="Só o que está visível na janela (padrão)">Tela</button><button data-modo="inteira" title="A página inteira, inclusive o que está abaixo da dobra (páginas compridas viram partes legíveis)">Página inteira</button></span>
+      <button class="btn mini primario" data-wb="cap" title="Salvar a evidência da janela à vista (no modo escolhido ao lado)">📸</button>
+      <button class="btn mini" data-wb="env" title="Capturar e enviar ao WhatsApp">📤</button>
       <button class="btn mini" data-wb="painel" title="Mostrar/ocultar o painel da aba (janelas, Java, última captura)">☰ Painel</button>
       <button class="btn mini" data-wb="cheia" title="Usar a tela inteira para o equipamento">⤢ Tela cheia</button>
     </div><div class="web-area"></div>`);
+  const url = a.pane.querySelector(".wb-url");
+  url.onkeydown = async (ev) => {
+    if (ev.key !== "Enter") return;
+    const r = await api.web_navegar(a.id, url.value); if (!r.ok) return toast(r.erro, "erro");
+    a.painel = false; desenharBarraWeb(a); url.blur();
+  };
+  a.pane.querySelectorAll("[data-modo]").forEach((b) => (b.onclick = () => {
+    a.modoWeb = b.dataset.modo; desenharBarraWeb(a);
+    toast(a.modoWeb === "inteira" ? "🖥 Os prints desta aba vão capturar a PÁGINA INTEIRA" : "📸 Os prints desta aba vão capturar só a TELA visível");
+  }));
+  if (!a.timerUrl) a.timerUrl = setInterval(async () => {   // mantém a barra de endereço igual à página à vista
+    if (!a.conectado || a.id !== ativa || document.activeElement === url) return;
+    const r = await api.web_url(a.id); if (r && r.ok && r.url !== url.value) url.value = r.url;
+  }, 1500);
   const area = a.pane.querySelector(".web-area"), velho = a.pane.querySelector(".web-painel");
   if (velho) area.appendChild(velho);
   a.pane.querySelector("[data-wb=cap]").onclick = () => capturarWeb(a, false);
@@ -466,14 +494,19 @@ function montarWeb(a) {
 }
 function desenharBarraWeb(a) {
   const b = a.pane.querySelector(".web-barra"); if (!b) return;
-  b.querySelector(".wb-host b").textContent = a.alvo || "";
+  b.querySelectorAll("[data-modo]").forEach((x) => x.classList.toggle("on", x.dataset.modo === (a.modoWeb || "tela")));
+  if (!b.querySelector(".wb-url").value) b.querySelector(".wb-url").value = a.alvo || "";
   b.querySelector("[data-wb=painel]").classList.toggle("on", !!a.painel);
   b.querySelector("[data-wb=cheia]").innerHTML = document.body.classList.contains("tela-cheia") ? "↩ Voltar ao normal" : "⤢ Tela cheia";
-  const j = b.querySelector(".wb-janelas");
-  j.innerHTML = (a.janelas || []).map((x) => `<button class="wb-jan ${x.ativa ? "ativa" : ""}" data-h="${x.h}" title="${esc(x.titulo)}">
-      ${x.java ? "☕" : "🗔"} ${esc((x.titulo || "Janela").slice(0, 28))}</button>`).join("");
-  j.querySelectorAll("[data-h]").forEach((e) => (e.onclick = async () => {
+  const j = b.querySelector(".wb-janelas"), js = a.janelas || [];
+  j.innerHTML = js.map((x, i) => `<div class="wb-jan ${x.ativa ? "ativa" : ""}" data-h="${x.h}" title="${esc(x.titulo)}">
+      <span class="wb-jt">${x.java ? "☕" : "🗔"} ${esc((x.titulo || (i === 0 ? "Principal" : "Janela")).slice(0, 22))}</span>${i ? `<button class="wb-x" data-x="${x.h}" title="Fechar esta subaba">✕</button>` : ""}</div>`).join("");
+  j.querySelectorAll("[data-h]").forEach((e) => (e.onclick = async (ev) => {
+    if (ev.target.closest("[data-x]")) return;
     a.painel = false; await api.web_mostrar(a.id, +e.dataset.h); a.janelas = await api.web_janelas(a.id); desenharBarraWeb(a);
+  }));
+  j.querySelectorAll("[data-x]").forEach((e) => (e.onclick = async () => {
+    await api.web_fechar_janela(a.id, +e.dataset.x); setTimeout(async () => { a.janelas = await api.web_janelas(a.id); desenharBarraWeb(a); }, 600);
   }));
 }
 window.onJanelas = (sid, lista) => {
@@ -503,8 +536,8 @@ setInterval(() => {
     const el = area.getBoundingClientRect(), d = devicePixelRatio || 1;
     const rect = { x: Math.round(el.left * d), y: Math.round(el.top * d), w: Math.round(el.width * d), h: Math.round(el.height * d) };
     const vis = a.id === ativa && !sobre && !a.painel && el.width > 50 && !document.hidden;
-    const chave = JSON.stringify([rect, vis]);
-    if (chave !== a.ultLayout) { a.ultLayout = chave; api.web_layout(a.id, rect, vis); }
+    const u = a.ultRect, mudou = !u || vis !== a.ultVis || ["x", "y", "w", "h"].some((c) => Math.abs(rect[c] - u[c]) >= 3);
+    if (mudou) { a.ultRect = rect; a.ultVis = vis; api.web_layout(a.id, rect, vis); }
   });
 }, 300);
 window.onEquip = (sid, rot) => {   // modelo / nº de série reconhecidos sozinhos na tela
@@ -790,10 +823,10 @@ const ENVIOS = new Map();   // job -> <li> da lista de últimas evidências
 async function processarCaptura(a, snap, enviar, roteiro, comando, indiceWeb) {
   try {
     const r = a.tipo === "web" ? (indiceWeb === "java" ? await api.java_evidencia(a.id, enviar)   // console Java
-                                                      : await api.web_evidencia(a.id, enviar, indiceWeb))   // página / console remoto
+                                                      : await api.web_evidencia(a.id, enviar, indiceWeb, a.modoWeb === "inteira"))   // página / console remoto
                                : await api.evidencia(a.id, snap, enviar, roteiro, comando);
     if (!r.ok) { toast(r.erro, "erro"); return; }
-    if (a.tipo === "web") { a.ultimaWeb = r.mini; desenharWeb(a); }
+    if (a.tipo === "web") { a.ultimaWeb = r.mini; desenharWeb(a); if (r.partes > 1) toast(`🖥 Página inteira: ${r.partes} partes salvas (nº ${pad2(r.num - r.partes + 1)} a ${pad2(r.num)})`); }
     atualizarEvid(r.evid);
     let st = "salva", cls = "";
     if (enviar) {
@@ -801,7 +834,7 @@ async function processarCaptura(a, snap, enviar, roteiro, comando, indiceWeb) {
       else { st = "não enviada"; cls = "erro"; toast(`Nº ${pad2(r.num)} salva e copiada, mas NÃO enviada: ${(r.enviado && r.enviado.erro) || "erro"}`, "erro"); }
     } else toast(`Evidência nº ${pad2(r.num)} salva e copiada (Ctrl+V no WhatsApp)`);
     const ul = $("#historico"), v = ul.querySelector(".vazio"); if (v) v.remove();
-    // tela limpa para o próximo comando (Salvar e Enviar, botão ou atalho) — não vale para automações e aba Web
+    // tela limpa para o próximo comando (Salvar e Enviar, botão ou atalho) — não vale para Skills e aba Web
     if (LIMPAR_APOS && !roteiro && a.tipo !== "web" && a.conectado) {
       // "cls" só quando o cursor está no PROMPT do shell: com um programa rodando na aba (ex.: Claude Code, vim, top)
       // o texto iria para o programa — nesse caso limpa só a tela do app
@@ -881,7 +914,23 @@ function desenharFila() {
   });
 }
 async function abrirFila() { onFila(await api.fila_status()); desenharFila(); abrirModal("#modal-fila"); }
-async function verEvidencia(r, li) {
+let LB_LISTA = [], LB_IDX = -1;
+async function lbIr(delta) {   // ‹ anterior / próxima › entre as evidências do atendimento
+  const n = LB_IDX + delta; if (n < 0 || n >= LB_LISTA.length) return;
+  const e = LB_LISTA[n]; await verEvidencia({ ...e, cmd: e.comando, mini: "" }, null, true);
+}
+document.addEventListener("keydown", (ev) => {
+  if ($("#modal-lb").classList.contains("oculto") || /INPUT|TEXTAREA/.test((ev.target || {}).tagName || "")) return;
+  if (ev.key === "ArrowLeft") { ev.preventDefault(); lbIr(-1); } else if (ev.key === "ArrowRight") { ev.preventDefault(); lbIr(1); }
+});
+async function verEvidencia(r, li, mantemLista = false) {
+  if (!mantemLista) {
+    try { LB_LISTA = ((await api.evid_lista()).itens || []).slice().sort((x, y) => (x.num || 0) - (y.num || 0) || (x.parte || 1) - (y.parte || 1)); } catch (_) { LB_LISTA = []; }
+  }
+  LB_IDX = LB_LISTA.findIndex((e) => e.caminho === r.caminho);
+  $("#lb-ant").disabled = LB_IDX <= 0; $("#lb-prox").disabled = LB_IDX < 0 || LB_IDX >= LB_LISTA.length - 1;
+  $("#lb-ant").onclick = () => lbIr(-1); $("#lb-prox").onclick = () => lbIr(1);
+  $("#lb-pos").textContent = LB_IDX >= 0 ? `${LB_IDX + 1} de ${LB_LISTA.length}` : "";
   $("#lb-img").src = r.mini || ""; $("#lb-tit").textContent = `Evidência nº ${pad2(r.num)} — ${r.id || ""} — ${r.cmd || r.host}`;
   $("#lb-arq").textContent = r.arquivo;
   const job = li && li.dataset.job, falhou = FALHAS.some((f) => f.id === job);
@@ -1243,7 +1292,7 @@ async function diagnosticarCabo() {
 const RE_MORE = /(-{2,}\s*More\s*-{2,}|--\s*More\s*--|<---\s*More\s*--->|Press any key to continue|\(more\))/i;
 const RE_PROMPT = /([<\[][^\s<>\[\]]+[>\]]|[\w\-.()]+[#>$]|PS [A-Z]:\\[^>]*>|[A-Z]:\\[^>]*>|\$|#)\s*$/;
 // segurança: roteiro "somente leitura" só aceita comandos de consulta
-const RE_LEITURA = /^\s*(display|dis |show |dir |get |get-|ping |tracert |traceroute |ipconfig|systeminfo|hostname|hostnamectl|uname|uptime|df |free|ip -br|ip a|ss -|systemctl --failed|systemctl status|cat \/proc)/i;
+const RE_LEITURA = /^\s*(display|dis |show |dir |get |get-|ping |tracert |traceroute |ipconfig|systeminfo|hostname|hostnamectl|uname|uptime|df |free|ip -br|ip a|ss -|systemctl --failed|systemctl status|cat \/proc|\/[a-z0-9\- \/]+ print|esxcli [a-z0-9 \-]+ (list|get)|(switchshow|switchstatusshow|fabricshow|nsshow|nscamshow|firmwareshow|sfpshow|porterrshow|portperfshow|portshow|zoneshow|cfgshow|sensorshow|psshow|fanshow|tempshow|errdump|licenseshow|islshow|trunkshow|slotshow|chassisshow|ipaddrshow|hashow|version)\b|iscsiadm -m (session|node)|multipath -ll|lsblk)/i;
 let ROTEIROS = [], rotSel = null;
 
 // Espera o comando TERMINAR: saída parada + cursor num prompt ou num "---- More ----".
@@ -1260,7 +1309,7 @@ function esperarSaida(a, desde, quieto = 900, max = 120000) {
     }, 150);
   });
 }
-const SHELL_WIN = ["powershell", "cmd", "azure", "gcp"];
+const SHELL_WIN = ["powershell", "cmd", "azure", "gcp"];   // (abas de IA ficam de fora: não se digita "cls" no prompt do assistente)
 function desenharRoteiro(a) {
   if (a.id !== ativa) return;
   const bar = $("#roteiro-barra"), r = a.roteiro;
@@ -1358,7 +1407,7 @@ function desenharRoteiros() {
   const a = A(), tipo = a && a.tipo, q = $("#rot-busca").value.trim().toLowerCase(), fab = $("#rot-filtro").value;
   const lista = ROTEIROS.filter((r) => (!fab || r.fabricante === fab) &&
     (!q || [r.nome, r.fabricante, r.descricao, ...r.comandos.map((c) => c.cmd)].join(" ").toLowerCase().includes(q)));
-  if (!lista.length) ul.innerHTML = `<li style="cursor:default;color:var(--suave)">Nenhuma automação encontrada.</li>`;
+  if (!lista.length) ul.innerHTML = `<li style="cursor:default;color:var(--suave)">Nenhuma Skill encontrada.</li>`;
   lista.sort((x, y) => (x.tipo === tipo ? 0 : 1) - (y.tipo === tipo ? 0 : 1) || x.nome.localeCompare(y.nome)).forEach((r, i) => {
     const li = document.createElement("li");
     li.innerHTML = `${esc(r.nome)}<small>${esc(r.fabricante || "")} · ${r.comandos.length} comandos${r.tipo === tipo ? '<span class="tag">combina com esta aba</span>' : ""}</small>`;
@@ -1586,7 +1635,7 @@ const INFO = {
     Service Tag do iDRAC) e o <b>SHA-256 completo</b>. Tudo também vai para o <b>manifesto de custódia</b> (Evidencias\\manifesto.jsonl).</p>
     <p><b>🧹 auto</b>: limpa a tela depois de cada evidência (pronta para o próximo comando). <b>⏱ manter ativa</b>: evita que a
     sessão caia por inatividade (SSH, serial e páginas web) — sem executar nenhum comando.</p>
-    <p><b>⚡ Automações</b>: coleta automática por fabricante. <b>📄 Relatório</b>: PDF do atendimento com capa, resumo,
+    <p><b>⚡ Skills</b>: procedimentos de coleta por fabricante. <b>📄 Relatório</b>: PDF do atendimento com capa, resumo,
     evidências, logs, hashes e aceite — abre <b>dentro do app</b> para ver e <b>✍ assinar e datar</b>.</p>
     <p class="nota">Vale sempre para a <b>aba ativa</b>. Informe o nº do chamado em <b>✎</b> no cartão Atendimento.</p>`],
   atendimento: ["Cliente e pasta do atendimento", `
@@ -1597,8 +1646,8 @@ const INFO = {
     <li>A data é conferida <b>na hora de cada print</b>: virou o dia, vai para a pasta do novo dia.</li>
     <li>Numeração: continua do maior número da visita (apagou a última? o número é reaproveitado).</li></ul>
     <p class="nota">⚙ = pasta raiz dos atendimentos (configurada uma vez; hoje: “03 - Atendimentos”).</p>`],
-  roteiro: ["Automações de coleta", `
-    <ul><li>Pesquise ou filtre por fabricante, escolha a automação (Huawei, Cisco, HPE, Fortinet, Windows, Linux) e clique em <b>Executar</b>.</li>
+  roteiro: ["Skills de coleta", `
+    <ul><li>Pesquise ou filtre por fabricante, escolha a Skill (Huawei, Cisco, HPE, Fortinet, Juniper, Aruba, Dell, MikroTik, ESXi, Windows, Linux) e clique em <b>Executar</b>.</li>
     <li>O app digita cada comando na aba ativa, espera a saída, <b>tira a evidência de cada tela</b> e avança o
       <b>---- More ----</b> sozinho (com limite de páginas por comando).</li>
     <li>Barra de progresso no terminal, com <b>■ Parar</b> a qualquer momento.</li>
@@ -1680,6 +1729,12 @@ window.addEventListener("pywebviewready", async () => {
   atualizarWa({ conversa: ini.cfg.conversa });
   onFila(await api.fila_status());   // envios que ficaram pendentes da última vez
   novaAba("serial");
+  setTimeout(async () => {   // versão nova publicada? (GET anônimo ao GitHub; nada do usuário é enviado)
+    const v = await api.verificar_atualizacao().catch(() => null);
+    if (v && v.ok && v.tem)
+      pedido(`⬆️ <b>DASSH Console ${esc(v.nova)}</b> disponível (você usa a ${esc(v.atual)}). Baixe e instale por cima — evidências, cofre e configurações são mantidos.`,
+        "Baixar agora", "Depois", (ok) => ok && api.abrir_link(v.url), "atualizacao");
+  }, 6000);
   if (ini.conflito_atalhos)
     toast("A janelinha antiga “Evidências PuTTY” está aberta e captura Ctrl+Alt+L/P. Feche-a ou use os botões.", "aviso");
 
@@ -1689,9 +1744,17 @@ window.addEventListener("pywebviewready", async () => {
     if (b) { e.stopPropagation(); abrirInfo(b); return; }
     if (!e.target.closest("#popover")) fecharInfo();
   });
-  document.querySelectorAll("#abas button").forEach((b) => b.addEventListener("click", () => {
-    const a = A(); if (a && a.conectado) return toast("Desconecte esta aba ou abra uma nova (＋) para outro tipo", "aviso");
-    selecionarTipo(b.dataset.tipo);
+  // tipos em menus por assunto: Equipamentos (precisam de destino) · Shell · Nuvem · IA. Os que não têm destino abrem NA HORA ao clicar.
+  document.querySelectorAll("#abas [data-tipo]").forEach((b) => b.addEventListener("click", async () => {
+    fecharMenusTipos(); const tipo = b.dataset.tipo;
+    if (!DIRETOS.includes(tipo)) {   // Serial / SSH / Web: escolhe o tipo e preenche o destino ao lado
+      const a = A(); if (a && a.conectado) return toast("Desconecte esta aba ou abra uma nova (＋) para outro tipo", "aviso");
+      return selecionarTipo(tipo);
+    }
+    let a = A();
+    if (!a || a.conectado || a.demo) a = novaAba(tipo);   // aba em uso: abre numa aba nova
+    if (!a) return;
+    selecionarTipo(tipo); conectar(a);
   }));
   $("#porta").addEventListener("mousedown", () => carregarPortas());
   $("#atualizar-portas").onclick = () => carregarPortas();
@@ -1761,6 +1824,7 @@ window.addEventListener("pywebviewready", async () => {
   $("#renomear-visita").onclick = renomearVisita; $("#nova-visita").onclick = novaVisita; $("#importar-arquivos").onclick = async () => { const r = await api.importar_arquivos(); if (r.cancelado) return; toast(r.ok ? `📥 ${r.arquivos} arquivo(s) importado(s) para o atendimento — entram no relatório com SHA-256` : r.erro, r.ok ? "" : "erro"); };
   $("#trocar-raiz").onclick = async () => { const c = await api.escolher_raiz(); desenharClientes(c); toast("Pasta raiz: " + c.raiz); };
   $("#btn-historico").onclick = abrirHistorico;
+  $("#btn-licenca").onclick = abrirLicenca;
   $("#btn-cofre").onclick = abrirCofre;
   $("#sug-fechar").onclick = () => { const a = A(); if (a) esconderSugestao(a); };
   document.querySelectorAll("[data-fecha]").forEach((b) => (b.onclick = () => fecharModal(b)));
@@ -2136,3 +2200,28 @@ async function autoteste() {
   api.teste_fim(JSON.stringify({ abas: abas.size, sugestao: sug, sugestao_sumiu: sumiu,
     usuario_ok: !!m && m[1] === "usuario_teste", senha_ok: !!m && m[2] === "senha_teste_123" }));
 }
+
+// menus dos tipos de conexão (abrir/fechar): independente do resto da inicialização
+function fecharMenusTipos() { document.querySelectorAll("#abas .submenu").forEach((m) => m.classList.add("oculto")); }
+document.querySelectorAll("#abas .grupo-btn").forEach((g) => g.addEventListener("click", (e) => {
+  e.stopPropagation(); const m = g.nextElementSibling, abrir = m.classList.contains("oculto"); fecharMenusTipos(); m.classList.toggle("oculto", !abrir);
+}));
+document.addEventListener("click", fecharMenusTipos);
+
+// ---- licença / convite: mostra o plano e ativa um código recebido (conferido offline pelo backend) ----
+async function desenharLicenca() {
+  const r = await api.licenca_estado(), el = $("#lic-estado");
+  if (!r || !r.ok) { el.textContent = "Não foi possível ler a licença."; return; }
+  const origem = r.origem === "licenca" ? `Convite/licença ativa${r.nome ? " de " + esc(r.nome) : ""}` : r.estado === "valida" ? "Teste gratuito" : "Plano Grátis";
+  const dias = r.dias == null ? "sem data de validade" : `${r.dias} dia(s) restante(s)`;
+  el.innerHTML = `<div style="font-size:15px"><b>${origem}</b> — plano <b>${esc(String(r.plano || "grátis").toUpperCase())}</b></div>
+    <div class="ajuda" style="margin-top:4px">${esc(r.motivo || "")} · ${r.estado === "valida" ? dias : "terminou"}</div>`;
+}
+async function abrirLicenca() { $("#lic-msg").textContent = ""; $("#lic-token").value = ""; await desenharLicenca(); abrirModal("#modal-lic"); }
+$("#lic-ativar").onclick = async () => {
+  const t = $("#lic-token").value.trim(); if (!t) { $("#lic-msg").textContent = "Cole o código do convite."; return; }
+  const r = await api.licenca_ativar(t);
+  $("#lic-msg").textContent = r.ok ? "✔ Ativado!" : "✖ " + (r.motivo || r.erro || "código inválido");
+  $("#lic-msg").style.color = r.ok ? "var(--verde)" : "#ff8b8b";
+  if (r.ok) { $("#lic-token").value = ""; desenharLicenca(); toast("Licença ativada"); }
+};

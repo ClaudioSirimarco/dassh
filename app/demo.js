@@ -16,6 +16,12 @@ const DEMO = (() => {
   return { r, pick, hex, ip, C, PROMPT, HOSTS };
 })();
 
+const SIMULACOES = {
+  cinema: { nome: "Invasão de cinema", desc: "Varredura, \"quebra\" de chave, logs e ACCESS GRANTED — o clássico de filme" },
+  soc:    { nome: "SOC ao vivo", desc: "Painel de alertas com correlação e resposta do defensor" },
+  falha:  { nome: "Falha de stack (treino)", desc: "Membro do stack cai: sintomas, diagnóstico e conclusão" },
+  portas: { nome: "Auditoria de portas", desc: "Portas expostas num laboratório fictício, com recomendações" },
+};
 function demoAtivo(a) { return a && a.demo && a.demo.on && abas.has(a.id); }
 
 function demoTecla(a, d) {
@@ -31,14 +37,14 @@ function demoParar(a) {
   toast("Demonstração encerrada");
 }
 
-function demoIniciar(a) {
+function demoIniciar(a, tipo = "cinema") {
   if (a.conectado) a = novaAba("powershell");        // nunca em cima de uma sessão real
   if (!a) return;
-  a.demo = { on: true, turbo: 0 };
-  a.nome = "🎬 Demonstração"; a.btn.querySelector(".nome").textContent = a.nome;
+  a.demo = { on: true, turbo: 0, tipo };
+  a.nome = "🎬 " + (SIMULACOES[tipo] || SIMULACOES.cinema).nome; a.btn.querySelector(".nome").textContent = a.nome;
   a.btn.querySelector(".ponto").classList.add("on");
   arrumarAbas(); ativar(a.id);
-  toast("🎬 Demonstração (simulação) — Esc para parar · qualquer tecla acelera");
+  toast("🎬 Simulação — alvos e dados FICTÍCIOS · Esc para parar · qualquer tecla acelera");
   demoRodar(a);
 }
 
@@ -137,11 +143,74 @@ async function demoRodar(a) {
       await pausa(2200);
     },
   ];
+  const SIM = (txt) => ln([`${C.a}  ╔══ SIMULAÇÃO ══╗ ${txt} — alvos e dados FICTÍCIOS, nada é executado ${C.z}`, ""], 30);
+  const OUTRAS = {
+    soc: [
+      async () => {
+        t.write("\x1bc"); await SIM("SOC ao vivo");
+        await ln([`${C.b}  DASSH SOC · painel de eventos · turno ${r(1, 3)}${C.z}`, `${C.c}  hora      sev    origem            alvo         evento${C.z}`], 50);
+        const ev = [["ALTA", C.vm, "varredura de portas"], ["MÉDIA", C.a, "falhas de login SSH repetidas"], ["BAIXA", C.ci, "certificado perto de expirar"],
+                    ["ALTA", C.vm, "tráfego anômalo para fora"], ["MÉDIA", C.a, "mudança de configuração fora da janela"]];
+        let alta = 0, tot = 0;
+        for (let i = 0; i < r(14, 20) && vivo(); i++) {
+          const [sv, cor, m] = pick(ev); tot++; if (sv === "ALTA") alta++;
+          await ln([`  ${new Date().toTimeString().slice(0, 8)}  ${cor}${sv.padEnd(5)}${C.z}  ${ip().padEnd(16)}  ${pick(HOSTS).padEnd(11)}  ${m}`], 120);
+        }
+        await ln(["", `  ${C.b}Resumo:${C.z} ${tot} eventos · ${C.vm}${alta} alta${C.z}`], 60);
+      },
+      async () => {
+        await ln([`${C.a}  [correlação]${C.z} 3 eventos de alta gravidade com a mesma origem em 90 s`], 80);
+        const alvo = ip(); await cmd(`dassh-defesa isolar --origem ${alvo} --simulado`);
+        await barra("  aplicando bloqueio", 30, 50);
+        await ln([`  ${C.v}✔ origem ${alvo} bloqueada${C.z} (simulação) · ticket ${hex(6)} aberto`, ""]);
+      },
+    ],
+    falha: [
+      async () => {
+        t.write("\x1bc"); await SIM("treino: falha em stack de switches");
+        const host = "SW-BANCADA"; await cmd("display stack", host);
+        await ln([`${C.c}MemberID  Role     MAC             Priority  Device Type${C.z}`, `*1         Master   0200-0000-0001  200       S5732-H48UM4Y2CZ-V2`,
+                  ` 2         ${C.vm}Absent${C.z}   0200-0000-0002  100       S5732-H48UM4Y2CZ-V2`], 120);
+        await cmd("display logbuffer | include STACK", host);
+        await ln([`${C.a}Nov 18 15:${r(10, 59)}:${r(10, 59)} ${host} %%01STACKMNG/4/STACK_LINK_DOWN: stack port 1/1 link down${C.z}`,
+                  `${C.vm}Nov 18 15:${r(10, 59)}:${r(10, 59)} ${host} %%01STACKMNG/2/MEMBER_LEAVE: member 2 left the stack${C.z}`], 150);
+      },
+      async () => {
+        const host = "SW-BANCADA";
+        await ln([`${C.ci}  [diagnóstico]${C.z} 1) cabo/óptica da porta de stack  2) energia do membro 2  3) versão de software igual nos membros`], 90);
+        await cmd("display stack port", host);
+        await ln([`Stack-Port  Status   Neighbor`, `1/1         ${C.vm}down${C.z}     -`, `1/2         ${C.v}up${C.z}       2/2`], 120);
+        await cmd("display device power", host);
+        await ln([`PWR1  Present  ${C.v}Normal${C.z}`, `PWR2  ${C.vm}Absent / Abnormal${C.z}   ${C.a}← membro 2 sem energia${C.z}`], 120);
+        await ln(["", `  ${C.b}Conclusão (simulada):${C.z} religar a fonte do membro 2; a stack volta a ${C.v}Standby${C.z} sozinha em ~${r(2, 4)} min.`, ""], 70);
+      },
+    ],
+    portas: [
+      async () => {
+        t.write("\x1bc"); await SIM("auditoria de portas expostas (laboratório)");
+        const rede = `192.0.2.0/24`; await cmd(`dassh-audit portas --escopo ${rede} --nivel diagnostico`);
+        await ln([`${C.c}  escopo autorizado: ${rede} (documentação RFC 5737 — endereços fictícios) · nível: diagnóstico (sem exploração)${C.z}`], 60);
+        await barra("  descoberta de hosts", 32, 50);
+        const portas = [["23/tcp", "telnet", "ALTA"], ["161/udp", "snmp v2c", "MÉDIA"], ["80/tcp", "http", "MÉDIA"], ["443/tcp", "https", "BAIXA"], ["3389/tcp", "rdp", "ALTA"], ["22/tcp", "ssh", "BAIXA"]];
+        await ln([`${C.c}  host          porta     serviço      risco${C.z}`], 50);
+        for (let i = 0; i < r(8, 12) && vivo(); i++) {
+          const [pt, sv, rk] = pick(portas), cor = rk === "ALTA" ? C.vm : rk === "MÉDIA" ? C.a : C.v;
+          await ln([`  192.0.2.${r(2, 250)}`.padEnd(16) + `${pt.padEnd(9)} ${sv.padEnd(12)} ${cor}${rk}${C.z}`], 90);
+        }
+      },
+      async () => {
+        await ln(["", `  ${C.b}Recomendações:${C.z}`, `   • desativar Telnet e usar SSH nos equipamentos de rede`, `   • restringir RDP à VPN/jump host`,
+                  `   • migrar SNMP v2c para SNMPv3`, `   • publicar apenas 443 para fora`, "", `  ${C.v}✔ relatório gerado (simulação)${C.z}`, ""], 90);
+        await pausa(1500);
+      },
+    ],
+  };
+  const lista = OUTRAS[a.demo.tipo] || CENAS;
   let i = 0;
   while (demoAtivo(a)) {
-    await CENAS[i % CENAS.length]();
+    await lista[i % lista.length]();
     i++;
-    if (i % CENAS.length === 0) await pausa(1500);   // volta ao começo
+    if (i % lista.length === 0) await pausa(1500);   // volta ao começo
     await pausa(r(500, 1100));
   }
 }
@@ -152,7 +221,7 @@ function menuAba(a, x, y) {
   if (!m) { m = document.createElement("div"); m.id = "menu-ctx"; m.className = "menu-abas"; document.body.appendChild(m); }
   const it = [];
   if (a.demo) it.push(["■ Parar demonstração", () => demoParar(a)]);
-  else it.push(["🎬 Modo demonstração (simulação)", () => demoIniciar(a)]);
+  else Object.entries(SIMULACOES).forEach(([k, v]) => it.push([`🎬 Simulação: ${v.nome} <small style="color:var(--suave)">— ${v.desc}</small>`, () => demoIniciar(a, k)]));
   if (a.conectado && a.tipo !== "web" && !a.demo) it.push([a.gravando ? "⏸ Parar gravação…" : "⏺ Gravar esta aba…", () => menuGravacao(a)]);
   it.push(["✕ Fechar aba", () => fecharAba(a.id)]);
   m.innerHTML = it.map(([t], i) => `<div class="ma-item" data-i="${i}">${t}</div>`).join("") +
