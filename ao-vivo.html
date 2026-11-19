@@ -46,7 +46,8 @@
 </head>
 <body>
 <div id="splash"><img src="app/logo.svg" alt=""><b>DASSH Console</b><span>preparando o ambiente…</span><i></i></div>
-<header class="topo">
+<!-- Barra de SISTEMA (plataforma): o que vale para o app inteiro, por função. O que é DE UMA GUIA fica na barra da guia. -->
+<nav class="sistema" id="sistema" aria-label="Plataforma">
   <div class="marca"><svg class="logo" id="logo" viewBox="0 0 100 100" aria-hidden="true">
       <defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#00c896"/><stop offset="1" stop-color="#004e40"/></linearGradient></defs>
       <rect x="6" y="6" width="88" height="88" rx="22" fill="url(#lg)"/>
@@ -55,7 +56,35 @@
       <circle cx="73" cy="27" r="13" fill="#fff"/>
       <polyline points="66.5,27.5 71.5,32.5 80,21.5" fill="none" stroke="#004e40" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round"/>
     </svg><div><b>DASSH Console</b><small>Terminal · evidências · sessão ao vivo</small></div></div>
+  <button class="sis-menu" id="sis-menu" aria-expanded="false" aria-controls="sis-itens" title="Menu da plataforma: sessões, biblioteca, ferramentas, conta e versão">☰<span class="rot"> Menu</span></button>
+  <div class="sis-itens" id="sis-itens">
+    <div class="sis-grupo" role="group" aria-label="Sessões" title="Sessões: entrar na sessão ao vivo de alguém e o celular conectado">
+      <span class="sis-rot">Sessões</span>
+      <button class="sis-btn" id="btn-entrar" title="Sessão ao vivo: entrar na sessão de outra pessoa com o código que ela passou">🔗<span class="rot"> Entrar</span></button>
+      <button class="sis-btn" id="btn-celular" title="📱 Conectado pelo celular: parear aparelhos e deixar este PC disponível para eles">📱<span class="rot"> Celular</span></button>
+      <span class="cel-chip oculto" id="cel-chip"></span>
+    </div>
+    <div class="sis-grupo" role="group" aria-label="Biblioteca" title="Biblioteca: tudo o que já foi feito, num só lugar">
+      <span class="sis-rot">Biblioteca</span>
+      <button class="sis-btn" id="btn-biblioteca" title="🗂 Biblioteca: sessões, gravações, evidências, logs, relatórios e Skills num só lugar">🗂<span class="rot"> Biblioteca</span></button>
+      <button class="sis-btn" id="btn-historico" title="⏺ Gravações: assistir as sessões gravadas (▶), ver o log e reconectar">⏺<span class="rot"> Gravações</span></button>
+    </div>
+    <div class="sis-grupo" role="group" aria-label="Ferramentas" title="Ferramentas: equipamentos salvos e cofre de senhas">
+      <span class="sis-rot">Ferramentas</span>
+      <button class="sis-btn" id="btn-equip" title="📚 Equipamentos salvos: conectar com 1 clique, importar e exportar">📚<span class="rot"> Equipamentos</span></button>
+      <button class="sis-btn" id="btn-cofre" title="🔑 Cofre de usuários e senhas (sugere o login na hora)">🔑<span class="rot"> Cofre</span></button>
+    </div>
+    <div class="sis-grupo" role="group" aria-label="Conta e sistema" title="Conta e sistema: conta, armazenamento, licença e versão">
+      <span class="sis-rot">Sistema</span>
+      <button class="sis-btn oculto" id="btn-conta" title="👤 Conta: entrar, sair e dados do usuário da plataforma">👤<span class="rot"> Conta</span></button>
+      <button class="sis-btn oculto" id="btn-armazenamento" title="☁ Armazenamento: onde os atendimentos e evidências são salvos (Google Drive, OneDrive, Dropbox, iCloud)">☁<span class="rot"> Armazenamento</span></button>
+      <button class="sis-btn" id="btn-licenca" title="🪪 Licença: ver o plano e ativar um convite">🪪<span class="rot"> Licença</span></button>
+      <button class="sis-btn versao" id="btn-versao" title="Versão do DASSH Console — clique para verificar se há atualização">ⓥ<span class="rot" id="versao-txt"> versão</span></button>
+    </div>
+  </div>
+</nav>
 
+<header class="topo">
   <div class="conexao">
     <div class="abas" id="abas">
       <!-- seletor de conexão: categorias sempre à vista (barra segmentada) e, ao lado, os tipos da categoria escolhida -->
@@ -104,11 +133,6 @@
     </div>
       <div class="campos livre oculto" id="campos-livre"><span id="livre-txt"></span></div>
     </div>
-    <div class="atalhos-con">
-      <button class="btn icone-txt" id="btn-equip" title="Equipamentos salvos: conectar com 1 clique, importar e exportar">📚<span class="rot"> Equipamentos</span></button>
-      <button class="btn icone-txt" id="btn-licenca" title="Licença: ver o plano e ativar um convite">🪪<span class="rot"> Licença</span></button>
-      <button class="btn icone-txt" id="btn-cofre" title="Cofre de usuários e senhas (sugere o login na hora)">🔑<span class="rot"> Cofre</span></button>
-    </div>
     <button class="btn primario" id="conectar">Conectar</button>
   </div>
 </header>
@@ -119,15 +143,16 @@
       <div class="abas-sessao" id="abas-sessao"></div>
       <button class="nova-aba" id="nova-aba" title="Nova aba (Ctrl+Alt+T)">＋</button>
       <button class="lista-abas oculto" id="lista-abas" title="Todas as abas abertas">▾</button>
-      <div class="barra-dir">
-        <button class="btn mini destaque" id="btn-compartilhar" title="Compartilhar esta aba ao vivo (convite pelo WhatsApp)">📡<span class="rot"> Compartilhar</span></button>
-        <button class="btn mini" id="btn-entrar" title="Entrar na sessão de outra pessoa com o código">🔗<span class="rot"> Entrar</span></button>
-        <span class="cel-chip oculto" id="cel-chip"></span>
-        <button class="btn mini" id="btn-celular" title="Conectado pelo celular: parear aparelhos e deixar este PC disponível para eles">📱<span class="rot"> Celular</span></button>
-        <button class="btn mini" id="btn-biblioteca" title="Biblioteca: sessões, gravações, evidências, logs, relatórios e Skills num só lugar">🗂<span class="rot"> Biblioteca</span></button>
-        <button class="btn mini" id="btn-historico" title="Sessões gravadas: assistir (▶), log e reconectar">⏺<span class="rot"> Gravações</span></button>
-        <button class="btn mini ic" id="btn-tema" title="Tema do terminal (cores e fonte)">🎨</button>
-        <button class="info grande" data-info="abas" title="Abas, conexões e atalhos">i</button>
+      <!-- opções DESTA guia (a ativa): cada guia tem as suas -->
+      <div class="guia-barra" id="guia-barra" role="toolbar" aria-label="Opções desta guia">
+        <span class="gb-rot" id="gb-rot" title="Os botões ao lado valem só para a guia ativa — cada guia tem os seus">guia</span>
+        <button class="gb-btn destaque" id="btn-compartilhar" title="📡 Compartilhar ESTA guia ao vivo (convite pelo WhatsApp)">📡<span class="rot"> Compartilhar</span></button>
+        <button class="gb-btn tg" id="tg-gravar" title="⏺ Gravação desta guia">⏺<span class="rot"> REC</span></button>
+        <button class="gb-btn tg" id="tg-ativa" title="⏱ Manter ESTA guia ativa (evita desconexão por inatividade)">⏱</button>
+        <button class="gb-btn tg" id="tg-limpar" title="🧹 Limpar a tela desta guia depois de cada evidência (Salvar/Enviar)">🧹</button>
+        <button class="gb-btn" id="btn-tema" title="🎨 Tema desta guia (cores e fonte do terminal)">🎨</button>
+        <button class="gb-btn" id="btn-roteiro" title="⚡ Skills: procedimentos técnicos (coleta, diagnóstico, configuração, verificação) executados NESTA guia">⚡<span class="rot"> Skills</span></button>
+        <button class="info grande" data-info="abas" title="Guias, conexões e atalhos">i</button>
       </div>
     </div>
     <div class="share-barra oculto" id="share-barra"></div>
@@ -157,31 +182,40 @@
     </div>
 
     <div class="card">
-      <div class="card-tit"><span>Evidência <button class="info" data-info="evidencia" title="Como funciona">i</button>
-        <button class="chip-tg on" id="tg-limpar" title="Limpar a tela depois de cada evidência (Salvar/Enviar)">🧹<span class="rot"> limpar</span></button>
-        <button class="chip-tg" id="tg-ativa" title="Manter a sessão DESTA aba ativa (evita desconexão por inatividade) — cada aba tem o seu ⏱, também no botão da aba">⏱<span class="rot"> ativa</span></button>
-        <button class="chip-tg on" id="tg-gravar" title="Gravar automaticamente as sessões novas (dá para parar/gravar em cada aba pelo REC)">⏺<span class="rot"> gravar</span></button></span>
+      <div class="card-tit"><span>Evidência <button class="info" data-info="evidencia" title="Como funciona">i</button></span>
         <span class="aba-alvo" id="aba-alvo"></span></div>
       <div class="acoes-2">
-        <button class="acao" id="limpar"><span>Limpar</span><kbd>Ctrl+Alt+L</kbd></button>
-        <button class="acao" id="salvar"><span>Salvar</span><kbd>Ctrl+Alt+P</kbd></button>
+        <button class="acao" id="limpar" title="Limpar a tela da guia ativa"><span>Limpar</span><kbd>Ctrl+Alt+L</kbd></button>
+        <button class="acao" id="salvar" title="Salvar a evidência (PNG) e copiar para colar"><span>Salvar</span><kbd>Ctrl+Alt+P</kbd></button>
       </div>
-      <button class="acao enviar" id="enviar"><span>Enviar evidência</span><kbd>Ctrl+Alt+E</kbd></button>
-      <div class="acoes-2 extra">
-        <button class="acao" id="btn-roteiro" title="Skills são procedimentos técnicos que executam tarefas, diagnósticos, configurações, verificações e rotinas operacionais em diferentes plataformas e equipamentos."><span>⚡ Skills</span></button>
-        <button class="acao" id="btn-relatorio" title="PDF do atendimento: evidências, logs, hashes e assinaturas"><span>📄 Relatório</span></button>
-      </div>
+      <button class="acao enviar" id="enviar" title="Salvar e enviar a evidência para o destino desta guia"><span>Enviar evidência</span><kbd>Ctrl+Alt+E</kbd></button>
+      <button class="acao relatorio" id="btn-relatorio" title="📄 Relatório PDF do atendimento: gerar, ver, assinar e enviar (evidências, logs, hashes e assinaturas)"><span>📄 Relatório</span><small>gerar · enviar</small></button>
     </div>
 
-    <div class="card">
-      <div class="card-tit"><span>Envio <button class="info" data-info="whatsapp" title="Como conectar">i</button>
-        <button class="btn mini canais-btn" id="btn-canais" title="Canais de envio: configurar e testar e-mail e Telegram">📨</button></span>
+    <div class="card envio-card" id="card-envio">
+      <div class="card-tit"><span class="envio-tit">Envio <button class="info" data-info="whatsapp" title="Como conectar">i</button>
+        <span class="envio-canais" id="envio-canais" role="radiogroup" aria-label="Canal de envio desta aba">
+          <button type="button" class="envio-canal" data-canal="whatsapp" role="radio" aria-checked="true" title="WhatsApp: enviar as evidências desta aba para uma conversa ou grupo">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="11.5" r="9" fill="#25d366"/><path d="M4.6 21.4l1.3-4.6 3.4 2.6z" fill="#25d366"/><path d="M8.6 7.6c.4-.5 1-.5 1.3 0l.9 1.8c.2.4.1.8-.2 1.1l-.5.5c.6 1.3 1.6 2.3 2.9 2.9l.5-.5c.3-.3.7-.4 1.1-.2l1.8.9c.5.3.5.9 0 1.3-.8.8-2 1.1-3.1.6-2.3-1-4.1-2.8-5.1-5.1-.5-1.1-.2-2.3.6-3.1z" fill="#fff"/></svg>
+            <i class="envio-pt" aria-hidden="true"></i></button>
+          <button type="button" class="envio-canal" data-canal="telegram" role="radio" aria-checked="false" title="Telegram: enviar as evidências desta aba para um chat pelo seu bot">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="#2aabee"/><path d="M5.6 11.7l10.9-4.3c.5-.2 1 .1.8.9l-1.8 8.6c-.1.6-.6.8-1.1.5l-2.9-2.1-1.4 1.4c-.2.2-.4.2-.5 0l.2-2.9 5.3-4.8c.2-.2 0-.3-.3-.1l-6.6 4.1-2.8-.9c-.6-.2-.6-.6.2-.9z" fill="#fff"/></svg>
+            <i class="envio-pt" aria-hidden="true"></i></button>
+          <button type="button" class="envio-canal" data-canal="email" role="radio" aria-checked="false" title="E-mail: enviar as evidências desta aba para um ou mais destinatários">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="5" width="19" height="14" rx="2.5" fill="#ea8a2e"/><path d="M4 7.2l8 5.6 8-5.6" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <i class="envio-pt" aria-hidden="true"></i></button>
+        </span>
+        <button class="btn mini canais-btn" id="btn-canais" title="Configuração avançada dos canais (servidor SMTP, token do bot, testes)">⚙</button></span>
         <span><span class="status-wa fila oculto" id="wa-fila"></span> <span class="status-wa" id="wa-status">fechado</span></span></div>
       <div class="conversa" id="conversa" title="Destino das evidências DESTA aba">Nenhuma conversa conectada</div>
       <button class="wa-andamento oculto" id="wa-andamento" title="Ver a fila de envio"></button>
-      <div class="linha-btn">
+      <div class="linha-btn" id="envio-linha-wa">
         <button class="btn" id="wa-abrir" title="Abrir o WhatsApp Web do app">Abrir<span class="rot2"> WhatsApp</span></button>
         <button class="btn" id="wa-conectar" title="Usar a conversa aberta no WhatsApp para as evidências DESTA aba (cada aba pode ter a sua)">Conectar<span class="rot2"> conversa</span></button>
+      </div>
+      <div class="linha-btn oculto" id="envio-linha-outro">
+        <button class="btn" id="envio-conectar" title="Conectar o canal e escolher para onde esta aba envia">Conectar</button>
+        <button class="btn" id="envio-desconectar" title="Esta aba deixa de enviar para este destino">Desconectar</button>
       </div>
     </div>
 
@@ -420,6 +454,7 @@
       <span><button class="btn" id="eq-salvar-aba" title="Guarda a conexão da aba atual na lista">＋ Salvar a aba atual</button>
       <button class="btn" id="eq-novo">＋ Novo</button>
       <button class="btn" id="eq-importar" title="CSV, JSON ou sessões do PuTTY">⬇ Importar</button>
+      <button class="btn" id="importarUI-abrir" title="PuTTY, KiTTY, MobaXterm, SecureCRT, mRemoteNG, Termius, WinSCP, Windows Terminal, OpenSSH, Royal TS, RDM">📥 Importar de…</button>
       <button class="btn" id="eq-exportar" title="Planilha CSV (Excel) ou backup JSON">⬆ Exportar</button>
       <button class="sug-x" data-fecha>✕</button></span></div>
     <div class="jan-corpo">
@@ -434,6 +469,22 @@
         <input id="eq-f-destino" placeholder="admin@10.0.0.1 · https://10.0.0.20 · COM3:9600">
         <input id="eq-f-grupo" placeholder="Grupo / cliente"><input id="eq-f-obs" placeholder="Observação">
         <button class="btn primario" id="eq-f-ok">Salvar</button><button class="btn" id="eq-f-cancelar">Cancelar</button></div>
+      <div class="importarUI oculto" id="importarUI">
+        <div class="importarUI-topo"><b id="importarUI-titulo">📥 Importar de outra ferramenta</b>
+          <button class="btn mini" id="importarUI-voltar" title="Voltar à lista de ferramentas">← Ferramentas</button>
+          <button class="sug-x" id="importarUI-fechar" title="Fechar">✕</button></div>
+        <div id="importarUI-ferr" class="importarUI-ferr"></div>
+        <div id="importarUI-previa" class="importarUI-previa oculto">
+          <div class="importarUI-sel"><label><input type="checkbox" id="importarUI-todos"> Todos</label>
+            <button class="btn mini" id="importarUI-so-novos">Só os novos</button>
+            <span id="importarUI-conta"></span><span id="importarUI-avisos" class="importarUI-avisos"></span></div>
+          <div class="importarUI-lista"><table class="tabela eq-tab"><thead><tr><th></th><th>Nome</th><th>Tipo</th><th>Destino</th>
+            <th>Grupo / pasta</th><th>Situação</th></tr></thead><tbody id="importarUI-linhas"></tbody></table></div>
+          <div class="importarUI-rodape"><small>Sem senhas: só nome, tipo, host/porta, usuário, porta serial e pasta. Itens que já
+            existem atualizam nome/grupo.</small>
+            <button class="btn primario" id="importarUI-ok">Importar selecionados</button></div>
+        </div>
+      </div>
       <div class="eq-lista"><table class="tabela eq-tab"><thead><tr><th>Nome</th><th>Tipo</th><th>Destino</th><th>Grupo</th><th>Último uso</th><th></th></tr></thead>
         <tbody id="eq-linhas"></tbody></table></div>
       <div class="eq-pag" id="eq-pag"></div>
@@ -520,6 +571,67 @@
     <div class="jan-rodape"><button type="button" class="btn" id="cn-remover" title="Apaga a configuração e o segredo deste canal">Remover</button>
       <button type="button" class="btn" id="cn-testar">🧪 Testar</button>
       <button type="button" class="btn primario" id="cn-salvar">Salvar</button></div>
+  </div>
+</div>
+
+<!-- 👤 Tela de entrada (conta LOCAL): nada da plataforma é liberado antes de entrar -->
+<div id="conta-tela" class="oculto" role="dialog" aria-modal="true" aria-labelledby="ct-tit">
+  <div class="ct-caixa">
+    <div class="ct-marca"><img src="app/logo.svg" alt=""><div><b id="ct-tit">DASSH Console</b><small id="ct-sub">Entre na sua conta</small></div></div>
+    <form id="ct-form" autocomplete="on" novalidate>
+      <label>Usuário <input id="ct-usuario" name="username" autocomplete="username" spellcheck="false" maxlength="40" required></label>
+      <label>Senha <input id="ct-senha" name="password" type="password" autocomplete="current-password" maxlength="256" required></label>
+      <label id="ct-l-senha2" class="oculto">Repita a senha <input id="ct-senha2" type="password" autocomplete="new-password" maxlength="256"></label>
+      <label id="ct-l-rec" class="oculto">Chave de recuperação <input id="ct-rec" spellcheck="false" autocomplete="off" placeholder="XXXX-XXXX-XXXX-XXXX-XXXX-XXXX"></label>
+      <div id="ct-msg" class="ct-msg" role="status" aria-live="polite"></div>
+      <button type="submit" class="btn primario" id="ct-ir">Entrar</button>
+    </form>
+    <div id="ct-rec-mostra" class="ct-rec oculto">
+      <p><b>Guarde sua chave de recuperação.</b> Ela é a ÚNICA forma de voltar a entrar se esquecer a senha (não há servidor nem
+        "senha mestra"). Anote em papel ou num gerenciador de senhas — ela não será mostrada de novo.</p>
+      <code id="ct-rec-cod"></code>
+      <label class="rot-opc"><input type="checkbox" id="ct-rec-ok"> Guardei a chave em lugar seguro</label>
+      <button type="button" class="btn primario" id="ct-rec-seguir" disabled>Continuar</button>
+    </div>
+    <div class="ct-links"><a href="#" id="ct-esqueci">Esqueci a senha</a><a href="#" id="ct-voltar" class="oculto">Voltar</a></div>
+    <details class="ct-social"><summary>Entrar com Google, Microsoft, Apple ou GitHub</summary><div id="ct-oauth"></div></details>
+    <p class="ajuda" id="ct-ajuda">A conta fica só neste computador. A senha não é guardada: dela sai a chave que protege seus segredos.</p>
+  </div>
+</div>
+
+<!-- 👤 Conta: abrirConta() -->
+<div class="modal oculto" id="modal-conta">
+  <div class="janela conta-janela">
+    <div class="jan-topo"><b>👤 Conta</b><button class="sug-x" data-fecha>✕</button></div>
+    <div class="jan-corpo">
+      <div class="conta-info" id="conta-info"></div>
+      <div class="conta-acoes"><button class="btn" id="conta-bloquear" title="Tranca a tela; a sessão termina e é preciso a senha para voltar">🔒 Bloquear agora</button>
+        <button class="btn" id="conta-sair-todas" title="Encerra todas as sessões abertas (app e navegador)">Sair de todas as sessões</button></div>
+      <form class="form" id="conta-troca" autocomplete="off" novalidate>
+        <b>Trocar senha</b>
+        <label>Senha atual <input id="cs-atual" type="password" autocomplete="current-password"></label>
+        <label>Senha nova <input id="cs-nova" type="password" autocomplete="new-password"></label>
+        <label>Repita a senha nova <input id="cs-nova2" type="password" autocomplete="new-password"></label>
+        <div style="display:flex;gap:8px;align-items:center"><button type="submit" class="btn primario">Trocar senha</button><span id="cs-msg" class="ajuda"></span></div>
+      </form>
+      <h4 class="cel-tit">Entrar com outra conta</h4>
+      <div id="conta-oauth" class="conta-oauth"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ☁ Armazenamento conectado: abrirArmazenamento() -->
+<div class="modal oculto" id="modal-armaz">
+  <div class="janela armaz-janela">
+    <div class="jan-topo"><b>☁ Armazenamento <small id="armaz-sub" style="font-weight:400;color:var(--suave)"></small></b><button class="sug-x" data-fecha>✕</button></div>
+    <div class="jan-corpo">
+      <div id="armaz-atual" class="armaz-atual"></div>
+      <label class="rot-opc"><input type="checkbox" id="armaz-so-aba"> Só nesta aba (as outras abas continuam salvando onde estão)</label>
+      <div id="armaz-lista" class="armaz-lista"></div>
+      <p class="ajuda">Usa o aplicativo de sincronização que já está no computador: o DASSH salva os atendimentos e evidências na pasta
+        escolhida e o próprio Drive/OneDrive/Dropbox/iCloud envia para a nuvem. Nenhuma senha passa pelo DASSH.
+        Conexão direta pelas APIs (sem o aplicativo instalado) virá com o servidor de contas.</p>
+    </div>
   </div>
 </div>
 

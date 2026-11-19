@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Agente local — DASSH Console</title>
-<meta name="description" content="O agente local é o próprio DASSH Console rodando em segundo plano só no seu computador, para a interface web usar serial, SSH, PowerShell e mais.">
+<title>DASSH Conector — DASSH Console</title>
+<meta name="description" content="DASSH Conector: programa leve para Windows, macOS e Linux que liga a plataforma web do DASSH Console a este computador (serial, SSH, terminal), só em 127.0.0.1.">
 
 <link rel="icon" href="../img/favicon.ico">
 <!-- pwa:inicio -->
@@ -50,6 +50,14 @@ kbd,code{font:13px Consolas,monospace;background:#0b1218;border:1px solid var(--
 .botoes{display:flex;gap:12px;flex-wrap:wrap;margin:18px 0}
 .selo{display:inline-block;font-size:12.5px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:#04231b;background:var(--aviso);border-radius:999px;padding:3px 12px;margin-bottom:12px}
 .grade{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px}
+.so{display:flex;flex-direction:column;gap:8px}
+.so.sugerido{border-color:var(--verde);box-shadow:0 0 0 1px var(--verde) inset}
+.so .tag{font-size:12px;color:var(--suave)}
+.so .btn{justify-content:center;padding:11px 18px;font-size:15px}
+.so ol{margin:4px 0 0;padding-left:20px;font-size:14.5px}
+.tabela{width:100%;border-collapse:collapse;font-size:14.5px}
+.tabela th,.tabela td{border-bottom:1px solid var(--borda);padding:8px 6px;text-align:left;vertical-align:top}
+.tabela th{color:var(--suave);font-weight:600}
 footer{padding:30px 0 40px;text-align:center;color:var(--suave);font-size:13.5px;border-top:1px solid var(--borda)}
 footer a{margin:0 8px;white-space:nowrap;display:inline-block;line-height:2}
 </style>
@@ -62,45 +70,68 @@ footer a{margin:0 8px;white-space:nowrap;display:inline-block;line-height:2}
 </div></header>
 <main><div class="cont">
 
-<h1>Agente local</h1>
-<p class="sub">O próprio DASSH Console, rodando em segundo plano só no seu computador, para a interface web usar o que o navegador não alcança.</p>
+<h1>DASSH Conector</h1>
+<p class="sub">Um programa leve que liga a <a href="../app/">plataforma web</a> a este computador — serial, SSH e terminal direto do navegador. Para <b>Windows, macOS e Linux</b>.</p>
+<div class="botoes"><a class="btn prim" href="../app/">Abrir a plataforma web</a><a class="btn" href="#baixar">Baixar o Conector</a></div>
+
 <div class="cartao"><h3>O que é</h3>
-<p>Um navegador sozinho não abre porta serial, SSH ou PowerShell. O <b>agente local</b> é o <b>mesmo DASSH Console</b> do Windows, iniciado em modo de segundo plano (sem a janela principal). Ele escuta <b>apenas em 127.0.0.1</b> (o próprio computador, sem abrir portas na rede) e a <a href="../app/">interface web</a> conversa com ele. O pareamento entre o navegador e o agente é feito por <b>código</b>.</p></div>
+<p>Um navegador sozinho não abre porta serial, SSH ou terminal. O <b>DASSH Conector</b> é o mesmo motor do DASSH Console, sem janela, rodando em segundo plano <b>só neste computador</b>. Ele escuta <b>apenas em 127.0.0.1</b> (nenhuma porta aberta na rede). A plataforma web chama o Conector <b>sozinha</b> pelo link <code>dassh-conector://</code>: não há código para digitar.</p></div>
 
-<h2>Como iniciar</h2>
+<h2 id="baixar">Baixar</h2>
+<div class="grade" id="sistemas">
+  <div class="cartao so" data-so="win"><h3>Windows</h3><span class="tag">Windows 10 e 11 (64 bits) · um arquivo</span>
+    <p class="aviso" style="border:1px dashed #30363d;border-radius:10px;padding:12px 14px;color:#c9d1d9">⏳ <b>Os pacotes do DASSH Conector para Windows, macOS e Linux estão sendo finalizados.</b> Assim que forem publicados, os botões de download aparecem aqui. Hoje o Conector já funciona junto com o DASSH Console instalado no Windows.</p>
+    <ol><li>Abra <code>DASSH-Conector-Windows.exe</code> uma vez (registra o protocolo para o seu usuário, sem administrador).</li>
+      <li>Se o Windows avisar “editor desconhecido”, clique em <b>Mais informações → Executar assim mesmo</b>.</li></ol>
+    <span class="tag">Já tem o app DASSH Console instalado? Ele já inclui o Conector.</span></div>
+  <div class="cartao so" data-so="mac"><h3>macOS</h3><span class="tag">macOS 11 ou mais novo · Apple Silicon (M1/M2/M3/M4)</span>
+    <ol><li>Arraste <b>DASSH Conector</b> para a pasta <b>Aplicativos</b>.</li>
+      <li>Na primeira vez: clique com o botão direito → <b>Abrir</b> (ou Ajustes do Sistema → Privacidade e Segurança → <b>Abrir mesmo assim</b>).</li></ol></div>
+  <div class="cartao so" data-so="linux"><h3>Linux</h3><span class="tag">x86-64 · Ubuntu 22.04+, Debian 12+, Fedora e similares</span>
+    <ol><li><code>tar -xzf DASSH-Conector-Linux-x64.tar.gz</code></li>
+      <li><code>./dassh-conector/dassh-conector --instalar --com-o-sistema</code></li>
+      <li>Serial: o seu usuário precisa estar no grupo <code>dialout</code> (<code>sudo usermod -aG dialout $USER</code>).</li></ol></div>
+</div>
+
+<h2>Como usar</h2>
 <ol>
-  <li>Instale o DASSH Console pela <a href="../baixar/">página de download</a> (versão 1.0.5 ou mais nova).</li>
-  <li>Inicie o agente de um destes jeitos:
-    <ul>
-      <li>pelo atalho <b>“DASSH Console (agente)”</b> no Menu Iniciar; ou</li>
-      <li>executando <code>DASSH Console.exe --agente</code>.</li>
-    </ul></li>
-  <li>Abra a <a href="../app/">interface web</a> e informe o código de pareamento do agente quando ela pedir.</li>
+  <li>Abra a <a href="../app/">plataforma web</a>.</li>
+  <li>O navegador pergunta <b>“Abrir DASSH Conector?”</b> — clique em <b>Abrir</b> (marque “sempre permitir”).</li>
+  <li>Pronto: serial, SSH e terminal deste computador aparecem na página.</li>
 </ol>
+<div class="aviso"><b>Safari.</b> O Safari não deixa uma página segura (https) falar com o computador local. Na plataforma web, clique em <b>“Abrir pela janela local”</b>: o Conector abre a mesma plataforma em <code>http://127.0.0.1</code>, já conectada. Chrome, Edge e Firefox funcionam direto.</div>
 
-<h2>Para que serve</h2>
-<p>A interface web usa o agente para o que depende do seu computador: <b>serial</b> (portas COM), <b>SSH</b>, <b>PowerShell</b> e <b>CMD</b>, CLIs de <b>nuvem</b>, assistentes de <b>IA</b> de linha de comando, <b>WhatsApp</b> e as demais funções do aplicativo. Sem o agente em execução, a interface web não consegue acessar essas funções.</p>
+<h2>O que funciona em cada sistema</h2>
+<table class="tabela">
+  <tr><th>Função</th><th>Windows</th><th>macOS</th><th>Linux</th></tr>
+  <tr><td>Serial (console de switch, cabo USB)</td><td>sim</td><td>sim</td><td>sim</td></tr>
+  <tr><td>SSH embutido</td><td>sim</td><td>sim</td><td>sim</td></tr>
+  <tr><td>Terminal local</td><td>PowerShell e CMD</td><td>zsh (e PowerShell 7, se instalado)</td><td>bash (e PowerShell 7, se instalado)</td></tr>
+  <tr><td>Evidências, relatório, cofre de senhas, sessão ao vivo</td><td>sim</td><td>sim (cofre no Keychain)</td><td>sim (cofre no chaveiro do sistema)</td></tr>
+  <tr><td>WhatsApp e aba Web (iDRAC/iLO)</td><td colspan="3">só no aplicativo DASSH Console para Windows</td></tr>
+</table>
 
-<h2>Limites</h2>
+<h2>Comandos</h2>
 <ul>
-  <li>Chrome, Edge e Firefox funcionam. O <b>Safari pode bloquear</b> a conexão com o computador local.</li>
-  <li>A aba <b>Web</b> (iDRAC, iLO, iBMC, firewalls…) abre o navegador do agente em <b>janela separada</b>, não embutida na página.</li>
-  <li>O agente roda no Windows, no mesmo computador em que você usa o navegador. Ele não atende outros computadores.</li>
+  <li><code>--sem-navegador</code> inicia em segundo plano sem abrir a página · <code>--local</code> abre pela janela local (Safari)</li>
+  <li><code>--instalar --com-o-sistema</code> registra o protocolo e inicia junto com o sistema · <code>--desinstalar</code> desfaz</li>
+  <li><code>--parar</code> encerra o Conector</li>
 </ul>
 
 <h2>Privacidade e segurança</h2>
 <ul>
-  <li><b>Nada sai do computador por causa do agente:</b> a conversa entre a página e o agente acontece dentro da sua máquina, em 127.0.0.1.</li>
-  <li>O agente <b>só aceita a origem do site oficial</b> e <b>exige o código de pareamento</b>; sem ele, a conexão é recusada.</li>
-  <li>Não há portas abertas na rede. Para encerrar o agente, feche o processo do DASSH Console.</li>
+  <li><b>Nada sai do computador por causa do Conector:</b> a conversa entre a página e ele acontece dentro da sua máquina, em 127.0.0.1.</li>
+  <li>Ele <b>só aceita o site oficial</b> (ou a própria janela local) e <b>exige um segredo aleatório</b> que a página cria a cada vez; sem ele, a conexão é recusada. Outro site pode até chamar o link, mas não consegue conversar com o Conector.</li>
+  <li>Senhas do cofre ficam cifradas pelo sistema: DPAPI no Windows, Keychain no macOS, chaveiro (Secret Service) no Linux.</li>
 </ul>
-<div class="aviso"><b>Aviso honesto.</b> O agente é o mesmo programa do aplicativo, e a interface web é a mesma do aplicativo. Algumas coisas continuam exclusivas do aplicativo no Windows (veja a <a href="../docs/">documentação</a>). Para trabalhar sem depender do navegador, use o aplicativo na <a href="../baixar/">página de download</a>.</div>
+<div class="aviso"><b>Aviso honesto.</b> Os pacotes ainda não têm assinatura digital: o Windows (SmartScreen / Controle Inteligente de Aplicativos) e o macOS (Gatekeeper) avisam na primeira vez. A assinatura está a caminho. Para trabalhar sem navegador, use o aplicativo na <a href="../baixar/">página de download</a>.</div>
+<script>(()=>{const u=navigator.userAgent||"",p=(navigator.userAgentData&&navigator.userAgentData.platform)||navigator.platform||"";const so=/Win/i.test(p+u)?"win":/Mac|iPhone|iPad/i.test(p+u)?"mac":/Linux|X11/i.test(p+u)&&!/Android/i.test(u)?"linux":"";const c=so&&document.querySelector('.so[data-so="'+so+'"]');if(c){c.classList.add("sugerido");const g=document.getElementById("sistemas");g.insertBefore(c,g.firstChild);const t=c.querySelector(".tag");if(t)t.insertAdjacentHTML("beforebegin",'<span class="tag" style="color:var(--verde-cl)">Seu sistema</span>');}})();</script>
 
 </div></main>
-<footer><div class="cont"><a href="../baixar/">Baixar</a><a href="../docs/">Docs</a><a href="../agente/">Agente local</a><a href="../app/">Plataforma web</a><a href="../status/">Status</a><a href="../privacidade/">Privacidade</a><a href="../termos/">Termos</a><a href="../creditos/">Créditos</a><br>DASSH Console · DASSH IT Services</div></footer>
+<footer><div class="cont"><a href="../baixar/">Baixar</a><a href="../docs/">Docs</a><a href="../agente/">DASSH Conector</a><a href="../app/">Plataforma web</a><a href="../status/">Status</a><a href="../privacidade/">Privacidade</a><a href="../termos/">Termos</a><a href="../creditos/">Créditos</a><br>DASSH Console · DASSH IT Services</div></footer>
 <!-- app-mobile:inicio -->
 <nav class="bnav" aria-label="Navegação principal"><a href="../"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 10.5 12 3.5l8.5 7"/><path d="M5.5 9v11h13V9"/><path d="M10 20v-5.5h4V20"/></svg><span>Início</span></a><a href="../baixar/"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11"/><path d="m7 10.5 5 5 5-5"/><path d="M5 20h14"/></svg><span>Baixar</span></a><a href="../docs/"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 3h8l4 4v14h-12z"/><path d="M14 3v4.5h4.5"/><path d="M9.5 12.5h6M9.5 16.5h6"/></svg><span>Docs</span></a><a href="../ao-vivo.html"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="2.4"/><path d="M8.2 8.2a5.4 5.4 0 0 0 0 7.6M15.8 8.2a5.4 5.4 0 0 1 0 7.6M5.3 5.3a9.5 9.5 0 0 0 0 13.4M18.7 5.3a9.5 9.5 0 0 1 0 13.4"/></svg><span>Ao vivo</span></a><a href="#mais" id="bn-mais" role="button" aria-controls="mais" aria-expanded="false" aria-haspopup="true" class="ativo" data-ativo="1"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5.5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="18.5" cy="12" r="1.3"/></svg><span>Mais</span></a></nav>
-<div class="bn-folha" id="mais" role="dialog" aria-label="Mais opções"><div class="bn-tit"><span>Mais</span><a class="bn-fechar" href="#" aria-label="Fechar">×</a></div><ul><li><a href="../agente/" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9.5 9.5h5v5h-5zM9 3v3M15 3v3M9 18v3M15 18v3M3 9h3M3 15h3M18 9h3M18 15h3"/></svg><span>Agente local</span></a></li><li><a href="../app/"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12.5" rx="2"/><path d="M8 20.5h8M12 16.5v4M7 8.5l2.5 2-2.5 2M11.5 12.5h4"/></svg><span>Plataforma web</span></a></li><li><a href="../status/"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l2.5-6 4 12 2.5-6H21"/></svg><span>Status</span></a></li><li><a href="../privacidade/"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 5 6v5.5c0 4.5 3 7.8 7 9.5 4-1.7 7-5 7-9.5V6z"/><path d="m9 12 2 2 4-4"/></svg><span>Privacidade</span></a></li><li><a href="../termos/"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 3h8l4 4v14h-12z"/><path d="M14 3v4.5h4.5"/><path d="M9.5 11.5h6M9.5 15h6M9.5 18.5h3.5"/></svg><span>Termos de uso</span></a></li><li><a href="../creditos/"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.5s-7.5-4.6-7.5-10.2A4.2 4.2 0 0 1 12 7.6a4.2 4.2 0 0 1 7.5 2.7c0 5.6-7.5 10.2-7.5 10.2z"/></svg><span>Créditos</span></a></li><li><a href="https://github.com/ClaudioSirimarco/dassh-console-download/releases"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 12.5V4.5h8l9 9-8 8z"/><circle cx="8" cy="9" r="1.4"/></svg><span>Todas as versões</span><small>GitHub ↗</small></a></li></ul></div><div class="bn-veu" id="bn-veu" aria-hidden="true"></div>
+<div class="bn-folha" id="mais" role="dialog" aria-label="Mais opções"><div class="bn-tit"><span>Mais</span><a class="bn-fechar" href="#" aria-label="Fechar">×</a></div><ul><li><a href="../agente/" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9.5 9.5h5v5h-5zM9 3v3M15 3v3M9 18v3M15 18v3M3 9h3M3 15h3M18 9h3M18 15h3"/></svg><span>DASSH Conector</span></a></li><li><a href="../app/"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12.5" rx="2"/><path d="M8 20.5h8M12 16.5v4M7 8.5l2.5 2-2.5 2M11.5 12.5h4"/></svg><span>Plataforma web</span></a></li><li><a href="../status/"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l2.5-6 4 12 2.5-6H21"/></svg><span>Status</span></a></li><li><a href="../privacidade/"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 5 6v5.5c0 4.5 3 7.8 7 9.5 4-1.7 7-5 7-9.5V6z"/><path d="m9 12 2 2 4-4"/></svg><span>Privacidade</span></a></li><li><a href="../termos/"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 3h8l4 4v14h-12z"/><path d="M14 3v4.5h4.5"/><path d="M9.5 11.5h6M9.5 15h6M9.5 18.5h3.5"/></svg><span>Termos de uso</span></a></li><li><a href="../creditos/"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.5s-7.5-4.6-7.5-10.2A4.2 4.2 0 0 1 12 7.6a4.2 4.2 0 0 1 7.5 2.7c0 5.6-7.5 10.2-7.5 10.2z"/></svg><span>Créditos</span></a></li><li><a href="https://github.com/ClaudioSirimarco/dassh-console-download/releases"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 12.5V4.5h8l9 9-8 8z"/><circle cx="8" cy="9" r="1.4"/></svg><span>Todas as versões</span><small>GitHub ↗</small></a></li></ul></div><div class="bn-veu" id="bn-veu" aria-hidden="true"></div>
 <script>(()=>{const b=document.getElementById("bn-mais"),f=document.getElementById("mais"),v=document.getElementById("bn-veu");if(!b||!f||!v)return;const abrir=(s)=>{f.classList.toggle("aberta",s);v.classList.toggle("aberto",s);b.setAttribute("aria-expanded",String(s));b.classList.toggle("ativo",s||b.dataset.ativo==="1");if(s){const a=f.querySelector("li a");if(a)a.focus({preventScroll:true});}};b.addEventListener("click",(e)=>{e.preventDefault();abrir(!f.classList.contains("aberta"));});v.addEventListener("click",()=>abrir(false));f.querySelector(".bn-fechar").addEventListener("click",(e)=>{e.preventDefault();abrir(false);b.focus();});document.addEventListener("keydown",(e)=>{if(e.key==="Escape"&&f.classList.contains("aberta")){abrir(false);b.focus();}});if(location.hash==="#mais"){history.replaceState(null,"",location.pathname+location.search);abrir(true);}})();</script>
 <!-- app-mobile:fim -->
 </body>

@@ -109,7 +109,7 @@ function ajustarFonte() {
   const box = $("#terminal"); if (!box || !box.clientWidth) return;
   const cs = getComputedStyle(box);
   const W = box.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) - 6;
-  const H = box.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom) - 6;
+  const H = box.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom) - 3;   // a conta é exata: 3 px de folga bastam
   abas.forEach((a) => {
     if (a.tipo === "web" && a.conectado) return;
     // DETERMINÍSTICO: o tamanho depende só do espaço (W x H), das colunas/linhas e da fonte — nunca do tamanho atual.
@@ -118,12 +118,11 @@ function ajustarFonte() {
     const minimo = innerWidth < 700 ? 5 : 9;   // celular: a evidência continua 100x30, então a fonte encolhe para caber inteira
     let alvo = minimo;
     const espaco = Math.round(W) + "x" + Math.round(H), teto = (a._teto && a._teto[espaco]) || 17;
-    for (let f = teto; f >= minimo; f -= 0.5) {
-      const c = medirCelula(a.term, f);
-      if (a.term.cols * c.width * 1.03 <= W && a.term.rows * c.height * 1.03 <= H) { alvo = f; break; }
+    for (let f = teto; f >= minimo; f -= 0.25) {   // passo fino: a altura da linha do xterm "pula" em px do aparelho
+      const c = medirCelula(a.term, f);   // tamanho EXATO que o xterm vai desenhar (mesma conta dele)
+      if (c.telaW <= W && c.telaH <= H) { alvo = f; break; }
     }
     if (alvo !== a.term.options.fontSize) a.term.options.fontSize = alvo;
-    calibrar(a.term);
     // trava que SÓ DESCE: se o terminal real não coube neste espaço, guarda um teto menor para este espaço (nunca sobe sozinho)
     requestAnimationFrame(() => {
       const tela = a.pane && a.pane.querySelector(".xterm-screen"); if (!tela || a.pane.style.display === "none") return;
@@ -134,24 +133,21 @@ function ajustarFonte() {
     });
   });
 }
-// calibração ÚNICA por fonte+escala: compara a célula estimada (canvas) com a real do xterm e guarda o fator, que fica
-// congelado — o ajuste continua determinístico, só que mais justo (sem sobrar 10-15% de espaço à toa)
-function calibrar(term) {
-  const k = medirCelula.k || (medirCelula.k = {}), chave = term.options.fontFamily + "|" + (window.devicePixelRatio || 1);
-  if (k[chave]) return;
-  let real; try { real = term._core._renderService.dimensions.css.cell; } catch (_) { return; }
-  if (!real || !real.width || !real.height) return;
-  const est = medirCelula(term, term.options.fontSize, true);
-  const fx = real.width / est.width, fy = real.height / est.height;
-  if (fx > 0.6 && fx < 1.4 && fy > 0.6 && fy < 1.4) k[chave] = { x: Math.round(fx * 100) / 100, y: Math.round(fy * 100) / 100 };
-}
-// mede uma célula com a fonte do terminal num tamanho dado (canvas), arredondada aos pixels da tela como o xterm faz
-function medirCelula(term, fs = term.options.fontSize, cru = false) {
+// Mede a célula e a tela (.xterm-screen) com a MESMA conta do xterm.js (CharSizeService + DomRenderer._updateDimensions):
+//   largura do "W" no canvas (fracionária, sem arredondar) · altura = fontBoundingBoxAscent + Descent;
+//   altura do caractere em px do aparelho = ceil(h·dpr) · célula = floor(isso·lineHeight) · tela = round(célula·linhas/dpr).
+// Antes a estimativa arredondava a LARGURA para cima no pixel do aparelho e usava uma altura aproximada (×1,18) + fator de
+// calibração congelado no 1º tamanho medido + 3% de folga: com escala 100% (navegador num monitor comum, zoom) o "ceil" valia
+// até 1 px inteiro por coluna e a fonte saía 1–2 px menor que no app a 150% para o MESMO espaço. Agora é exato em qualquer escala.
+function medirCelula(term, fs = term.options.fontSize) {
   const c = medirCelula.c || (medirCelula.c = document.createElement("canvas").getContext("2d"));
-  const dpr = window.devicePixelRatio || 1;
-  const f = (!cru && medirCelula.k && medirCelula.k[term.options.fontFamily + "|" + dpr]) || { x: 1, y: 1 };
+  const dpr = window.devicePixelRatio || 1, lh = term.options.lineHeight || 1;
   c.font = `${fs}px ${term.options.fontFamily}`;
-  return { width: Math.ceil(c.measureText("W").width * f.x * dpr) / dpr, height: Math.ceil(fs * (term.options.lineHeight || 1) * 1.18 * f.y * dpr) / dpr };
+  const m = c.measureText("W");
+  const alt = (m.fontBoundingBoxAscent + m.fontBoundingBoxDescent) || fs * 1.17;   // navegador sem as métricas: aproximação
+  const devCel = Math.floor(Math.ceil(alt * dpr) * lh);
+  return { width: m.width, height: devCel / dpr,
+           telaW: Math.round(m.width * term.cols), telaH: Math.round(devCel * term.rows / dpr) };
 }
 let _ajTimer = null;
 const ajustarDepois = () => { clearTimeout(_ajTimer); _ajTimer = setTimeout(ajustarFonte, 60); };
@@ -231,7 +227,7 @@ function arrumarAbas() {
   $("#nova-aba").disabled = abas.size >= 8;
   $("#nova-aba").title = abas.size >= 8 ? "Limite de 8 abas — feche uma para abrir outra" : "Nova aba (Ctrl+Alt+T)";
   const at = A() && A().btn; if (at) at.scrollIntoView({ block: "nearest", inline: "nearest" });
-  rotuloAbaLateral(A());
+  rotuloAbaLateral(A()); desenharGuia(A());
 }
 function arrastavel(b) {
   b.draggable = true;
@@ -350,7 +346,7 @@ function ativar(id) {
   if (a.sugestao) mostrarSugestao(a, a.sugestao); else $("#sugestao").classList.add("oculto");
   desenharAtiva(a);
   if (a.equip && a.conectado) $("#aba-alvo").textContent = `${a.nome} · ${a.equip}`;
-  desenharShare(a);
+  desenharShare(a); desenharGuia(a);
   setTimeout(() => { a.term.focus(); ajustarFonte(); arrumarAbas(); }, 0);
 }
 
@@ -387,12 +383,58 @@ function desenharAtiva(a) {
   if (!a || !a.btn) return;
   const t = a.btn.querySelector(".ativa-tg");
   if (t) { t.classList.toggle("mostra", !!a.conectado && !a.demo); t.classList.toggle("on", !!a.manterAtiva && !!a.conectado); }
-  if (a.id === ativa) $("#tg-ativa").classList.toggle("on", !!a.manterAtiva && !!a.conectado);
+  if (a.id === ativa) desenharGuia(a);
 }
 async function alternarAtiva(a = A()) {
   if (!a || !a.conectado) return toast("Conecte a aba primeiro", "aviso");
   const r = await api.manter_ativa(a.id, !a.manterAtiva);
   a.manterAtiva = !!r.ativo; desenharAtiva(a); toast(r.msg);
+}
+// ---------- barra DA GUIA (opções que valem só para a guia ativa: 📡 ⏺ ⏱ 🧹 🎨 ⚡) ----------
+let GRAVAR = true;   // ⏺ padrão para as guias que ainda vão conectar (preferência gravar_auto)
+const limparDaAba = (a) => (a && a.limparApos !== undefined ? a.limparApos : LIMPAR_APOS);
+function desenharGuia(a = A()) {
+  if (!a || a.id !== ativa) return;
+  const n = ordemAbas().indexOf(a.id) + 1, rot = $("#gb-rot");
+  if (rot) { rot.textContent = `aba ${n || ""}`.trim(); rot.title = `Os botões ao lado valem só para a aba ${n} (${a.nome}) — cada aba (guia) tem os seus`; }
+  const term = a.tipo !== "web", con = !!a.conectado;
+  const g = $("#tg-gravar");
+  if (g) {
+    const on = con ? !!a.gravando : GRAVAR;
+    g.classList.toggle("on", on); g.classList.toggle("rec-on", con && on);
+    g.disabled = con && !term;
+    g.title = !term && con ? "⏺ Guia Web não grava terminal (as evidências continuam valendo)"
+      : con ? (a.gravando ? "⏺ Gravando esta guia — clique para parar ou assistir até agora" : "⏺ Esta guia NÃO está gravando — clique para gravar a partir de agora")
+      : (GRAVAR ? "⏺ Gravar ao conectar: LIGADO — esta guia (e as próximas) gravam a sessão ao conectar. Clique para desligar"
+                : "⏺ Gravar ao conectar: DESLIGADO — só o log em texto. Clique para ligar");
+  }
+  const t = $("#tg-ativa");
+  if (t) { t.classList.toggle("on", con && !!a.manterAtiva); t.classList.toggle("inativo", !con);
+    t.title = !con ? "⏱ Manter esta guia ativa (evita desconexão por inatividade) — conecte a guia para ligar"
+      : a.manterAtiva ? "⏱ Mantendo ESTA guia ativa (evita desconexão por inatividade) — clique para desligar"
+      : "⏱ Manter ESTA guia ativa (evita desconexão por inatividade) — clique para ligar"; }
+  const l = $("#tg-limpar");
+  if (l) { const on = limparDaAba(a); l.classList.toggle("on", on);
+    l.title = on ? "🧹 Limpar a tela desta guia depois de cada evidência: LIGADO — clique para desligar"
+                 : "🧹 Limpar a tela desta guia depois de cada evidência: DESLIGADO — clique para ligar"; }
+  const s = $("#btn-compartilhar");
+  if (s) { const vivo = a.share && a.share.papel === "dono"; s.classList.toggle("on", !!vivo);
+    s.title = vivo ? `📡 Esta guia está AO VIVO (código ${a.share.codigo}) — clique para ver o código` : "📡 Compartilhar ESTA guia ao vivo (convite pelo WhatsApp)"; }
+}
+function alternarGravar() {
+  const a = A(); if (!a) return;
+  if (a.conectado) return menuGravacao(a);   // guia conectada: grava/para ESTA guia
+  GRAVAR = !GRAVAR; api.salvar_pref("gravar_auto", GRAVAR); desenharGuia(a);
+  toast(GRAVAR ? "⏺ Esta guia e as próximas vão gravar ao conectar (pare em cada uma pelo ⏺)"
+               : "Ao conectar, as guias NÃO vão gravar — só log em texto (grave pelo ⏺ se precisar)");
+}
+function alternarLimpar() {
+  const a = A(); if (!a) return;
+  const novo = !limparDaAba(a);
+  abas.forEach((x) => { if (x.limparApos === undefined) x.limparApos = LIMPAR_APOS; });   // as outras guias mantêm o que tinham
+  a.limparApos = novo; LIMPAR_APOS = novo;   // vira o padrão das guias novas
+  api.salvar_pref("limpar_apos", novo); desenharGuia(a);
+  toast(novo ? "🧹 Esta guia limpa a tela depois de cada evidência" : "🧹 Esta guia não limpa mais a tela sozinha");
 }
 
 async function fecharAba(id) {
@@ -430,6 +472,7 @@ function desenharRec(a) {
   r.classList.toggle("on", mostra && !!a.gravando);
   r.classList.toggle("off", mostra && !a.gravando);
   r.title = a.gravando ? "Gravando esta sessão — clique para parar ou assistir" : "Esta aba NÃO está gravando — clique para gravar";
+  if (a.id === ativa) desenharGuia(a);
 }
 function menuGravacao(a) {
   if (!a.conectado) return;
@@ -978,7 +1021,7 @@ async function processarCaptura(a, snap, enviar, roteiro, comando, indiceWeb) {
     const naTela = a.id === ativa, ul = $("#historico");
     if (naTela) { const v = ul.querySelector(".vazio"); if (v) v.remove(); }
     // tela limpa para o próximo comando (Salvar e Enviar, botão ou atalho) — não vale para Skills e aba Web
-    if (LIMPAR_APOS && !roteiro && a.tipo !== "web" && a.conectado) {
+    if (limparDaAba(a) && !roteiro && a.tipo !== "web" && a.conectado) {
       // "cls" só quando o cursor está no PROMPT do shell: com um programa rodando na aba (ex.: Claude Code, vim, top)
       // o texto iria para o programa — nesse caso limpa só a tela do app
       const noPrompt = /^\s*(PS [^>]*>|[A-Za-z]:\\[^>]*>)\s*$/.test(linhaCursor(a.term)) && a.term.buffer.active.type !== "alternate";
@@ -1167,20 +1210,18 @@ async function renomearVisita() {
 const NOME_CANAL = { whatsapp: "WhatsApp", email: "E-mail", telegram: "Telegram" };
 function atualizarWa(s) {
   if (s && s.ocupado) return;  // WhatsApp enviando: mantém o status atual
-  const st = $("#wa-status");
-  if (s && ("aberto" in s)) {   // estado do WhatsApp do app (é um só para todas as abas)
-    if (s.aberto) { st.textContent = s.logado ? "conectado" : "leia o QR code"; st.className = "status-wa " + (s.logado ? "ok" : "aviso"); }
-    else { st.textContent = "fechado"; st.className = "status-wa"; }
-  }
-  if (s && s.sid && ativa && s.sid !== ativa) return;   // destino de outra aba: não mostra aqui
-  // destino DESTA aba: conversa do WhatsApp (ou e-mail / Telegram, quando o canal existir)
-  const c = $("#conversa"), d = (s && s.destino) || { canal: "whatsapp", alvo: s && s.conversa };
+  if (s && ("aberto" in s)) ENVIO_UI.wa = { aberto: !!s.aberto, logado: !!s.logado };   // WhatsApp do app: um só para todas as abas
+  if (s && s.sid && ativa && s.sid !== ativa) return envioUIRender();   // destino de outra aba: não mostra aqui
+  // destino DESTA aba: conversa do WhatsApp, chat do Telegram ou destinatário do e-mail (cartão desenhado por envioUIRender)
+  const d = (s && s.destino) || { canal: "whatsapp", alvo: s && s.conversa };
   const alvo = d.canal === "whatsapp" ? (s && s.conversa) || d.alvo : d.alvo;
-  const pre = d.canal && d.canal !== "whatsapp" ? `${NOME_CANAL[d.canal] || d.canal}: ` : "";
-  if (alvo) { c.textContent = pre + alvo; c.classList.add("ok"); }
-  else { c.textContent = pre ? pre + "nenhum destino" : "Nenhuma conversa conectada"; c.classList.remove("ok"); }
-  c.title = "Destino das evidências DESTA aba (cada aba pode enviar para uma pessoa/grupo diferente)";
-  const a = A(); if (a && (!s || !s.sid || s.sid === a.id)) a.destino = d.canal ? { canal: d.canal, alvo } : a.destino;
+  if (d.canal === "whatsapp" && alvo) ENVIO_UI.ultimaWa = alvo;
+  const a = A();
+  if (a && (!s || !s.sid || s.sid === a.id) && d.canal) {
+    a.destino = { canal: d.canal, alvo, ...(d.nome ? { nome: d.nome } : {}) };
+    if (alvo) envioUIMemoria(a)[d.canal] = { alvo, nome: d.nome || "" };
+  }
+  envioUIRender(d);
 }
 
 // ================= compartilhamento ao vivo =================
@@ -1246,6 +1287,7 @@ function desenharShare(a) {
     p.classList.toggle("remoto", !!(a.share && a.share.papel === "convidado"));
   }
   if (a.id !== ativa) return;
+  desenharGuia(a);
   const bar = $("#share-barra"), s = a.share;
   $("#btn-compartilhar").innerHTML = `📡<span class="rot"> ${s && s.papel === "dono" ? "Ao vivo" : "Compartilhar"}</span>`;
   document.body.classList.toggle("ao-vivo", [...abas.values()].some((x) => x.share && x.share.papel === "dono"));
@@ -1343,6 +1385,7 @@ function desenharCel() {
     (ctrlAt ? `<button class="btn mini" id="cel-retomar" title="Voltar a digitar no PC">Retomar</button>` : "") +
     con.map((c) => `<button class="cel-x" data-dx="${esc(c.id)}" title="Desconectar ${esc(c.nome)}">✕</button>`).join("") : "";
   chip.onclick = (ev) => { if (!ev.target.closest("button")) abrirCelular(); };
+  if (typeof ajustarSistema === "function") ajustarSistema();
   const r = chip.querySelector("#cel-retomar"); if (r) r.onclick = () => api.cel_retomar(at.id);
   chip.querySelectorAll("[data-dx]").forEach((b) => (b.onclick = () => api.cel_desconectar(b.dataset.dx)));
   if ($("#modal-cel").classList.contains("oculto")) return;
@@ -2096,6 +2139,10 @@ const INFO = {
       com <b>⤢ Tela cheia</b> e <b>↩ Voltar ao normal</b>.</li>
     <li><b>📚 Equipamentos</b>: conexões salvas — 1 clique para conectar; importa CSV/JSON e as sessões do PuTTY; exporta CSV.</li>
     <li>O relógio na aba mostra há quanto tempo a sessão está aberta. <kbd>Enter</kbd> no campo de endereço já conecta.</li>
+    <li><b>Barra da guia</b> (à direita das guias) — vale só para a guia ativa: <b>📡</b> compartilhar ao vivo · <b>⏺</b> gravar/parar ·
+      <b>⏱</b> manter ativa · <b>🧹</b> limpar a tela após cada evidência · <b>🎨</b> tema · <b>⚡ Skills</b>.</li>
+    <li><b>Barra de sistema</b> (no alto) — vale para o app inteiro: Sessões (🔗 Entrar, 📱 Celular) · Biblioteca (🗂, ⏺ Gravações) ·
+      Ferramentas (📚 Equipamentos, 🔑 Cofre) · Sistema (🪪 Licença, versão/atualização).</li>
     <li>Selecionar texto = copiar · botão direito = colar.</li></ul>
     <p><b>📡 Compartilhar</b> (ao vivo): gera um código <b>ABCD-EFGH-JKLM</b>. O colega abre o DASSH Console dele →
       <b>🔗 Entrar</b> → digita o código → você <b>aprova</b>. Ele vê tudo ao vivo; pode <b>pedir o controle</b> para digitar.
@@ -2133,6 +2180,81 @@ function fecharInfo() {
   document.querySelectorAll(".info.aberto").forEach((b) => b.classList.remove("aberto"));
 }
 
+// ================= barra de SISTEMA (plataforma) =================
+// Sessões · Biblioteca · Ferramentas · Sistema (Conta, Armazenamento, Licença, Versão). Nunca passa da largura: se não couber,
+// some primeiro o nome dos grupos, depois o texto dos botões (fica só o ícone, com o nome no title); no celular vira menu ☰.
+const NA_WEB = !!document.querySelector('script[src*="ponte-agente"]');   // página web (Conector) x app Windows (pywebview)
+let VERSAO_INFO = null;
+function desenharVersao() {
+  const b = $("#btn-versao"), t = $("#versao-txt"); if (!b || !t) return;
+  const v = VERSAO_INFO || {}, atual = v.atual || VERSAO_INFO_ATUAL || "";
+  const quem = NA_WEB ? "DASSH Conector (a página web se atualiza sozinha)" : "DASSH Console";
+  b.classList.toggle("nova", !!v.tem);
+  t.textContent = v.tem ? ` ${v.nova} disponível` : ` v${atual || "?"}`;
+  b.firstChild.textContent = v.tem ? "⬆" : "ⓥ";
+  b.title = v.tem ? `⬆ Atualização disponível: ${quem} ${v.nova} (você usa a ${atual}) — clique para ${NA_WEB ? "baixar" : "baixar e atualizar"}`
+    : `ⓥ ${quem} ${atual}${v.ok ? " — está na versão mais recente" : ""}. Clique para verificar se há atualização`;
+  ajustarSistema();
+}
+let VERSAO_INFO_ATUAL = "";
+async function verificarVersao() {
+  const v = await Promise.resolve().then(() => api.verificar_atualizacao()).catch(() => null);
+  if (v && v.ok) VERSAO_INFO = v;
+  desenharVersao();
+  return v;
+}
+function avisarVersao(v) {
+  if (NA_WEB)
+    pedido(`⬆️ <b>DASSH Conector ${esc(v.nova)}</b> disponível (este computador usa a ${esc(v.atual)}). A página web já está sempre na versão nova; ` +
+      `atualize o Conector para ter as mesmas funções — evidências, cofre e configurações são mantidos.`, "Baixar o Conector", "Depois",
+      (ok) => ok && api.abrir_link(v.url), "atualizacao");
+  else
+    pedido(`⬆️ <b>DASSH Console ${esc(v.nova)}</b> disponível (você usa a ${esc(v.atual)}). Baixe e instale por cima — evidências, cofre e configurações são mantidos.`,
+      api.atualizar_app ? "Baixar e atualizar" : "Baixar agora", "Depois",
+      (ok) => ok && (typeof api.atualizar_app === "function" && !NA_WEB ? api.atualizar_app(v.url) : api.abrir_link(v.url)), "atualizacao");
+}
+async function abrirVersao() {
+  toast("Verificando atualização…");
+  const v = await verificarVersao();
+  if (!v || !v.ok) return toast(`Versão ${VERSAO_INFO_ATUAL || "?"} — não consegui verificar agora (sem internet?)`, "aviso");
+  if (v.tem) return avisarVersao(v);
+  toast(`✔ ${NA_WEB ? "Conector" : "DASSH Console"} ${v.atual}: é a versão mais recente`);
+}
+// espaços reservados: aparecem só quando a função existe (outro módulo pode defini-las depois do app.js)
+function ligarReservados() {
+  [["#btn-conta", "abrirConta"], ["#btn-armazenamento", "abrirArmazenamento"]].forEach(([sel, fn]) => {
+    const b = $(sel), existe = typeof window[fn] === "function" || (fn === "abrirConta" ? typeof abrirConta === "function" : typeof abrirArmazenamento === "function");
+    if (!b) return;
+    b.classList.toggle("oculto", !existe);
+    b.onclick = existe ? () => (window[fn] || (fn === "abrirConta" ? abrirConta : abrirArmazenamento))() : null;
+  });
+  ajustarSistema();
+}
+function ajustarSistema() {
+  const s = $("#sistema"), it = $("#sis-itens"); if (!s || !it) return;
+  if (s.classList.contains("celular")) return;
+  s.classList.remove("sem-grupo", "so-icone", "sem-marca");
+  const cabe = () => it.scrollWidth <= it.clientWidth + 1;
+  if (!cabe()) s.classList.add("sem-grupo");
+  if (!cabe()) s.classList.add("so-icone");
+  if (!cabe()) s.classList.add("sem-marca");
+}
+function iniciarSistema(ini) {
+  VERSAO_INFO_ATUAL = (ini && ini.versao) || "";
+  desenharVersao();
+  $("#btn-versao").onclick = abrirVersao;
+  const menu = $("#sis-menu"), s = $("#sistema");
+  const fechar = () => { s.classList.remove("aberto"); menu.setAttribute("aria-expanded", "false"); };
+  menu.onclick = (e) => { e.stopPropagation(); const ab = !s.classList.contains("aberto"); s.classList.toggle("aberto", ab); menu.setAttribute("aria-expanded", String(ab)); };
+  $("#sis-itens").addEventListener("click", (e) => { if (e.target.closest("button") && s.classList.contains("aberto")) fechar(); });
+  document.addEventListener("mousedown", (e) => { if (!e.target.closest("#sistema")) fechar(); });
+  const mq = matchMedia("(max-width: 900px)");
+  const modo = () => { s.classList.toggle("celular", mq.matches); if (!mq.matches) fechar(); ajustarSistema(); };
+  (mq.addEventListener ? mq.addEventListener("change", modo) : mq.addListener(modo)); modo();
+  addEventListener("resize", ajustarSistema);
+  ligarReservados(); setTimeout(ligarReservados, 1500); setTimeout(ligarReservados, 5000);
+}
+
 // ================= atalhos =================
 function atalho(e) {
   if (e.type !== "keydown" || !e.ctrlKey || !e.altKey) return false;
@@ -2161,11 +2283,9 @@ window.addEventListener("pywebviewready", async () => {
   atualizarWa({ conversa: ini.cfg.conversa });
   onFila(await api.fila_status());   // envios que ficaram pendentes da última vez
   novaAba("serial");
-  setTimeout(async () => {   // versão nova publicada? (GET anônimo ao GitHub; nada do usuário é enviado)
-    const v = await api.verificar_atualizacao().catch(() => null);
-    if (v && v.ok && v.tem)
-      pedido(`⬆️ <b>DASSH Console ${esc(v.nova)}</b> disponível (você usa a ${esc(v.atual)}). Baixe e instale por cima — evidências, cofre e configurações são mantidos.`,
-        "Baixar agora", "Depois", (ok) => ok && api.abrir_link(v.url), "atualizacao");
+  setTimeout(async () => {   // versão nova publicada? (GET anônimo ao GitHub; nada do usuário é enviado) — app E web
+    const v = await verificarVersao();
+    if (v && v.ok && v.tem) avisarVersao(v);
   }, 6000);
   if (ini.conflito_atalhos)
     toast("A janelinha antiga “Evidências PuTTY” está aberta e captura Ctrl+Alt+L/P. Feche-a ou use os botões.", "aviso");
@@ -2182,14 +2302,13 @@ window.addEventListener("pywebviewready", async () => {
   $("#atualizar-portas").onclick = () => carregarPortas();
   $("#diag-cabo").onclick = diagnosticarCabo;
   $("#liberar-porta").onclick = () => liberarPorta();
-  LIMPAR_APOS = ini.cfg.limpar_apos !== false; $("#tg-limpar").classList.toggle("on", LIMPAR_APOS);
-  $("#tg-limpar").onclick = () => { LIMPAR_APOS = !LIMPAR_APOS; $("#tg-limpar").classList.toggle("on", LIMPAR_APOS);
-    api.salvar_pref("limpar_apos", LIMPAR_APOS); toast(LIMPAR_APOS ? "A tela será limpa depois de cada evidência" : "A tela não será mais limpa sozinha"); };
-  let GRAVAR = ini.cfg.gravar_auto !== false; $("#tg-gravar").classList.toggle("on", GRAVAR);
-  $("#tg-gravar").onclick = () => { GRAVAR = !GRAVAR; $("#tg-gravar").classList.toggle("on", GRAVAR); api.salvar_pref("gravar_auto", GRAVAR);
-    toast(GRAVAR ? "⏺ Sessões novas serão gravadas (pare em cada aba pelo REC)"
-                 : "Sessões novas NÃO serão gravadas — só log em texto (grave uma aba pelo REC se precisar)"); };
-  $("#tg-ativa").onclick = () => alternarAtiva(A());   // ⏱ da ABA ativa (cada aba tem o seu, também no botão da aba)
+  // barra DA GUIA: tudo age só na guia ativa (⏱ e REC também ficam no botão de cada guia)
+  LIMPAR_APOS = ini.cfg.limpar_apos !== false; GRAVAR = ini.cfg.gravar_auto !== false;
+  $("#tg-limpar").onclick = alternarLimpar;
+  $("#tg-gravar").onclick = alternarGravar;
+  $("#tg-ativa").onclick = () => alternarAtiva(A());
+  desenharGuia(A());
+  iniciarSistema(ini);
   // Enter no endereço = Conectar
   ["#web-url", "#ssh-destino"].forEach((s) => $(s).addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); conectar(); } }));
   // cronômetro de cada aba conectada
@@ -2930,3 +3049,694 @@ async function canaisSalvar() {
     canaisMsg(r.chats && r.chats.length ? "Clique no chat para usar o chat_id." : r.dica, r.chats && r.chats.length ? "ok" : "");
   };
 })();
+
+// ---------- importarUI: importar sessões de outras ferramentas (PuTTY, KiTTY, MobaXterm, SecureCRT, mRemoteNG, Termius…) ----------
+// Fluxo: lista das ferramentas (achadas neste PC / "escolher arquivo") -> prévia com caixas -> grava só as marcadas.
+// Nada de senha chega aqui: o backend devolve só nome, tipo, destino (usuario@host:porta / COMx:baud / URL), grupo e obs.
+const importarUI = { itens: [], ferr: null, ocupado: false };
+const importarUISit = { novo: "Novo", existe: "Já existe (atualiza)", repetido: "Repetido" };
+function importarUIModo(fase) {
+  $("#modal-equip").classList.toggle("importarUI-ativo", !!fase);
+  $("#importarUI").classList.toggle("oculto", !fase);
+  $("#importarUI-ferr").classList.toggle("oculto", fase !== "ferr");
+  $("#importarUI-previa").classList.toggle("oculto", fase !== "previa");
+  $("#importarUI-voltar").classList.toggle("oculto", fase !== "previa");
+}
+async function importarUIAbrir() {
+  if (!api) return toast("Disponível no aplicativo", "aviso");
+  $("#eq-form").classList.add("oculto");
+  $("#importarUI-titulo").textContent = "📥 Importar de outra ferramenta";
+  $("#importarUI-ferr").innerHTML = `<p class="importarUI-msg">Procurando as ferramentas neste computador…</p>`;
+  importarUIModo("ferr");
+  const r = await api.equip_importadores();
+  if (!r || !r.ok) { $("#importarUI-ferr").innerHTML = `<p class="importarUI-msg">${esc((r && r.erro) || "Falha ao procurar")}</p>`; return; }
+  const l = [...r.ferramentas].sort((a, b) => (b.encontrado - a.encontrado));
+  $("#importarUI-ferr").innerHTML = l.map((f) => `<div class="importarUI-card${f.encontrado ? " achou" : ""}" data-f="${esc(f.id)}">
+      <div><b>${esc(f.nome)}</b> ${f.encontrado ? `<span class="importarUI-tag">encontrado</span>` : `<span class="importarUI-tag nao">não encontrado</span>`}
+      <br><small title="${esc(f.fontes.map((x) => x.caminho).join("\n"))}">${esc(f.encontrado ? f.fontes.map((x) => x.caminho).join(" · ") : f.dica)}</small></div>
+      <span class="importarUI-botoes">${f.encontrado ? `<button class="btn mini primario" data-auto>Ler daqui</button>` : ""}
+      <button class="btn mini" data-arq>Escolher arquivo…</button></span></div>`).join("");
+  $("#importarUI-ferr").querySelectorAll("[data-f]").forEach((c) => {
+    const f = l.find((x) => x.id === c.dataset.f);
+    const a = c.querySelector("[data-auto]"); if (a) a.onclick = () => importarUIPrevia(f, false);
+    c.querySelector("[data-arq]").onclick = () => importarUIPrevia(f, true);
+  });
+}
+async function importarUIPrevia(f, escolher) {
+  if (importarUI.ocupado) return;
+  importarUI.ocupado = true;
+  try {
+    const r = await api.equip_importar_de(f.id, !!escolher);
+    if (r.cancelado) return;
+    if (!r.ok) return toast(r.erro || "Não foi possível ler", "erro");
+    importarUI.ferr = f;
+    importarUI.itens = (r.itens || []).map((e, i) => ({ ...e, _i: i, _sel: e.situacao === "novo" }));
+    $("#importarUI-titulo").textContent = `📥 ${f.nome}: ${importarUI.itens.length} sessão(ões) encontrada(s)`;
+    const av = [...(r.avisos || [])]; if (r.ignorados) av.unshift(`${r.ignorados} ignorada(s) (RDP, VNC, FTP… ou sem endereço)`);
+    $("#importarUI-avisos").textContent = av.join(" · ");
+    importarUIModo("previa"); importarUIDesenhar();
+  } finally { importarUI.ocupado = false; }
+}
+function importarUIDesenhar() {
+  const l = importarUI.itens;
+  $("#importarUI-linhas").innerHTML = l.length ? l.map((e) => `<tr data-i="${e._i}" class="sit-${e.situacao}">
+      <td><input type="checkbox" data-sel ${e._sel ? "checked" : ""}></td><td><b>${esc(e.nome)}</b>${e.obs ? `<br><small>${esc(e.obs)}</small>` : ""}</td>
+      <td><span class="eq-tipo t-${e.tipo}">${TIPO_NOME[e.tipo] || esc(e.tipo)}</span></td><td class="mono">${esc(e.destino)}</td>
+      <td>${esc(e.grupo)}</td><td><small class="importarUI-sit">${importarUISit[e.situacao] || ""}</small></td></tr>`).join("")
+    : `<tr><td colspan="6" class="vazio">Nenhuma sessão SSH, Serial ou Web encontrada nesse arquivo.</td></tr>`;
+  $("#importarUI-linhas").querySelectorAll("tr[data-i]").forEach((tr) => {
+    tr.querySelector("[data-sel]").onchange = (ev) => { l.find((x) => x._i === +tr.dataset.i)._sel = ev.target.checked; importarUIConta(); };
+  });
+  importarUIConta();
+}
+function importarUIConta() {
+  const l = importarUI.itens, n = l.filter((e) => e._sel).length;
+  $("#importarUI-conta").textContent = `${n} de ${l.length} selecionada(s) · ${l.filter((e) => e.situacao === "novo").length} nova(s)`;
+  $("#importarUI-todos").checked = !!l.length && n === l.length;
+  $("#importarUI-ok").disabled = !n;
+}
+async function importarUIConfirmar() {
+  const sel = importarUI.itens.filter((e) => e._sel).map(({ nome, tipo, destino, grupo, obs }) => ({ nome, tipo, destino, grupo, obs }));
+  if (!sel.length) return toast("Marque pelo menos uma sessão", "aviso");
+  const r = await api.equip_importar_itens(sel);
+  if (!r || !r.ok) return toast((r && r.erro) || "Falha ao importar", "erro");
+  toast(`Importado de ${importarUI.ferr ? importarUI.ferr.nome : "outra ferramenta"}: ${r.novos} novo(s), ${r.atualizados} atualizado(s) — total ${r.total}`);
+  importarUIModo(null);
+  EQ = await api.equip_listar(); desenharEquip();
+}
+(function importarUIIniciar() {
+  if (!$("#importarUI")) return;
+  $("#importarUI-abrir").onclick = importarUIAbrir;
+  $("#importarUI-fechar").onclick = () => importarUIModo(null);
+  $("#importarUI-voltar").onclick = importarUIAbrir;
+  $("#importarUI-ok").onclick = importarUIConfirmar;
+  $("#importarUI-todos").onchange = (ev) => { importarUI.itens.forEach((e) => (e._sel = ev.target.checked)); importarUIDesenhar(); };
+  $("#importarUI-so-novos").onclick = () => { importarUI.itens.forEach((e) => (e._sel = e.situacao === "novo")); importarUIDesenhar(); };
+
+})();
+
+// ================= 📨 Envio: o canal DA ABA pelos emblemas (WhatsApp · Telegram · E-mail) =================
+// Cada canal se conecta como o WhatsApp: "Conectar" → (Telegram: cola o token do bot UMA vez e escolhe o chat na lista;
+// E-mail: configura a conta UMA vez e escolhe/digita o destinatário) → o cartão mostra "conectado: <destino>" e o Enviar
+// evidência já vai para lá. Cada aba tem o seu destino ({canal, alvo, nome}); a aba 1 pode estar no Telegram e a aba 2 no e-mail.
+// Token e senha vão para o cofre DPAPI (Python) e nunca voltam para a tela.
+const ENVIO_UI = { wa: { aberto: false, logado: false }, est: null, ultimaWa: "", timer: null, tgPoll: null, passo: null };
+POR_ABA.envio_estado = 0;   // o sid da aba ativa vai junto
+const ENVIO_PROVEDORES = {
+  gmail: { rot: "Gmail", servidor: "smtp.gmail.com", porta: 587, seguranca: "starttls",
+    dica: `Use uma <b>senha de app</b> (não a senha normal): Conta Google → Segurança → <b>Verificação em duas etapas</b> ligada →
+      <b>Senhas de app</b> (myaccount.google.com/apppasswords). Cole os 16 caracteres aqui.` },
+  outlook: { rot: "Outlook.com / Hotmail", servidor: "smtp-mail.outlook.com", porta: 587, seguranca: "starttls",
+    dica: `Com verificação em duas etapas, crie uma <b>senha de app</b> em account.microsoft.com → Segurança. Algumas contas
+      pessoais da Microsoft só aceitam login moderno e podem recusar — se isso acontecer, use o Gmail ou o e-mail da empresa.` },
+  office365: { rot: "Office 365 (empresa)", servidor: "smtp.office365.com", porta: 587, seguranca: "starttls",
+    dica: `O administrador precisa permitir <b>SMTP autenticado</b> nesta caixa (o Microsoft 365 vem com ele desligado).
+      Com MFA, use uma <b>senha de app</b> se a empresa permitir.` },
+  outro: { rot: "Outro", servidor: "", porta: 587, seguranca: "starttls",
+    dica: `Pegue servidor, porta e segurança com o seu provedor (ex.: Zoho smtp.zoho.com 465 SSL; Yahoo smtp.mail.yahoo.com 465 SSL,
+      com senha de app). STARTTLS na 587 é o mais comum.` },
+};
+const envioUIEmailOk = (x) => /^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+$/.test(x);
+const envioUIEmails = (t) => String(t || "").split(/[,;]/).map((x) => x.trim()).filter(Boolean);
+function envioUIMemoria(a) { if (!a.envioMem) a.envioMem = {}; return a.envioMem; }   // último destino de cada canal NESTA aba
+function envioUICanal(nome) { return (ENVIO_UI.est && ENVIO_UI.est.canais && ENVIO_UI.est.canais[nome]) || {}; }
+// estado de um canal: on (conectado) | aviso (falta um passo) | erro | off (desconectado)
+function envioUISituacao(nome) {
+  if (nome === "whatsapp") {
+    const e = envioUICanal("whatsapp");
+    if (ENVIO_UI.wa.aberto && ENVIO_UI.wa.logado) return e.falhou ? { cls: "erro", txt: "erro", dica: e.erro } : { cls: "on", txt: "conectado" };
+    if (ENVIO_UI.wa.aberto) return { cls: "aviso", txt: "leia o QR code" };
+    return { cls: "off", txt: "fechado" };
+  }
+  const c = envioUICanal(nome);
+  if (!c.configurado) return { cls: "off", txt: "desconectado" };
+  if (c.estado === "erro") return { cls: "erro", txt: "erro", dica: c.erro };
+  return { cls: "on", txt: "conectado", dica: nome === "telegram" && c.bot ? `bot @${c.bot}` : c.conta || "" };
+}
+function envioUIRotulo(d) {
+  if (!d || !d.alvo) return "";
+  if (d.nome) return d.nome;
+  if (d.canal !== "whatsapp") { const r = (envioUICanal(d.canal).recentes || []).find((x) => x.alvo === d.alvo); if (r && r.nome) return r.nome; }
+  return d.alvo;
+}
+function envioUIRender(dPassado) {
+  const card = $("#card-envio"); if (!card) return;
+  const a = A(), d = (a && a.destino) || dPassado || { canal: "whatsapp", alvo: ENVIO_UI.ultimaWa || null };
+  const canal = d.canal || "whatsapp";
+  card.dataset.canal = canal;
+  card.querySelectorAll(".envio-canal").forEach((b) => {
+    const s = envioUISituacao(b.dataset.canal), sel = b.dataset.canal === canal;
+    b.classList.toggle("sel", sel); b.setAttribute("aria-checked", sel ? "true" : "false");
+    b.querySelector(".envio-pt").className = "envio-pt " + s.cls;
+    b.dataset.estado = s.cls;
+    b.setAttribute("aria-label", `${NOME_CANAL[b.dataset.canal]}: ${s.txt}${sel ? " (canal desta aba)" : ""}`);
+  });
+  const s = envioUISituacao(canal), st = $("#wa-status");
+  st.textContent = canal === "whatsapp" ? s.txt : `${NOME_CANAL[canal]} · ${s.txt}`;
+  st.className = "status-wa " + ({ on: "ok", aviso: "aviso", erro: "erro" }[s.cls] || "");
+  st.title = s.dica || `Situação do ${NOME_CANAL[canal]}`;
+  const c = $("#conversa"), rot = envioUIRotulo(d);
+  if (rot) {
+    c.innerHTML = `<span class="envio-pre">conectado:</span> <b>${esc(rot)}</b>${d.canal === "telegram" && rot !== d.alvo ? ` <small>${esc(d.alvo)}</small>` : ""}`;
+    c.classList.add("ok");
+  } else {
+    c.textContent = canal === "whatsapp" ? "Nenhuma conversa conectada" : canal === "telegram" ? "Telegram: nenhum chat escolhido" : "E-mail: nenhum destinatário";
+    c.classList.remove("ok");
+  }
+  c.classList.toggle("erro", s.cls === "erro" && !!rot);
+  c.title = `${NOME_CANAL[canal]} — destino das evidências DESTA aba${d.alvo ? ": " + d.alvo : ""}` + (s.dica && s.cls === "erro" ? `\nÚltimo erro: ${s.dica}` : "");
+  $("#envio-linha-wa").classList.toggle("oculto", canal !== "whatsapp");
+  $("#envio-linha-outro").classList.toggle("oculto", canal === "whatsapp");
+  if (canal !== "whatsapp") {
+    const cfg = envioUICanal(canal).configurado;
+    $("#envio-conectar").textContent = !cfg ? `Conectar ${NOME_CANAL[canal]}` : canal === "telegram" ? (d.alvo ? "Trocar chat" : "Escolher chat") : (d.alvo ? "Trocar destinatário" : "Escolher destinatário");
+    $("#envio-desconectar").classList.toggle("oculto", !d.alvo);
+  }
+}
+async function envioUIEstado() {
+  if (!api || typeof api.envio_estado !== "function") return;
+  try { const r = await api.envio_estado(); if (r && r.ok) ENVIO_UI.est = r; } catch (_) { return; }
+  envioUIRender();
+}
+async function envioUIDefinir(canal, alvo, nome) {
+  const a = A(); if (!a || !api) return null;
+  const r = await api.destino_definir(canal, alvo || "", a.id, nome || "");
+  if (!r || !r.ok) { toast((r && r.erro) || "Não foi possível trocar o destino", "erro"); return null; }
+  await envioUIEstado();   // recentes atualizados
+  atualizarWa({ sid: a.id, destino: r.destino, conversa: r.conversa });
+  return r;
+}
+// clique no emblema: troca o canal DESTA aba (volta ao último destino desse canal nesta aba, ou o mais recente)
+async function envioUIEscolher(canal) {
+  const a = A(); if (!a) return toast("Abra uma aba primeiro", "aviso");
+  if (!api) return toast("Indisponível fora do aplicativo", "aviso");
+  const d = a.destino || {};
+  if (d.canal === canal) { if (canal !== "whatsapp") envioUIConectar(canal); return; }
+  const mem = envioUIMemoria(a)[canal] || {};
+  let alvo = mem.alvo || "", nome = mem.nome || "";
+  if (!alvo && canal === "whatsapp") alvo = ENVIO_UI.ultimaWa || "";
+  if (!alvo && canal !== "whatsapp" && envioUICanal(canal).configurado) {
+    const r = (envioUICanal(canal).recentes || [])[0];
+    if (r) { alvo = r.alvo; nome = r.nome || ""; } else if (envioUICanal(canal).padrao) alvo = envioUICanal(canal).padrao.split(/[,;]/)[0].trim();
+  }
+  const r = await envioUIDefinir(canal, alvo, nome); if (!r) return;
+  const rot = envioUIRotulo(r.destino);
+  if (canal === "whatsapp") {
+    if (rot) toast(`Esta aba envia pelo WhatsApp: ${rot}`);
+    else toast("WhatsApp: clique em Abrir, escolha a conversa e depois em Conectar conversa", "aviso");
+  } else if (!envioUICanal(canal).configurado || !rot) envioUIConectar(canal);
+  else toast(`Esta aba envia pelo ${NOME_CANAL[canal]}: ${rot}`);
+}
+
+// ---------- janela "Conectar" (Telegram / E-mail) ----------
+function envioUIModal() {
+  let m = $("#modal-envio");
+  if (m) return m;
+  m = document.createElement("div"); m.className = "modal oculto"; m.id = "modal-envio";
+  m.setAttribute("role", "dialog"); m.setAttribute("aria-modal", "true"); m.setAttribute("aria-labelledby", "ev-tit");
+  m.innerHTML = `<div class="janela pequena envio-jan"><div class="jan-topo"><b id="ev-tit"></b><button class="sug-x" data-fecha title="Fechar">✕</button></div>
+    <div class="jan-corpo" id="ev-corpo"></div><div class="canais-msg envio-msg" id="ev-msg" role="status" aria-live="polite"></div>
+    <div class="jan-rodape" id="ev-rodape"></div></div>`;
+  document.body.appendChild(m);
+  m.querySelector("[data-fecha]").onclick = () => envioUIFechar();
+  m.addEventListener("mousedown", (e) => { if (e.target === m) envioUIFechar(); });
+  m.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.stopPropagation(); envioUIFechar(); } });
+  return m;
+}
+function envioUIFechar() {
+  clearInterval(ENVIO_UI.tgPoll); ENVIO_UI.tgPoll = null; ENVIO_UI.passo = null;
+  const m = $("#modal-envio"); if (m) { m.classList.add("oculto"); $("#ev-corpo").innerHTML = ""; }
+}
+function envioUIMsg(txt, cls = "") { const e = $("#ev-msg"); if (e) { e.textContent = txt || ""; e.className = "canais-msg envio-msg " + cls; } }
+function envioUIJanela(titulo, corpo, botoes) {
+  const m = envioUIModal();
+  $("#ev-tit").innerHTML = titulo; $("#ev-corpo").innerHTML = corpo; envioUIMsg("");
+  const rod = $("#ev-rodape"); rod.innerHTML = "";
+  (botoes || []).forEach(([rot, fn, cls]) => { const b = document.createElement("button"); b.type = "button";
+    b.className = "btn " + (cls || ""); b.innerHTML = rot; b.onclick = fn; rod.appendChild(b); });
+  m.classList.remove("oculto");
+  setTimeout(() => { const f = m.querySelector("#ev-corpo input:not([type=checkbox]), #ev-corpo .envio-item"); if (f) f.focus(); }, 40);
+  return m;
+}
+async function envioUIConectar(canal) {
+  if (!api) return toast("Indisponível fora do aplicativo", "aviso");
+  await envioUIEstado();
+  if (canal === "telegram") return envioUICanal("telegram").configurado ? envioUITgChat() : envioUITgToken();
+  if (canal === "email") return envioUICanal("email").configurado ? envioUIEmDest() : envioUIEmConta();
+}
+const ENVIO_SVG = (canal) => (document.querySelector(`#envio-canais [data-canal="${canal}"] svg`) || {}).outerHTML || "";
+// Telegram 1/2: token do bot (uma vez)
+function envioUITgToken() {
+  ENVIO_UI.passo = "tg-token";
+  envioUIJanela(`${ENVIO_SVG("telegram")} Conectar o Telegram <small>1/2</small>`, `
+    <ol class="envio-passos"><li>No Telegram, abra o <b>@BotFather</b> e mande <code>/newbot</code> (escolha um nome; ele cria o seu bot).</li>
+      <li>Ele responde com o <b>token</b> (algo como <code>123456789:AA…</code>). Copie e cole aqui — só nesta vez.</li></ol>
+    <form class="form sem-borda" id="ev-tg-form" autocomplete="off" novalidate>
+      <label>Token do bot <input id="ev-tg-token" type="password" placeholder="123456789:AA…" spellcheck="false" autocomplete="off"></label></form>
+    <p class="ajuda">O token fica guardado no cofre do Windows (cifrado) e nunca volta para a tela.</p>`,
+    [["Cancelar", envioUIFechar], ["Conectar bot", envioUITgSalvar, "primario"]]);
+  $("#ev-tg-form").onsubmit = (e) => { e.preventDefault(); envioUITgSalvar(); };
+}
+async function envioUITgSalvar() {
+  const inp = $("#ev-tg-token"), tok = inp.value.trim();
+  inp.classList.remove("invalido");
+  if (!/^\d+:[\w-]{20,}$/.test(tok)) { inp.classList.add("invalido"); return envioUIMsg("Token inválido — confira se copiou inteiro (123456789:AA…).", "erro"); }
+  envioUIMsg("Conectando o bot…");
+  const r = await api.envio_configurar("telegram", { token: tok });
+  inp.value = "";
+  if (!r.ok) return envioUIMsg(r.erro || "Não foi possível salvar.", "erro");
+  const t = await api.envio_testar("telegram", "");
+  await envioUIEstado();
+  if (!t.ok) return envioUIMsg("✖ " + (t.erro || "O Telegram recusou o token."), "erro");
+  envioUITgChat("✔ " + (t.msg || "Bot conectado."));
+}
+// Telegram 2/2: escolher o chat (como se escolhe a conversa do WhatsApp)
+function envioUITgChat(msg) {
+  ENVIO_UI.passo = "tg-chat";
+  const c = envioUICanal("telegram"), bot = c.bot ? `@${esc(c.bot)}` : "o seu bot";
+  const link = c.bot ? ` <a href="https://t.me/${encodeURIComponent(c.bot)}" target="_blank" rel="noopener">abrir t.me/${esc(c.bot)}</a>` : "";
+  envioUIJanela(`${ENVIO_SVG("telegram")} Escolher o chat <small>2/2</small>`, `
+    <p class="envio-sub">Mande <b>qualquer mensagem</b> para ${bot}${link} — ou adicione-o ao grupo — e escolha o chat abaixo.</p>
+    <div class="envio-lista-tit">Conversas com o bot <button type="button" class="btn mini" id="ev-tg-buscar" title="Ler as mensagens recebidas pelo bot">🔄 Procurar</button></div>
+    <ul class="envio-lista" id="ev-tg-lista"><li class="vazio">procurando…</li></ul>
+    ${(c.recentes || []).length ? `<div class="envio-lista-tit">Usados recentemente</div><ul class="envio-lista" id="ev-tg-rec"></ul>` : ""}
+    <p class="ajuda">Bot conectado${c.bot ? ` (@${esc(c.bot)})` : ""}. <a href="#" id="ev-tg-trocar">Trocar o bot</a></p>`,
+    [["Fechar", envioUIFechar]]);
+  if (msg) envioUIMsg(msg, "ok");
+  if ($("#ev-tg-rec")) envioUILista($("#ev-tg-rec"), c.recentes.map((x) => ({ alvo: x.alvo, nome: x.nome || x.alvo, sub: x.nome ? x.alvo : "" })), envioUITgUsar);
+  $("#ev-tg-buscar").onclick = () => envioUITgBuscar(true);
+  $("#ev-tg-trocar").onclick = (e) => { e.preventDefault(); envioUITgToken(); };
+  const lk = $("#ev-corpo a[href^='https://t.me/']");   // no app abre no navegador padrão
+  if (lk && typeof api.abrir_link === "function") lk.onclick = (e) => { e.preventDefault(); api.abrir_link(lk.href); };
+  envioUITgBuscar(false);
+  clearInterval(ENVIO_UI.tgPoll);   // enquanto a janela está aberta, a lista se atualiza sozinha (a mensagem chega a qualquer momento)
+  let n = 0;
+  ENVIO_UI.tgPoll = setInterval(() => { if (ENVIO_UI.passo !== "tg-chat" || ++n > 40) { clearInterval(ENVIO_UI.tgPoll); return; } envioUITgBuscar(false); }, 3000);
+}
+async function envioUITgBuscar(manual) {
+  const ul = $("#ev-tg-lista"); if (!ul || ENVIO_UI._tgBuscando) return;
+  ENVIO_UI._tgBuscando = true;
+  let r; try { r = await api.envio_telegram_chats(); } catch (e) { r = { ok: false, erro: String(e) }; } finally { ENVIO_UI._tgBuscando = false; }
+  if (ENVIO_UI.passo !== "tg-chat" || !$("#ev-tg-lista")) return;
+  if (!r.ok) { ul.innerHTML = `<li class="vazio">não foi possível ler as conversas</li>`; return envioUIMsg("✖ " + (r.erro || "Falhou."), "erro"); }
+  const chats = r.chats || [];
+  if (!chats.length) { ul.innerHTML = `<li class="vazio">nenhuma conversa ainda — mande uma mensagem para o bot</li>`; if (manual) envioUIMsg(r.dica || "", ""); return; }
+  const TIPO = { private: "pessoa", group: "grupo", supergroup: "grupo", channel: "canal" };
+  envioUILista(ul, chats.map((c) => ({ alvo: c.chat_id, nome: c.nome, sub: `${TIPO[c.tipo] || c.tipo || ""} · ${c.chat_id}` })), envioUITgUsar);
+  if (manual) envioUIMsg("Clique no chat que vai receber as evidências desta aba.", "ok");
+}
+function envioUILista(ul, itens, usar) {
+  ul.innerHTML = "";
+  itens.forEach((it) => {
+    const li = document.createElement("li");
+    li.innerHTML = `<button type="button" class="envio-item"><b>${esc(it.nome)}</b>${it.sub ? `<small>${esc(it.sub)}</small>` : ""}</button>`;
+    li.firstChild.onclick = () => usar(it.alvo, it.nome === it.alvo ? "" : it.nome);
+    ul.appendChild(li);
+  });
+}
+async function envioUITgUsar(chatId, nome) {
+  const r = await envioUIDefinir("telegram", chatId, nome); if (!r) return;
+  envioUIFechar(); toast(`Telegram conectado: ${envioUIRotulo(r.destino)} — o Enviar evidência desta aba já vai para lá`);
+}
+// E-mail 1/2: a conta (uma vez), com os provedores comuns
+function envioUIEmConta(prov) {
+  ENVIO_UI.passo = "em-conta";
+  const c = envioUICanal("email");
+  prov = prov || (c.servidor ? (Object.keys(ENVIO_PROVEDORES).find((k) => ENVIO_PROVEDORES[k].servidor === c.servidor) || "outro") : "gmail");
+  const P = ENVIO_PROVEDORES[prov];
+  envioUIJanela(`${ENVIO_SVG("email")} Conectar o e-mail <small>1/2</small>`, `
+    <div class="envio-prov" role="radiogroup" aria-label="Provedor">${Object.entries(ENVIO_PROVEDORES).map(([k, p]) =>
+      `<button type="button" class="btn mini${k === prov ? " ativo" : ""}" role="radio" aria-checked="${k === prov}" data-prov="${k}">${esc(p.rot)}</button>`).join("")}</div>
+    <form class="form sem-borda" id="ev-em-form" autocomplete="off" novalidate>
+      <label>Seu e-mail (remetente) <input id="ev-em-email" type="email" placeholder="voce@empresa.com" spellcheck="false" value="${esc(c.conta || "")}"></label>
+      <label>Senha ${prov === "outro" ? "" : "de app"} <input id="ev-em-senha" type="password" autocomplete="off" placeholder="${c.configurado ? "•••••••• guardada no cofre (vazio = manter)" : "senha de app"}"></label>
+      ${prov === "outro" ? `<div class="canais-2"><label>Servidor SMTP <input id="ev-em-servidor" placeholder="smtp.provedor.com" spellcheck="false" value="${esc(c.servidor || "")}"></label>
+        <label>Porta <input id="ev-em-porta" type="number" min="1" max="65535" value="587"></label></div>
+        <label>Segurança <select id="ev-em-seg"><option value="starttls">STARTTLS (587)</option><option value="ssl">SSL/TLS (465)</option>
+          <option value="nenhuma">Nenhuma (só rede interna)</option></select></label>` : ""}
+      <label>Nome que aparece <input id="ev-em-nome" placeholder="ex.: Suporte DASSH (opcional)"></label></form>
+    <p class="ajuda envio-dica">💡 ${P.dica}</p>`,
+    [["Cancelar", envioUIFechar], ...(c.configurado ? [["Voltar", () => envioUIEmDest()]] : []), ["Conectar conta", () => envioUIEmSalvar(prov), "primario"]]);
+  document.querySelectorAll("#ev-corpo [data-prov]").forEach((b) => (b.onclick = () => envioUIEmConta(b.dataset.prov)));
+  $("#ev-em-form").onsubmit = (e) => { e.preventDefault(); envioUIEmSalvar(prov); };
+  const seg = $("#ev-em-seg"); if (seg) seg.onchange = () => { const p = $("#ev-em-porta"); if (["587", "465", ""].includes(p.value)) p.value = seg.value === "ssl" ? 465 : 587; };
+}
+async function envioUIEmSalvar(prov) {
+  const P = ENVIO_PROVEDORES[prov], c = envioUICanal("email");
+  const email = $("#ev-em-email").value.trim(), senha = $("#ev-em-senha").value;
+  document.querySelectorAll("#ev-em-form .invalido").forEach((e) => e.classList.remove("invalido"));
+  const erro = (sel, m) => { $(sel).classList.add("invalido"); envioUIMsg(m, "erro"); };
+  if (!envioUIEmailOk(email)) return erro("#ev-em-email", "Informe o seu e-mail (remetente).");
+  if (!senha && !(c.configurado && c.conta === email)) return erro("#ev-em-senha", "Informe a senha de app.");
+  const d = { servidor: P.servidor, porta: P.porta, seguranca: P.seguranca, usuario: email, remetente: email, senha,
+              nome_remetente: $("#ev-em-nome").value.trim() };
+  if (prov === "outro") {
+    d.servidor = $("#ev-em-servidor").value.trim(); d.seguranca = $("#ev-em-seg").value;
+    d.porta = Number($("#ev-em-porta").value) || (d.seguranca === "ssl" ? 465 : 587);
+    if (!d.servidor) return erro("#ev-em-servidor", "Informe o servidor SMTP.");
+  }
+  if (!d.nome_remetente) delete d.nome_remetente;
+  envioUIMsg("Conectando ao servidor de e-mail…");
+  const r = await api.envio_configurar("email", d);
+  $("#ev-em-senha").value = "";
+  if (!r.ok) return envioUIMsg(r.erro || "Não foi possível salvar.", "erro");
+  const t = await api.envio_testar("email", "");
+  await envioUIEstado();
+  if (!t.ok) return envioUIMsg("✖ " + (t.erro || "O servidor recusou.") + " — confira a senha de app.", "erro");
+  envioUIEmDest("✔ " + (t.msg || "Conta conectada."));
+}
+// E-mail 2/2: o destinatário (digita ou escolhe dos recentes)
+function envioUIEmDest(msg) {
+  ENVIO_UI.passo = "em-dest";
+  const c = envioUICanal("email"), a = A(), atual = a && a.destino && a.destino.canal === "email" ? a.destino.alvo || "" : "";
+  const rec = (c.recentes || []).map((x) => x.alvo);
+  if (c.padrao && !rec.includes(c.padrao)) rec.push(c.padrao);
+  envioUIJanela(`${ENVIO_SVG("email")} Para quem enviar <small>2/2</small>`, `
+    <form class="form sem-borda" id="ev-ed-form" autocomplete="off" novalidate>
+      <label>Destinatário(s) <input id="ev-ed-para" type="text" list="ev-ed-dl" placeholder="cliente@empresa.com, gestor@empresa.com" spellcheck="false" value="${esc(atual)}"></label>
+      <datalist id="ev-ed-dl">${rec.map((x) => `<option value="${esc(x)}">`).join("")}</datalist>
+      <label class="rot-opc"><input type="checkbox" id="ev-ed-teste"> Mandar um e-mail de teste agora</label></form>
+    ${rec.length ? `<div class="envio-lista-tit">Recentes</div><ul class="envio-lista" id="ev-ed-rec"></ul>` : ""}
+    <p class="ajuda">Enviando de <b>${esc(c.conta || "?")}</b>. <a href="#" id="ev-ed-conta">Trocar a conta</a></p>`,
+    [["Cancelar", envioUIFechar], ["Usar este destinatário", envioUIEmUsar, "primario"]]);
+  if (msg) envioUIMsg(msg, "ok");
+  if ($("#ev-ed-rec")) envioUILista($("#ev-ed-rec"), rec.map((x) => ({ alvo: x, nome: x })), (alvo) => { $("#ev-ed-para").value = alvo; envioUIEmUsar(); });
+  $("#ev-ed-conta").onclick = (e) => { e.preventDefault(); envioUIEmConta(); };
+  $("#ev-ed-form").onsubmit = (e) => { e.preventDefault(); envioUIEmUsar(); };
+}
+async function envioUIEmUsar() {
+  const inp = $("#ev-ed-para"), lst = envioUIEmails(inp.value), ruim = lst.find((x) => !envioUIEmailOk(x));
+  inp.classList.remove("invalido");
+  if (!lst.length || ruim) { inp.classList.add("invalido"); return envioUIMsg(ruim ? `E-mail inválido: ${ruim}` : "Informe o destinatário.", "erro"); }
+  const alvo = lst.join(", "), teste = $("#ev-ed-teste").checked;
+  if (teste) {
+    envioUIMsg("Mandando o e-mail de teste…");
+    const t = await api.envio_testar("email", alvo);
+    if (!t.ok) { await envioUIEstado(); return envioUIMsg("✖ " + (t.erro || "Falhou."), "erro"); }
+  }
+  const r = await envioUIDefinir("email", alvo, ""); if (!r) return;
+  envioUIFechar(); toast(`E-mail conectado: ${alvo}${teste ? " (teste enviado)" : ""} — o Enviar evidência desta aba já vai para lá`);
+}
+async function envioUIDesconectar() {
+  const a = A(); if (!a || !a.destino) return;
+  const canal = a.destino.canal; delete envioUIMemoria(a)[canal];
+  const r = await envioUIDefinir(canal, "", "");
+  if (r) toast(`Esta aba não envia mais pelo ${NOME_CANAL[canal]} até escolher um destino`, "aviso");
+}
+INFO.whatsapp = ["Como enviar: WhatsApp, Telegram ou E-mail", `
+  <p>Os emblemas ao lado do <b>i</b> escolhem <b>para onde esta aba envia</b> (cada aba tem o seu: a aba 1 pode ir ao Telegram e a aba 2 ao e-mail).
+  A bolinha mostra a situação: <b style="color:var(--verde-cl)">verde</b> conectado, <b style="color:var(--aviso)">amarela</b> falta um passo,
+  <b style="color:var(--erro)">vermelha</b> erro no último envio, cinza desconectado.</p>
+  <ol><li><b>WhatsApp:</b> <b>Abrir WhatsApp</b> → na 1ª vez leia o QR code (celular → Aparelhos conectados) → clique na conversa → <b>Conectar conversa</b>.</li>
+  <li><b>Telegram:</b> <b>Conectar</b> → cole o token do seu bot (do @BotFather, só uma vez) → mande uma mensagem ao bot → <b>escolha o chat</b> na lista.</li>
+  <li><b>E-mail:</b> <b>Conectar</b> → escolha Gmail/Outlook/Office 365/outro e use uma <b>senha de app</b> (só uma vez) → escolha ou digite o destinatário.</li></ol>
+  <p>Depois disso o cartão mostra <b>conectado: …</b> e <b>Enviar evidência</b> (<kbd>Ctrl+Alt+E</kbd>) já manda para lá — pela fila, que
+  tenta de novo se falhar e sobrevive a fechar o app.</p>
+  <p class="nota">WhatsApp: deixe a janela do WhatsApp aberta (pode minimizar); o app confere o nome da conversa antes de enviar.
+  Token do bot e senha do e-mail ficam no cofre do Windows (cifrados) e nunca voltam para a tela. ⚙ abre a configuração avançada.</p>`];
+(function envioUILigar() {
+  const card = $("#card-envio"); if (!card) return;
+  card.querySelectorAll(".envio-canal").forEach((b) => (b.onclick = (e) => { e.stopPropagation(); envioUIEscolher(b.dataset.canal); }));
+  $("#envio-canais").addEventListener("keydown", (e) => {   // setas trocam o foco entre os canais (grupo de rádio)
+    if (!["ArrowLeft", "ArrowRight"].includes(e.key)) return;
+    const bs = [...card.querySelectorAll(".envio-canal")], i = bs.indexOf(document.activeElement);
+    if (i < 0) return; e.preventDefault(); bs[(i + (e.key === "ArrowRight" ? 1 : bs.length - 1)) % bs.length].focus();
+  });
+  $("#envio-conectar").onclick = () => { const a = A(); envioUIConectar((a && a.destino && a.destino.canal) || "email"); };
+  $("#envio-desconectar").onclick = envioUIDesconectar;
+  const antes = window.onEnvio;   // um envio terminou/falhou: atualiza a bolinha do canal
+  window.onEnvio = (job, estado, msg) => { if (antes) antes(job, estado, msg); if (estado !== "enviando" && estado !== "aguardando") envioUIEstado(); };
+  const ini = () => { envioUIEstado(); clearInterval(ENVIO_UI.timer); ENVIO_UI.timer = setInterval(envioUIEstado, 10000); };
+  window.addEventListener("pywebviewready", () => setTimeout(ini, 300));
+  envioUIRender();
+})();
+
+// ================= 👤 CONTA LOCAL: entrar antes de liberar a plataforma (app e web pelo Conector) =================
+// Este ouvinte roda ANTES do início normal (captura no alvo) e o segura até o login. No Conector o backend também recusa
+// qualquer chamada que não seja conta_* antes de entrar (agente.py): a tela é a porta, o Conector é a fechadura.
+const CONTA = { token: "", liberada: false, modo: "entrar", existe: false, usuario: "", trava: null, toque: 0, vigia: null };
+const contaTok = {
+  ler() { try { return sessionStorage.getItem("dassh.conta") || ""; } catch (_) { return ""; } },
+  gravar(v) { try { if (v) sessionStorage.setItem("dassh.conta", v); else sessionStorage.removeItem("dassh.conta"); } catch (_) {} },
+};
+const contaApi = () => (window.pywebview && window.pywebview.api) || {};
+
+window.addEventListener("pywebviewready", async (ev) => {
+  if (CONTA.liberada) return;   // re-disparo depois de entrar: segue para o início normal
+  ev.stopImmediatePropagation();
+  let e = null;
+  try { e = await contaApi().conta_estado(contaTok.ler() || null); } catch (_) { e = null; }
+  if (!e || e.dispensa || !("existe" in e)) return contaLiberar();   // sem contas no backend (antigo/simulado) ou autoteste   // backend sem contas (versão antiga) ou autotestes do app
+  if (contaTok.ler()) {   // recarregou a página: a sessão desta aba ainda vale? (retomar também amarra a conexão do Conector)
+    const r = await contaApi().conta_retomar(contaTok.ler()).catch(() => null);
+    if (r && r.ok) { CONTA.token = contaTok.ler(); return contaLiberar(); }
+    contaTok.gravar("");
+  }
+  contaMostrarTela(e);
+}, { capture: true });
+
+// Web (Conector): enquanto a tela está trancada, as chamadas automáticas da plataforma ESPERAM o desbloqueio em vez de falhar
+// (o Conector recusaria todas). No app local o backend não recusa, então nada é embrulhado.
+function contaPortao() {
+  const pw = window.pywebview;
+  if (!pw || !pw.api || CONTA.portao === pw.api || !document.querySelector('script[src*="ponte-agente"]')) return;
+  const orig = pw.api;
+  CONTA.esperas = [];
+  pw.api = CONTA.portao = new Proxy(orig, { get(t, nome) {
+    const f = t[nome];
+    if (typeof f !== "function" || String(nome).startsWith("conta_")) return f;
+    return (...a) => (CONTA.trancada ? new Promise((ok) => CONTA.esperas.push(ok)) : Promise.resolve()).then(() => f.apply(t, a));
+  } });
+}
+window.addEventListener("unhandledrejection", (e) => {   // chamada que já estava a caminho quando a sessão expirou
+  if (/login necessário/.test(String((e.reason && e.reason.message) || e.reason || ""))) e.preventDefault();
+});
+
+function contaLiberar() {
+  $("#conta-tela").classList.add("oculto");
+  CONTA.liberada = true; CONTA.trancada = false;
+  contaPortao();
+  window.dispatchEvent(new Event("pywebviewready"));
+  contaVigiar();
+}
+
+function contaMsg(t, tipo) { const m = $("#ct-msg"); m.textContent = t || ""; m.className = "ct-msg" + (tipo ? " " + tipo : ""); }
+
+function contaModo(modo) {
+  CONTA.modo = modo;
+  const criar = modo === "criar", rec = modo === "recuperar";
+  $("#ct-sub").textContent = criar ? "Primeiro uso: crie a conta deste computador" : rec ? "Recuperar o acesso com a chave de recuperação" : "Entre na sua conta";
+  $("#ct-l-senha2").classList.toggle("oculto", !(criar || rec));
+  $("#ct-l-rec").classList.toggle("oculto", !rec);
+  $("#ct-senha").setAttribute("autocomplete", criar || rec ? "new-password" : "current-password");
+  $("#ct-senha").previousSibling.textContent = rec ? "Senha nova " : "Senha ";
+  $("#ct-ir").textContent = criar ? "Criar conta e entrar" : rec ? "Trocar a senha e entrar" : "Entrar";
+  $("#ct-esqueci").classList.toggle("oculto", modo !== "entrar");
+  $("#ct-voltar").classList.toggle("oculto", modo !== "recuperar");
+  $("#ct-ajuda").textContent = criar
+    ? `Senha com pelo menos ${CONTA.senhaMin || 10} caracteres. Ela não é guardada em lugar nenhum: dela sai a chave que protege seus segredos (ex.: senhas do cofre).`
+    : "A conta fica só neste computador. Depois de 5 erros seguidos, a entrada trava por alguns minutos.";
+  contaMsg("");
+}
+
+function contaOauthHtml(oauth) {
+  const ps = (oauth && oauth.provedores) || [];
+  const motivo = (ps.find((p) => !p.disponivel) || {}).motivo || "";
+  return ps.map((p) => `<button type="button" class="btn oauth-btn" data-oauth="${esc(p.id)}" ${p.disponivel ? "" : "disabled"} title="${esc(p.motivo || "")}">${esc(p.nome)}</button>`).join("")
+    + (motivo ? `<p class="ajuda">${esc(motivo)}</p>` : "");
+}
+
+function contaLigarOauth(raiz) {
+  raiz.querySelectorAll("[data-oauth]").forEach((b) => (b.onclick = async () => {
+    const r = await contaApi().conta_oauth_iniciar(b.dataset.oauth).catch((e) => ({ ok: false, erro: String(e.message || e) }));
+    if (r && r.ok && r.url) contaApi().abrir_link(r.url); else toast((r && r.erro) || "Indisponível.", "aviso");
+  }));
+}
+
+function contaMostrarTela(e, aviso) {
+  CONTA.existe = !!e.existe; CONTA.usuario = e.usuario || ""; CONTA.senhaMin = e.senha_min;
+  $("#ct-form").classList.remove("oculto"); $("#ct-rec-mostra").classList.add("oculto");
+  contaModo(e.existe ? "entrar" : "criar");
+  $("#ct-usuario").value = e.usuario || ""; $("#ct-senha").value = ""; $("#ct-senha2").value = ""; $("#ct-rec").value = "";
+  $("#ct-oauth").innerHTML = contaOauthHtml(e.oauth); contaLigarOauth($("#ct-oauth"));
+  $("#conta-tela").classList.remove("oculto");
+  if (aviso) contaMsg(aviso, "aviso");
+  if (e.travado_s > 0) contaTravar(e.travado_s);
+  setTimeout(() => (e.usuario ? $("#ct-senha") : $("#ct-usuario")).focus(), 30);
+}
+
+function contaTravar(s) {
+  clearInterval(CONTA.trava);
+  const b = $("#ct-ir"); b.disabled = true;
+  const fim = Date.now() + s * 1000;
+  const passo = () => {
+    const r = Math.ceil((fim - Date.now()) / 1000);
+    if (r <= 0) { clearInterval(CONTA.trava); b.disabled = false; contaMsg("Pode tentar de novo."); return; }
+    contaMsg(`Muitas tentativas erradas. Aguarde ${r} s.`, "erro");
+  };
+  passo(); CONTA.trava = setInterval(passo, 1000);
+}
+
+async function contaEntrou(r) {
+  CONTA.token = r.token; contaTok.gravar(r.token);
+  if (r.cofre_protegidas) toast(`🔐 ${r.cofre_protegidas} senha(s) do cofre agora também protegidas pela sua conta.`);
+  if (r.recuperacao) {   // conta nova: mostra a chave de recuperação UMA vez
+    $("#ct-form").classList.add("oculto"); $("#ct-rec-mostra").classList.remove("oculto");
+    $("#ct-rec-cod").textContent = r.recuperacao; $("#ct-rec-ok").checked = false; $("#ct-rec-seguir").disabled = true;
+    return;
+  }
+  contaAberta();
+}
+
+function contaAberta() {
+  $("#ct-senha").value = ""; $("#ct-senha2").value = ""; $("#ct-rec").value = "";
+  if (!CONTA.liberada) return contaLiberar();
+  $("#conta-tela").classList.add("oculto");   // desbloqueio: a plataforma já estava carregada por baixo
+  CONTA.trancada = false;
+  (CONTA.esperas || []).splice(0).forEach((ok) => ok());   // as chamadas que esperavam seguem agora
+  contaVigiar();
+}
+
+$("#ct-rec-ok").onchange = (e) => { $("#ct-rec-seguir").disabled = !e.target.checked; };
+$("#ct-rec-seguir").onclick = () => { $("#ct-rec-cod").textContent = ""; contaAberta(); };
+$("#ct-esqueci").onclick = (e) => { e.preventDefault(); contaModo("recuperar"); $("#ct-rec").focus(); };
+$("#ct-voltar").onclick = (e) => { e.preventDefault(); contaModo(CONTA.existe ? "entrar" : "criar"); };
+$("#ct-form").onsubmit = async (e) => {
+  e.preventDefault();
+  const u = $("#ct-usuario").value.trim(), s = $("#ct-senha").value, s2 = $("#ct-senha2").value;
+  if (!u || !s) return contaMsg("Preencha usuário e senha.", "erro");
+  if (CONTA.modo !== "entrar" && s !== s2) return contaMsg("As senhas não conferem.", "erro");
+  const b = $("#ct-ir"); b.disabled = true; contaMsg(CONTA.modo === "entrar" ? "Conferindo…" : "Protegendo a conta… (leva um instante)");
+  let r;
+  try {
+    r = CONTA.modo === "criar" ? await contaApi().conta_criar(u, s)
+      : CONTA.modo === "recuperar" ? await contaApi().conta_recuperar(u, $("#ct-rec").value, s)
+      : await contaApi().conta_entrar(u, s);
+  } catch (err) { r = { ok: false, erro: String(err.message || err) }; }
+  b.disabled = false;
+  if (r && r.ok) return contaEntrou(r);
+  $("#ct-senha").value = ""; $("#ct-senha").focus();
+  contaMsg((r && r.erro) || "Não foi possível entrar.", "erro");
+  if (r && r.travado_s > 0) contaTravar(r.travado_s);
+};
+
+// sessão: atividade real renova; expirou (ou outra tela bloqueou) -> volta a pedir a senha
+function contaVigiar() {
+  if (CONTA.vigia || !CONTA.token) return;
+  const tocar = () => {
+    if (!CONTA.token || $("#conta-tela").classList.contains("oculto") === false) return;
+    if (Date.now() - CONTA.toque < 30000) return;
+    CONTA.toque = Date.now();
+    contaApi().conta_tocar(CONTA.token).then((r) => { if (r && r.ok === false) contaTrancar("expirou"); }).catch(() => {});
+  };
+  ["keydown", "pointerdown", "wheel"].forEach((t) => document.addEventListener(t, tocar, { capture: true, passive: true }));
+  CONTA.vigia = setInterval(async () => {
+    if (!CONTA.token) return;
+    const e = await contaApi().conta_estado(CONTA.token).catch(() => null);
+    if (e && !e.dispensa && !e.logado) contaTrancar("expirou", e);
+  }, 20000);
+}
+
+async function contaTrancar(motivo, e) {
+  if (!$("#conta-tela").classList.contains("oculto")) return;
+  contaTok.gravar(""); CONTA.token = ""; CONTA.trancada = true;
+  document.querySelectorAll(".modal:not(.oculto)").forEach((m) => m.classList.add("oculto"));
+  e = e || (await contaApi().conta_estado(null).catch(() => null)) || { existe: true, usuario: CONTA.usuario };
+  contaMostrarTela(e, motivo === "expirou" ? "Sessão encerrada por inatividade. Entre de novo." : motivo === "bloqueio" ? "Tela bloqueada." : "");
+}
+window.contaBloqueada = (motivo) => contaTrancar(motivo || "expirou");   // evento do Conector (agente.py)
+
+// ---- janela "Conta" (o botão fica na barra de sistema) ----
+async function abrirConta() {
+  const e = await contaApi().conta_estado(CONTA.token || null).catch(() => null);
+  if (!e) return toast("Conta indisponível nesta versão.", "aviso");
+  const min = (s) => (s > 0 ? Math.max(1, Math.round(s / 60)) + " min" : "—");
+  $("#conta-info").innerHTML = !e.existe ? `<p>Nenhuma conta criada neste computador.</p>` : `
+    <div class="conta-linha"><span>Usuário</span><b>${esc(e.usuario)}</b></div>
+    <div class="conta-linha"><span>Sessão</span><b>${e.logado ? `ativa · expira após ${min(e.sessao.expira_ociosa_s)} sem uso (máx. ${min(e.sessao.expira_idade_s)})` : e.dispensa ? "modo de teste (sem login)" : "não iniciada"}</b></div>
+    <div class="conta-linha"><span>Proteção</span><b>${esc(e.kdf)} · chave de dados AES-256-GCM só em memória</b></div>
+    <div class="conta-linha"><span>Criada</span><b>${esc((e.criada || "").replace("T", " "))}</b></div>
+    <div class="conta-linha"><span>Último acesso</span><b>${esc((e.ultimo_login || "—").replace("T", " "))}</b></div>
+    <p class="ajuda">Conta local (fase sem servidor): vale só neste computador. Senhas do cofre salvas com a conta aberta ganham uma
+      2ª camada cifrada com a chave da sua conta, por dentro da proteção do Windows.</p>`;
+  $("#conta-bloquear").disabled = $("#conta-sair-todas").disabled = !e.logado;
+  $("#conta-troca").classList.toggle("oculto", !e.logado);
+  $("#cs-msg").textContent = ""; ["#cs-atual", "#cs-nova", "#cs-nova2"].forEach((s) => ($(s).value = ""));
+  $("#conta-oauth").innerHTML = contaOauthHtml(e.oauth); contaLigarOauth($("#conta-oauth"));
+  abrirModal("#modal-conta");
+}
+window.abrirConta = abrirConta;
+$("#modal-conta [data-fecha]").onclick = (ev) => fecharModal(ev.target);
+$("#conta-bloquear").onclick = async () => { await contaApi().conta_sair(CONTA.token).catch(() => {}); fecharModal($("#conta-bloquear")); contaTrancar("bloqueio"); };
+$("#conta-sair-todas").onclick = async () => { await contaApi().conta_sair(CONTA.token, true).catch(() => {}); fecharModal($("#conta-bloquear")); contaTrancar("bloqueio"); };
+$("#conta-troca").onsubmit = async (ev) => {
+  ev.preventDefault();
+  const a = $("#cs-atual").value, n = $("#cs-nova").value, m = $("#cs-msg");
+  if (n !== $("#cs-nova2").value) { m.textContent = "As senhas novas não conferem."; return; }
+  m.textContent = "Trocando…";
+  const r = await contaApi().conta_trocar_senha(CONTA.token, a, n).catch((e) => ({ ok: false, erro: String(e.message || e) }));
+  m.textContent = r && r.ok ? "✔ Senha trocada. As outras sessões foram encerradas." : (r && r.erro) || "Falhou.";
+  if (r && r.ok) ["#cs-atual", "#cs-nova", "#cs-nova2"].forEach((s) => ($(s).value = ""));
+};
+
+// ================= ☁ ARMAZENAMENTO CONECTADO (Google Drive · OneDrive · Dropbox · iCloud) =================
+const ARMAZ = { estado: null };
+async function abrirArmazenamento() {
+  if (!api) return;
+  abrirModal("#modal-armaz");
+  await desenharArmaz();
+}
+window.abrirArmazenamento = abrirArmazenamento;
+$("#modal-armaz [data-fecha]").onclick = (ev) => fecharModal(ev.target);
+
+async function desenharArmaz(r) {
+  const sid = ativa || null;
+  const e = ARMAZ.estado = r || await api.armaz_estado(sid).catch((x) => ({ ok: false, erro: String(x.message || x) }));
+  if (!e || !e.ok) { $("#armaz-lista").innerHTML = `<p class="ajuda">${esc((e && e.erro) || "Indisponível.")}</p>`; return; }
+  if (e.evid && typeof atualizarEvid === "function") atualizarEvid(e.evid);
+  if (e.clientes && typeof desenharClientes === "function") desenharClientes(e.clientes);
+  const soAba = $("#armaz-so-aba").checked && !!sid;
+  const con = soAba ? e.aba : (e.aba && e.aba.conectado ? e.aba : e.global);
+  $("#armaz-sub").textContent = sid ? (soAba ? "· esta aba" : "· todas as abas") : "";
+  const linha = (c, rot) => c && c.conectado
+    ? `<div class="armaz-con ${c.pasta_ok ? "ok" : "aviso"}"><b>${esc(rot)}:</b> ${esc(c.nome)} — <code>${esc(c.pasta)}</code>${c.aviso ? `<br><small>⚠ ${esc(c.aviso)}</small>` : ""}</div>` : "";
+  $("#armaz-atual").innerHTML = (linha(e.aba, "Esta aba") + linha(e.global, "Todas as abas"))
+    || `<div class="armaz-con">Salvando no computador: <code>${esc(e.raiz)}</code></div>`;
+  $("#armaz-lista").innerHTML = e.servicos.map((s) => {
+    const ligado = con && con.conectado && con.servico === s.id;
+    const pastas = s.pastas.map((p) => `<li><code>${esc(p.caminho)}</code> <small>${esc(p.rotulo)}</small></li>`).join("");
+    return `<div class="armaz-serv ${s.existe ? "" : "ausente"}">
+      <div class="armaz-cab"><span class="armaz-ic">${s.icone}</span><b>${esc(s.nome)}</b>
+        <span class="armaz-st ${ligado ? "ok" : ""}">${ligado ? "● Conectado" : s.existe ? "Encontrado neste PC" : "Não encontrado"}</span></div>
+      ${s.existe ? `<ul class="armaz-pastas">${pastas}</ul>` : `<p class="ajuda">Instale o <b>${esc(s.app)}</b> e entre na sua conta; depois clique em ↻.</p>`}
+      <div class="armaz-acoes">${s.existe ? (ligado
+        ? `<button class="btn" data-a="trocar" data-s="${s.id}">Trocar pasta…</button><button class="btn" data-a="desc" data-s="${s.id}">Desconectar</button>`
+        : `<button class="btn primario" data-a="con" data-s="${s.id}" title="${esc(e.sugeridas[s.id])}">Conectar</button><button class="btn" data-a="trocar" data-s="${s.id}">Escolher pasta…</button>`) : ""}
+        <button class="btn mini" data-a="rec" title="Procurar de novo">↻</button></div>
+      ${s.existe && !ligado ? `<p class="ajuda">Conectar usa <code>${esc(e.sugeridas[s.id])}</code></p>` : ""}</div>`;
+  }).join("");
+  $("#armaz-lista").querySelectorAll("[data-a]").forEach((b) => (b.onclick = () => armazAcao(b.dataset.a, b.dataset.s)));
+}
+$("#armaz-so-aba").onchange = () => desenharArmaz(ARMAZ.estado);
+
+async function armazAcao(a, s) {
+  const sid = ativa || null, soAba = $("#armaz-so-aba").checked && !!sid;
+  let r;
+  try {
+    if (a === "rec") return desenharArmaz();
+    if (a === "desc") r = await api.armaz_desconectar(sid, soAba);
+    else {
+      let pasta = "";
+      if (a === "trocar") {
+        const p = await api.armaz_escolher(s, sid);
+        if (!p || p.cancelado) return;
+        if (!p.ok) return toast(p.erro, "aviso");
+        pasta = p.pasta;
+      }
+      r = await api.armaz_conectar(s, pasta, sid, soAba);
+    }
+  } catch (x) { r = { ok: false, erro: String(x.message || x) }; }
+  if (!r || !r.ok) return toast((r && r.erro) || "Falhou.", "aviso");
+  toast(a === "desc" ? "Armazenamento desconectado: volta a salvar na pasta de antes." : "☁ Conectado: os atendimentos passam a ser salvos na pasta sincronizada.");
+  desenharArmaz(r);
+}

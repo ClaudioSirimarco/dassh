@@ -678,7 +678,7 @@ body { display: flex; flex-direction: column; }
   .topo > div:first-of-type small { display: none; }
   .conexao { flex-wrap: wrap; justify-content: flex-start; width: 100%; gap: 6px; }
   .slot-con { width: 100%; order: 3; }
-  .atalhos-con .rot, .barra-dir .rot { display: none; }
+  .guia-barra .rot { display: none; }
   .corpo { flex-direction: column; height: auto; padding: 8px; gap: 8px; }
   .terminal-card { min-height: 62vh; }
   #terminal { min-height: 52vh; padding: 6px; }
@@ -742,3 +742,184 @@ body { display: flex; flex-direction: column; }
 .cel-aud > div { padding: 2px 0; border-bottom: 1px solid #1b232d; } .cel-aud .q { color: var(--suave); font-family: Consolas, monospace; }
 .cel-aud code { color: #f0c674; word-break: break-all; }
 .cel-ap .btn.perigo { background: #3a1f24; border-color: #6b2c35; color: var(--erro); }
+
+/* ---------- importarUI: importar de outras ferramentas (janela Equipamentos) ---------- */
+#modal-equip.importarUI-ativo .eq-filtros, #modal-equip.importarUI-ativo .eq-lista, #modal-equip.importarUI-ativo .eq-pag,
+#modal-equip.importarUI-ativo .ajuda { display: none; }
+.importarUI { display: flex; flex-direction: column; gap: 8px; flex: 1; min-height: 0; }
+.importarUI.oculto, .importarUI .oculto { display: none; }
+.importarUI-topo { display: flex; align-items: center; gap: 8px; } .importarUI-topo b { flex: 1; }
+.importarUI-ferr { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 8px; overflow: auto; }
+.importarUI-card { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 9px 11px;
+  border: 1px solid var(--borda); border-radius: 8px; opacity: .8; }
+.importarUI-card.achou { opacity: 1; border-color: var(--verde); }
+.importarUI-card small { color: var(--suave); word-break: break-all; }
+.importarUI-botoes { display: flex; gap: 4px; flex-shrink: 0; }
+.importarUI-tag { font-size: 10px; padding: 1px 6px; border-radius: 8px; background: #0f2a25; color: var(--verde-cl); }
+.importarUI-tag.nao { background: #ffffff0d; color: var(--suave); }
+.importarUI-previa { display: flex; flex-direction: column; gap: 8px; flex: 1; min-height: 0; }
+.importarUI-sel { display: flex; align-items: center; gap: 12px; font-size: 12px; color: var(--suave); flex-wrap: wrap; }
+.importarUI-avisos { color: #f6c86b; }
+.importarUI-lista { flex: 1; min-height: 160px; overflow: auto; border: 1px solid var(--borda); border-radius: 8px; }
+.importarUI-lista tr.sit-existe td, .importarUI-lista tr.sit-repetido td { opacity: .65; }
+.importarUI-rodape { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--suave); }
+.importarUI-msg { color: var(--suave); padding: 12px; }
+
+/* ---------- 📨 Envio: emblemas dos canais (por aba) e janela "Conectar" ---------- */
+.envio-tit { display: inline-flex; align-items: center; gap: 4px; }
+.envio-canais { display: inline-flex; gap: 3px; margin-left: 4px; }
+.envio-canal { position: relative; width: 24px; height: 24px; padding: 2px; border-radius: 7px; border: 1px solid transparent;
+  background: transparent; cursor: pointer; opacity: .5; filter: grayscale(.7); transition: opacity .15s, filter .15s, border-color .15s; }
+.envio-canal svg { width: 18px; height: 18px; display: block; }
+.envio-canal:hover, .envio-canal:focus-visible { opacity: .9; filter: none; border-color: var(--borda); outline: none; }
+.envio-canal.sel { opacity: 1; filter: none; border-color: var(--verde); background: #0f2a25; box-shadow: 0 0 0 2px rgba(0,168,132,.18); }
+.envio-pt { position: absolute; right: -2px; bottom: -2px; width: 8px; height: 8px; border-radius: 50%; background: #56606c;
+  border: 2px solid var(--painel); }
+.envio-pt.on { background: var(--verde); } .envio-pt.aviso { background: var(--aviso); } .envio-pt.erro { background: var(--erro); }
+.status-wa.erro { background: #3a1f24; color: var(--erro); }
+.conversa .envio-pre { color: var(--suave); font-size: 11px; }
+.conversa small { color: var(--suave); font-size: 10.5px; }
+.conversa.ok.erro { border-color: #6b2c35; } .conversa.ok.erro::before { color: var(--erro); }
+.envio-card .canais-btn { margin-left: 2px; flex: none; }
+.envio-card .card-tit { gap: 6px; } .envio-tit { flex: none; }
+.envio-card .card-tit > span:last-child { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.envio-jan { width: min(480px, 94vw); }
+.envio-jan .jan-topo b { display: inline-flex; align-items: center; gap: 8px; }
+.envio-jan .jan-topo svg { width: 20px; height: 20px; }
+.envio-jan .jan-topo small { color: var(--suave); font-weight: 400; font-size: 11px; }
+.envio-jan .jan-corpo { display: flex; flex-direction: column; gap: 8px; }
+.envio-jan .form.sem-borda { padding: 0; }
+.envio-jan code { color: #f0c674; }
+.envio-jan a { color: var(--verde-cl); }
+.envio-passos { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
+.envio-sub { margin: 0; }
+.envio-prov { display: flex; flex-wrap: wrap; gap: 6px; }
+.envio-prov .btn.ativo { border-color: var(--verde); color: var(--verde-cl); background: #0f2a25; }
+.envio-dica { margin: 0; line-height: 1.45; }
+.envio-lista-tit { display: flex; align-items: center; justify-content: space-between; font-size: 12px; color: var(--suave); }
+.envio-lista { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; max-height: 180px; overflow: auto; }
+.envio-lista li.vazio { color: var(--suave); font-size: 12px; padding: 4px 2px; }
+.envio-item { width: 100%; text-align: left; display: flex; flex-direction: column; gap: 1px; background: var(--painel2);
+  border: 1px solid var(--borda); border-radius: 8px; padding: 6px 10px; color: var(--texto); cursor: pointer; font: inherit; }
+.envio-item:hover, .envio-item:focus-visible { border-color: var(--verde); outline: none; }
+.envio-item small { color: var(--suave); font-size: 11px; }
+.envio-msg { padding: 0 16px; }
+#modal-envio .form label.rot-opc { display: block; margin: 0; } #modal-envio .form label.rot-opc input { vertical-align: middle; margin-right: 6px; }
+
+/* ================= 👤 Conta local (tela de entrada + janela) e ☁ Armazenamento ================= */
+#conta-tela { position: fixed; inset: 0; z-index: 200; display: grid; place-items: center; padding: 16px;
+  background: radial-gradient(circle at 50% 35%, #10302a, #0d1117 62%); }
+.ct-caixa { width: min(420px, 100%); background: var(--painel); border: 1px solid var(--borda); border-radius: 16px; padding: 22px 22px 16px;
+  box-shadow: 0 24px 70px rgba(0,0,0,.55); display: flex; flex-direction: column; gap: 12px; }
+.ct-marca { display: flex; gap: 12px; align-items: center; } .ct-marca img { width: 44px; height: 44px; }
+.ct-marca b { display: block; font-size: 18px; } .ct-marca small { color: var(--suave); }
+#ct-form { display: flex; flex-direction: column; gap: 10px; }
+#ct-form label { display: flex; flex-direction: column; gap: 4px; color: var(--suave); font-size: 12px; }
+#ct-form input { color: var(--texto); padding: 9px 11px; user-select: text; }
+#ct-form .btn.primario { padding: 10px; }
+.ct-msg { min-height: 18px; font-size: 12px; color: var(--suave); } .ct-msg.erro { color: var(--erro, #ff8b8b); } .ct-msg.aviso { color: #e3b341; }
+.ct-rec code { display: block; font: 600 16px Consolas, monospace; letter-spacing: 1px; text-align: center; padding: 12px; margin: 8px 0;
+  background: var(--fundo); border: 1px dashed var(--verde); border-radius: 9px; user-select: all; }
+.ct-rec p { margin: 0; font-size: 13px; line-height: 1.45; }
+.ct-links { display: flex; justify-content: space-between; font-size: 12px; } .ct-links a { color: var(--verde-cl); }
+.ct-social summary { cursor: pointer; color: var(--suave); font-size: 12px; }
+.ct-social > div, .conta-oauth { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.oauth-btn[disabled] { opacity: .5; cursor: not-allowed; }
+.ct-social .ajuda, .conta-oauth .ajuda { flex-basis: 100%; }
+.conta-janela { width: min(560px, 94vw); } .armaz-janela { width: min(720px, 94vw); }
+.conta-linha { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--borda); font-size: 13px; }
+.conta-linha span { color: var(--suave); } .conta-linha b { font-weight: 500; text-align: right; word-break: break-word; }
+.conta-acoes { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
+.armaz-atual { margin-bottom: 10px; display: flex; flex-direction: column; gap: 6px; }
+.armaz-con { padding: 8px 10px; border-radius: 9px; border: 1px solid var(--borda); background: var(--painel2); font-size: 13px; word-break: break-all; }
+.armaz-con.ok { border-color: var(--verde-esc); } .armaz-con.aviso { border-color: #6b5a1f; }
+.armaz-lista { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; }
+.armaz-serv { border: 1px solid var(--borda); border-radius: 11px; padding: 10px 12px; background: var(--painel2); }
+.armaz-serv.ausente { opacity: .75; }
+.armaz-cab { display: flex; align-items: center; gap: 8px; } .armaz-ic { font-size: 18px; }
+.armaz-st { margin-left: auto; font-size: 11px; color: var(--suave); } .armaz-st.ok { color: var(--verde-cl); }
+.armaz-pastas { margin: 8px 0; padding-left: 18px; font-size: 12px; } .armaz-pastas code { word-break: break-all; } .armaz-pastas small { color: var(--suave); }
+.armaz-acoes { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; } .armaz-acoes .btn.primario { min-width: 0; }
+.armaz-serv .ajuda code { word-break: break-all; }
+
+/* ===== barra de SISTEMA (plataforma): logo + grupos Sessões · Biblioteca · Ferramentas · Sistema ===== */
+.sistema { flex: none; position: relative; z-index: 32; display: flex; align-items: center; gap: 12px; height: 32px; padding: 0 14px;
+  background: linear-gradient(90deg, #0f2a25, #10171f 45%); border-bottom: 1px solid var(--borda); }
+.sistema .marca { flex: none; gap: 8px; white-space: nowrap; }
+.sistema .marca b { display: inline; font-size: 13.5px; } .sistema .marca small { margin-left: 8px; font-size: 10.5px; }
+.sistema svg.logo { width: 26px; height: 26px; }
+.sis-itens { flex: 1; min-width: 0; display: flex; justify-content: flex-start; align-items: center; gap: 8px; overflow: hidden; }
+.sis-itens > .sis-grupo:first-child { margin-left: auto; }   /* alinha à direita, mas se faltar espaço o excesso fica mensurável (não some à esquerda) */
+.sis-grupo { flex: none; display: flex; align-items: center; gap: 1px; padding: 2px; border: 1px solid var(--borda); border-radius: 8px;
+  background: rgba(13,18,24,.72); }
+.sis-rot { font-size: 9.5px; text-transform: uppercase; letter-spacing: .8px; color: var(--suave); padding: 0 6px 0 6px; white-space: nowrap; }
+.sis-btn { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 8px; border: 0; border-radius: 6px; background: none;
+  color: var(--texto); cursor: pointer; font-size: 12px; white-space: nowrap; }
+.sis-btn:hover, .sis-btn:focus-visible { background: var(--painel2); color: var(--verde-cl); outline: none; }
+.sis-btn.versao { color: var(--suave); font-variant-numeric: tabular-nums; }
+.sis-btn.versao.nova { color: #2a1f00; background: var(--aviso); font-weight: 600; }
+.sis-grupo .cel-chip { margin-left: 2px; padding: 1px 3px 1px 8px; font-size: 11.5px; }
+.sistema.sem-grupo .sis-rot { display: none; }
+.sistema.so-icone .sis-btn .rot { display: none; } .sistema.so-icone .sis-btn { padding: 0 7px; font-size: 13px; }
+.sistema.sem-marca .marca div { display: none; }
+.sis-menu { display: none; }
+@media (max-width: 1500px) { .sistema .marca small { display: none; } }
+
+/* cabeçalho de conexão: só o seletor (aprovado) + destino + Conectar */
+.topo { padding: 4px 14px; }
+#terminal { padding: 5px 10px 4px 14px !important; }   /* cada px de altura conta: 30 linhas sobem de 0,5 em 0,5 px de fonte */
+.slot-con { width: clamp(320px, 30vw, 460px); }   /* sem logo e atalhos no cabeçalho: sobra espaço para o destino (porta COM legível) */
+@media (max-width: 1100px) { .slot-con { width: 280px; } }
+.pedidos { top: 92px; }
+body.tela-cheia .sistema { display: none !important; }
+
+/* ===== barra DA GUIA (opções que valem só para a guia ativa) ===== */
+.guia-barra { margin-left: auto; flex: none; display: flex; align-items: center; gap: 1px; margin-bottom: 4px; padding: 2px 3px;
+  border: 1px solid var(--borda); border-radius: 8px; background: #0d1218; }
+.gb-rot { font: 700 9.5px Consolas, monospace; color: var(--verde-cl); text-transform: uppercase; letter-spacing: .5px; padding: 0 6px 0 4px;
+  white-space: nowrap; cursor: help; }
+.gb-btn { display: inline-flex; align-items: center; gap: 4px; height: 24px; min-width: 26px; justify-content: center; padding: 0 6px; border: 0;
+  border-radius: 6px; background: none; color: var(--texto); cursor: pointer; font-size: 12px; white-space: nowrap; }
+.gb-btn:hover, .gb-btn:focus-visible { background: var(--painel2); outline: none; }
+.gb-btn.destaque { color: var(--verde-cl); }
+.gb-btn.destaque.on { color: #ff8f8f; box-shadow: inset 0 0 0 1px #6b2c35; background: #2a1416; }
+.gb-btn.tg { opacity: .5; filter: grayscale(.8); }
+.gb-btn.tg:hover { opacity: .85; }
+.gb-btn.tg.on { opacity: 1; filter: none; color: var(--verde-cl); background: #0f2a25; box-shadow: inset 0 0 0 1px #1f7a5f; }
+.gb-btn.tg.rec-on { color: #ff8f8f; background: #2a1416; box-shadow: inset 0 0 0 1px #6b2c35; }
+.gb-btn.tg.inativo { opacity: .28; }
+.gb-btn:disabled { opacity: .25; cursor: not-allowed; }
+.guia-barra .info.grande { width: 22px; height: 22px; font-size: 12px; margin-left: 3px; }
+.term-barra.muitas .guia-barra .rot { display: none; }
+@media (max-width: 1440px) { .guia-barra .rot { display: none; } }
+
+/* ===== shell ~48 px mais estreito: lateral (atendimento) mais larga e com mais respiro ===== */
+.lateral { width: 340px; gap: 10px; }
+.lateral .card { padding: 10px 13px; }
+.lateral .card-tit { margin-bottom: 8px; }
+.acoes-2 { gap: 8px; margin-bottom: 8px; }
+.acao.relatorio { margin-top: 8px; padding: 7px 10px; }
+.acao.relatorio small { color: var(--suave); font-size: 11px; }
+@media (max-width: 1240px) { .lateral { width: 304px; } }
+@media (max-width: 1120px) { .lateral { width: 272px; } }
+@media (max-height: 760px) { .lateral { gap: 8px; } .lateral .card { padding: 8px 12px; } .lateral .card-tit { margin-bottom: 6px; } }
+
+/* ===== celular: a barra de sistema vira menu ☰ ===== */
+@media (max-width: 900px) {
+  .sistema { height: auto; min-height: 44px; padding: calc(4px + env(safe-area-inset-top)) 10px 4px; }
+  .topo { padding-top: 8px; position: static; }
+  .sis-menu { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; height: 36px; padding: 0 12px; border: 1px solid var(--borda);
+    border-radius: 8px; background: var(--painel2); color: var(--texto); cursor: pointer; }
+  .sistema .sis-itens { display: none; }
+  .sistema.aberto .sis-itens { display: flex; position: absolute; top: 100%; left: 8px; right: 8px; flex-direction: column; align-items: stretch;
+    gap: 8px; padding: 10px; background: var(--painel); border: 1px solid var(--borda); border-radius: 12px; box-shadow: 0 16px 40px rgba(0,0,0,.55);
+    max-height: calc(100vh - 70px); overflow: auto; }
+  .sistema.aberto .sis-grupo { flex-wrap: wrap; gap: 4px; padding: 6px; }
+  .sistema.aberto .sis-rot { display: block; width: 100%; padding: 2px 4px 4px; }
+  .sistema.aberto .sis-btn { height: 40px; padding: 0 12px; font-size: 13px; flex: 1 1 auto; }
+  .sistema.aberto .sis-btn .rot { display: inline !important; }
+  .lateral { width: auto; } .slot-con { width: 100%; }
+  .sistema .marca div { display: block; } .sistema .marca small { display: none; }
+  .guia-barra { margin-left: 0; width: 100%; justify-content: space-between; }
+  .gb-btn { height: 36px; min-width: 36px; font-size: 14px; }
+}
