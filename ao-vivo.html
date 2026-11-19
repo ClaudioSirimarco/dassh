@@ -3,13 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src wss://broker.emqx.io:8084 wss://test.mosquitto.org:8081; worker-src 'self' blob:; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; manifest-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src wss://broker.emqx.io:8084 wss://test.mosquitto.org:8081; worker-src 'self' blob:; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="theme-color" content="#0d1117">
 <meta name="color-scheme" content="dark">
 <title>DASSH Console — sessão ao vivo</title>
 <meta name="description" content="Acompanhe pelo navegador uma sessão compartilhada do DASSH Console, com criptografia de ponta a ponta.">
 <link rel="icon" href="img/favicon.ico">
+<link rel="manifest" href="manifest.webmanifest"><link rel="apple-touch-icon" href="img/apple-touch-icon.png"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="DASSH">
 <style>
   body.web .topo, body.web .lateral, body.web #nova-aba, body.web #btn-compartilhar, body.web #btn-historico { cursor: not-allowed; }
   body.web .topo *, body.web .lateral *, body.web #nova-aba, body.web #btn-compartilhar, body.web #btn-historico { opacity: .92; }
@@ -57,26 +58,25 @@
 
   <div class="conexao">
     <div class="abas" id="abas">
-      <div class="grupo" data-grupo="equip"><button class="grupo-btn" title="Equipamentos: precisam de um destino (porta COM, endereço)">🔌 <span class="gn">Serial</span> ▾</button>
-        <div class="submenu oculto">
-          <button data-tipo="serial"><b>Serial</b><small>console de switch/roteador (porta COM)</small></button>
-          <button data-tipo="ssh"><b>SSH</b><small>usuario@ip</small></button>
-          <button data-tipo="web"><b>🌐 Web</b><small>iDRAC, iLO, iBMC, firewalls…</small></button></div></div>
-      <div class="grupo" data-grupo="shell"><button class="grupo-btn" title="Terminais do próprio computador: abrem na hora">💻 <span class="gn">Shell</span> ▾</button>
-        <div class="submenu oculto">
-          <button data-tipo="powershell" data-direto="1"><b>PowerShell</b><small>abre na hora</small></button>
-          <button data-tipo="cmd" data-direto="1"><b>CMD</b><small>abre na hora</small></button></div></div>
-      <div class="grupo" data-grupo="nuvem"><button class="grupo-btn" title="CLIs de nuvem (instalam sozinhas se faltar)">☁ <span class="gn">Nuvem</span> ▾</button>
-        <div class="submenu oculto">
-          <button data-tipo="azure" data-direto="1"><b>Azure</b><small>Azure CLI</small></button>
-          <button data-tipo="gcp" data-direto="1"><b>Google Cloud</b><small>gcloud</small></button>
-          <button data-tipo="aws" data-direto="1"><b>AWS</b><small>AWS CLI</small></button></div></div>
-      <div class="grupo" data-grupo="ia"><button class="grupo-btn" title="Assistentes de IA de linha de comando">🤖 <span class="gn">IA</span> ▾</button>
-        <div class="submenu oculto">
-          <button data-tipo="claude" data-direto="1"><b>Claude Code</b><small>Anthropic</small></button>
-          <button data-tipo="codex" data-direto="1"><b>Codex</b><small>OpenAI / ChatGPT</small></button>
-          <button data-tipo="gemini" data-direto="1"><b>Gemini CLI</b><small>Google</small></button>
-          <button data-tipo="copilot" data-direto="1"><b>Copilot CLI</b><small>GitHub</small></button></div></div>
+      <div class="grupo" data-grupo="todos"><button class="grupo-btn" title="Tipo de conexão: clique para escolher" aria-haspopup="true"><span class="gi">🔌</span> <span class="gn">Serial</span> <span class="seta">▾</span></button>
+        <div class="submenu grade oculto" role="menu" aria-label="Tipos de conexão">
+          <div class="col"><div class="col-tit">🔌 Equipamentos <small>precisam de destino</small></div>
+            <button data-tipo="serial" data-ic="🔌"><b>Serial</b><small>console de switch/roteador (COM)</small></button>
+            <button data-tipo="ssh" data-ic="🔐"><b>SSH</b><small>usuario@ip</small></button>
+            <button data-tipo="web" data-ic="🌐"><b>Web</b><small>iDRAC, iLO, iBMC, firewalls</small></button></div>
+          <div class="col"><div class="col-tit">💻 Shell <small>abrem na hora</small></div>
+            <button data-tipo="powershell" data-ic="💻" data-direto="1"><b>PowerShell</b><small>Windows PowerShell</small></button>
+            <button data-tipo="cmd" data-ic="⌨" data-direto="1"><b>CMD</b><small>Prompt de comando</small></button></div>
+          <div class="col"><div class="col-tit">☁ Nuvem <small>instalam se faltar</small></div>
+            <button data-tipo="azure" data-ic="☁" data-direto="1"><b>Azure</b><small>Azure CLI</small></button>
+            <button data-tipo="gcp" data-ic="☁" data-direto="1"><b>Google Cloud</b><small>gcloud</small></button>
+            <button data-tipo="aws" data-ic="☁" data-direto="1"><b>AWS</b><small>AWS CLI</small></button></div>
+          <div class="col"><div class="col-tit">🤖 IA <small>assistentes no terminal</small></div>
+            <button data-tipo="claude" data-ic="🤖" data-direto="1"><b>Claude Code</b><small>Anthropic</small></button>
+            <button data-tipo="codex" data-ic="🤖" data-direto="1"><b>Codex</b><small>OpenAI / ChatGPT</small></button>
+            <button data-tipo="gemini" data-ic="🤖" data-direto="1"><b>Gemini CLI</b><small>Google</small></button>
+            <button data-tipo="copilot" data-ic="🤖" data-direto="1"><b>Copilot CLI</b><small>GitHub</small></button></div>
+        </div></div>
     </div>
     <div class="slot-con" id="slot-con" title="Destino da conexão: fica sempre neste mesmo lugar, qualquer que seja o tipo">
 <div class="campos" id="campos-serial">
@@ -116,6 +116,7 @@
       <div class="barra-dir">
         <button class="btn mini destaque" id="btn-compartilhar" title="Compartilhar esta aba ao vivo (convite pelo WhatsApp)">📡<span class="rot"> Compartilhar</span></button>
         <button class="btn mini" id="btn-entrar" title="Entrar na sessão de outra pessoa com o código">🔗<span class="rot"> Entrar</span></button>
+        <button class="btn mini" id="btn-biblioteca" title="Biblioteca: sessões, gravações, evidências, logs, relatórios e Skills num só lugar">🗂<span class="rot"> Biblioteca</span></button>
         <button class="btn mini" id="btn-historico" title="Sessões gravadas: assistir (▶), log e reconectar">⏺<span class="rot"> Gravações</span></button>
         <button class="btn mini ic" id="btn-tema" title="Tema do terminal (cores e fonte)">🎨</button>
         <button class="info grande" data-info="abas" title="Abas, conexões e atalhos">i</button>
@@ -243,6 +244,7 @@
       <div class="rot-detalhe">
         <div class="rot-tit" id="rot-tit">Escolha um roteiro</div>
         <div class="rot-desc" id="rot-desc"></div>
+        <div class="rot-sel" id="rot-sel"></div>
         <ol class="rot-cmds" id="rot-cmds"></ol>
         <label class="rot-opc"><input type="checkbox" id="rot-enviar"> Enviar cada evidência no WhatsApp (senão só salva)</label>
         <div class="linha-btn"><button class="btn primario" id="rot-executar" disabled>▶ Executar na aba ativa</button></div>
@@ -289,6 +291,27 @@
       <textarea id="lic-token" rows="3" spellcheck="false" placeholder="DASSH1.…" style="width:100%;font:12px Consolas,monospace"></textarea>
       <div style="display:flex;gap:8px;align-items:center;margin-top:10px"><button class="btn primario" id="lic-ativar">Ativar</button><span id="lic-msg" class="ajuda"></span></div>
       <p class="ajuda">O código é conferido aqui no seu computador, sem internet. Plano Grátis continua disponível quando o teste ou o convite terminam: seus dados nunca são apagados.</p>
+    </div>
+  </div>
+</div>
+
+<!-- 🗂 Biblioteca: tudo do atendimento num só lugar -->
+<div class="modal oculto" id="modal-bib">
+  <div class="janela bib-janela">
+    <div class="jan-topo"><b>🗂 Biblioteca <small id="bib-sub" style="font-weight:400;color:var(--suave)"></small></b><button class="sug-x" data-fecha>✕</button></div>
+    <div class="bib-corpo">
+      <nav class="bib-nav" id="bib-nav" aria-label="Seções da biblioteca">
+        <button data-sec="sessoes">🕘 Sessões <span class="bib-n"></span></button>
+        <button data-sec="gravacoes">⏺ Gravações <span class="bib-n"></span></button>
+        <button data-sec="evidencias">🖼 Evidências <span class="bib-n"></span></button>
+        <button data-sec="logs">📜 Logs <span class="bib-n"></span></button>
+        <button data-sec="relatorios">📄 Relatórios <span class="bib-n"></span></button>
+        <button data-sec="skills">⚡ Skills <span class="bib-n"></span></button>
+      </nav>
+      <section class="bib-conteudo">
+        <div class="bib-barra"><input id="bib-busca" placeholder="🔍 Pesquisar nesta seção…" spellcheck="false" aria-label="Pesquisar"><span id="bib-info" class="bib-info"></span></div>
+        <div id="bib-lista" class="bib-lista"></div>
+      </section>
     </div>
   </div>
 </div>

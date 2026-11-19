@@ -62,7 +62,13 @@
       let d; try { d = JSON.parse(ev.data); } catch (_) { return; }
       if (d.t === "ok") {
         autenticado = true; ws_.tentativas = 0; tela.remove();
-        if (!ws_.pronto) { ws_.pronto = true; window.pywebview = { api }; window.dispatchEvent(new Event("pywebviewready")); }
+        if (!ws_.pronto) {
+          ws_.pronto = true; window.pywebview = { api };
+          // só avisa a interface depois que TODA a página carregou (app.js incluso): antes, se o agente respondesse
+          // mais rápido que o carregamento do app.js, o aviso se perdia e a abertura ficava ~20 s esperando
+          const avisar = () => window.dispatchEvent(new Event("pywebviewready"));
+          if (document.readyState === "complete") setTimeout(avisar, 0); else window.addEventListener("load", avisar, { once: true });
+        }
       } else if (d.t === "res") {
         const p = ws_.pend.get(d.id); if (!p) return; ws_.pend.delete(d.id);
         d.e ? p.falha(new Error(d.e)) : p.ok(d.r);

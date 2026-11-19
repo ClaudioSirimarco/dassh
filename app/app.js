@@ -96,24 +96,46 @@ function ajustarFonte() {
   const H = box.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom) - 6;
   abas.forEach((a) => {
     if (a.tipo === "web" && a.conectado) return;
-    let cel;
-    try { cel = a.term._core._renderService.dimensions.css.cell; } catch (_) { cel = null; }
-    if (!cel || !cel.width || !cel.height) cel = medirCelula(a.term);   // plano B: não depende da parte interna do xterm
-    if (!cel || !cel.width || !cel.height) return;
-    const fs = a.term.options.fontSize;
-    let alvo = Math.floor(fs * Math.min(W / (a.term.cols * cel.width), H / (a.term.rows * cel.height)) * 2) / 2;
-    alvo = Math.max(9, Math.min(17, alvo));
-    // sem "pulsar": diminui na hora se não couber, mas só aumenta se sobrar espaço para 1 px inteiro
-    // (o arredondamento da fonte fazia o tamanho oscilar entre dois valores a cada 2 s)
-    if (alvo < fs || alvo >= fs + 1) a.term.options.fontSize = alvo;
+    // DETERMINÍSTICO: o tamanho depende só do espaço (W x H), das colunas/linhas e da fonte — nunca do tamanho atual.
+    // Antes a conta partia da célula medida no tamanho atual; no navegador (zoom/escala 125-150%) a célula não cresce de forma
+    // linear com a fonte e o resultado alternava entre dois valores (a fonte "pulsava"). Aqui: do maior ao menor, o 1º que cabe.
+    const minimo = innerWidth < 700 ? 5 : 9;   // celular: a evidência continua 100x30, então a fonte encolhe para caber inteira
+    let alvo = minimo;
+    const espaco = Math.round(W) + "x" + Math.round(H), teto = (a._teto && a._teto[espaco]) || 17;
+    for (let f = teto; f >= minimo; f -= 0.5) {
+      const c = medirCelula(a.term, f);
+      if (a.term.cols * c.width * 1.03 <= W && a.term.rows * c.height * 1.03 <= H) { alvo = f; break; }
+    }
+    if (alvo !== a.term.options.fontSize) a.term.options.fontSize = alvo;
+    calibrar(a.term);
+    // trava que SÓ DESCE: se o terminal real não coube neste espaço, guarda um teto menor para este espaço (nunca sobe sozinho)
+    requestAnimationFrame(() => {
+      const tela = a.pane && a.pane.querySelector(".xterm-screen"); if (!tela || a.pane.style.display === "none") return;
+      const r = tela.getBoundingClientRect();
+      if ((r.width > W + 6 || r.height > H + 6) && a.term.options.fontSize > minimo) {
+        (a._teto || (a._teto = {}))[espaco] = a.term.options.fontSize - 0.5; a.term.options.fontSize -= 0.5;
+      }
+    });
   });
 }
-// mede uma célula do terminal com a mesma fonte (canvas) — usado se o xterm mudar a API interna numa atualização
-function medirCelula(term) {
+// calibração ÚNICA por fonte+escala: compara a célula estimada (canvas) com a real do xterm e guarda o fator, que fica
+// congelado — o ajuste continua determinístico, só que mais justo (sem sobrar 10-15% de espaço à toa)
+function calibrar(term) {
+  const k = medirCelula.k || (medirCelula.k = {}), chave = term.options.fontFamily + "|" + (window.devicePixelRatio || 1);
+  if (k[chave]) return;
+  let real; try { real = term._core._renderService.dimensions.css.cell; } catch (_) { return; }
+  if (!real || !real.width || !real.height) return;
+  const est = medirCelula(term, term.options.fontSize, true);
+  const fx = real.width / est.width, fy = real.height / est.height;
+  if (fx > 0.6 && fx < 1.4 && fy > 0.6 && fy < 1.4) k[chave] = { x: Math.round(fx * 100) / 100, y: Math.round(fy * 100) / 100 };
+}
+// mede uma célula com a fonte do terminal num tamanho dado (canvas), arredondada aos pixels da tela como o xterm faz
+function medirCelula(term, fs = term.options.fontSize, cru = false) {
   const c = medirCelula.c || (medirCelula.c = document.createElement("canvas").getContext("2d"));
-  const fs = term.options.fontSize;
+  const dpr = window.devicePixelRatio || 1;
+  const f = (!cru && medirCelula.k && medirCelula.k[term.options.fontFamily + "|" + dpr]) || { x: 1, y: 1 };
   c.font = `${fs}px ${term.options.fontFamily}`;
-  return { width: c.measureText("W").width, height: Math.ceil(fs * (term.options.lineHeight || 1) * 1.18) };
+  return { width: Math.ceil(c.measureText("W").width * f.x * dpr) / dpr, height: Math.ceil(fs * (term.options.lineHeight || 1) * 1.18 * f.y * dpr) / dpr };
 }
 let _ajTimer = null;
 const ajustarDepois = () => { clearTimeout(_ajTimer); _ajTimer = setTimeout(ajustarFonte, 60); };
@@ -351,7 +373,8 @@ function selecionarTipo(tipo, silencioso) {
   document.querySelectorAll("#abas [data-tipo]").forEach((x) => x.classList.toggle("ativa", x.dataset.tipo === tipo));
   document.querySelectorAll("#abas .grupo").forEach((g) => {   // o botão do grupo mostra o item escolhido
     const it = g.querySelector(`[data-tipo="${tipo}"]`); g.classList.toggle("ativa", !!it);
-    if (it) g.querySelector(".gn").textContent = it.querySelector("b").textContent.replace("🌐 ", "");
+    if (it) { g.querySelector(".gn").textContent = it.querySelector("b").textContent.replace("🌐 ", "");
+              const gi = g.querySelector(".gi"); if (gi && it.dataset.ic) gi.textContent = it.dataset.ic; }
   });
   $("#conectar").classList.toggle("invisivel", DIRETOS.includes(tipo));   // some (mas guarda o lugar) quando não há o que conectar
   $("#campos-serial").classList.toggle("oculto", tipo !== "serial");
@@ -1414,7 +1437,9 @@ function desenharRoteiros() {
     li.onclick = () => {
       rotSel = r; ul.querySelectorAll("li").forEach((x) => x.classList.remove("sel")); li.classList.add("sel");
       $("#rot-tit").textContent = r.nome; $("#rot-desc").textContent = (r.descricao || "") + (r.somente_leitura ? " · somente leitura" : "");
-      $("#rot-cmds").innerHTML = r.comandos.map((c) => `<li>${esc(c.cmd)} ${c.paginas && c.paginas !== 8 ? `<small>(até ${c.paginas} pág.)</small>` : ""}</li>`).join("");
+      $("#rot-cmds").innerHTML = r.comandos.map((c, i) => `<li><label class="rot-cmd"><input type="checkbox" data-ci="${i}" checked> <span>${esc(c.cmd)}</span> ${c.paginas && c.paginas !== 8 ? `<small>(até ${c.paginas} pág.)</small>` : ""}</label></li>`).join("");
+      desenharSelecaoSkill();
+      $("#rot-cmds").querySelectorAll("[data-ci]").forEach((cb) => (cb.onchange = desenharSelecaoSkill));
       $("#rot-executar").disabled = false;
     };
     ul.appendChild(li); if (i === 0) li.click();
@@ -1745,17 +1770,7 @@ window.addEventListener("pywebviewready", async () => {
     if (!e.target.closest("#popover")) fecharInfo();
   });
   // tipos em menus por assunto: Equipamentos (precisam de destino) · Shell · Nuvem · IA. Os que não têm destino abrem NA HORA ao clicar.
-  document.querySelectorAll("#abas [data-tipo]").forEach((b) => b.addEventListener("click", async () => {
-    fecharMenusTipos(); const tipo = b.dataset.tipo;
-    if (!DIRETOS.includes(tipo)) {   // Serial / SSH / Web: escolhe o tipo e preenche o destino ao lado
-      const a = A(); if (a && a.conectado) return toast("Desconecte esta aba ou abra uma nova (＋) para outro tipo", "aviso");
-      return selecionarTipo(tipo);
-    }
-    let a = A();
-    if (!a || a.conectado || a.demo) a = novaAba(tipo);   // aba em uso: abre numa aba nova
-    if (!a) return;
-    selecionarTipo(tipo); conectar(a);
-  }));
+  // (clique nos tipos de conexão: ligado no carregamento, ver o fim do arquivo)
   $("#porta").addEventListener("mousedown", () => carregarPortas());
   $("#atualizar-portas").onclick = () => carregarPortas();
   $("#diag-cabo").onclick = diagnosticarCabo;
@@ -1805,12 +1820,18 @@ window.addEventListener("pywebviewready", async () => {
       "Ver / assinar o último", (novo) => (novo ? gerarRelatorio() : abrirPdf(ult)));
   };
   iniciarRubrica(); iniciarEquip(); iniciarLogo();
-  $("#btn-todas-ev").onclick = abrirEvidencias;
+  $("#btn-todas-ev").onclick = () => abrirBiblioteca("evidencias");
   $("#lista-abas").onclick = listaAbas;
   $("#abas-sessao").addEventListener("wheel", (e) => { if (e.deltaY) { e.preventDefault(); $("#abas-sessao").scrollLeft += e.deltaY; } }, { passive: false });
   new ResizeObserver(ajustarDepois).observe($("#terminal")); addEventListener("resize", ajustarDepois);
   setInterval(ajustarFonte, 2000);   // segurança: troca de tema/fonte
-  $("#rot-executar").onclick = () => { if (!rotSel) return; $("#modal-roteiro").classList.add("oculto"); executarRoteiro(rotSel, $("#rot-enviar").checked); };
+  $("#rot-executar").onclick = () => {
+    if (!rotSel) return;
+    const marcados = [...$("#rot-cmds").querySelectorAll("[data-ci]")].filter((c) => c.checked).map((c) => +c.dataset.ci);
+    if (!marcados.length) return toast("Marque pelo menos um comando da Skill", "aviso");
+    $("#modal-roteiro").classList.add("oculto");
+    executarRoteiro({ ...rotSel, comandos: rotSel.comandos.filter((_, i) => marcados.includes(i)) }, $("#rot-enviar").checked);   // só os marcados
+  };
   $("#btn-compartilhar").onclick = () => compartilhar();
   $("#btn-entrar").onclick = () => entrarSessao();
   $("#btn-tema").onclick = (e) => { e.stopPropagation(); abrirTemas(); };
@@ -1823,7 +1844,8 @@ window.addEventListener("pywebviewready", async () => {
   $("#novo-cliente").onclick = novoCliente;
   $("#renomear-visita").onclick = renomearVisita; $("#nova-visita").onclick = novaVisita; $("#importar-arquivos").onclick = async () => { const r = await api.importar_arquivos(); if (r.cancelado) return; toast(r.ok ? `📥 ${r.arquivos} arquivo(s) importado(s) para o atendimento — entram no relatório com SHA-256` : r.erro, r.ok ? "" : "erro"); };
   $("#trocar-raiz").onclick = async () => { const c = await api.escolher_raiz(); desenharClientes(c); toast("Pasta raiz: " + c.raiz); };
-  $("#btn-historico").onclick = abrirHistorico;
+  $("#btn-historico").onclick = () => abrirBiblioteca("gravacoes");
+  $("#btn-biblioteca").onclick = () => abrirBiblioteca("sessoes");
   $("#btn-licenca").onclick = abrirLicenca;
   $("#btn-cofre").onclick = abrirCofre;
   $("#sug-fechar").onclick = () => { const a = A(); if (a) esconderSugestao(a); };
@@ -2225,3 +2247,148 @@ $("#lic-ativar").onclick = async () => {
   $("#lic-msg").style.color = r.ok ? "var(--verde)" : "#ff8b8b";
   if (r.ok) { $("#lic-token").value = ""; desenharLicenca(); toast("Licença ativada"); }
 };
+
+// clique nos tipos de conexão (ligado no carregamento: funciona antes mesmo do backend responder)
+document.querySelectorAll("#abas [data-tipo]").forEach((b) => b.addEventListener("click", async () => {
+  fecharMenusTipos(); const tipo = b.dataset.tipo;
+  if (!DIRETOS.includes(tipo)) {   // Serial / SSH / Web: escolhe o tipo e preenche o destino ao lado
+    const a = A(); if (a && a.conectado) return toast("Desconecte esta aba ou abra uma nova (＋) para outro tipo", "aviso");
+    return selecionarTipo(tipo);
+  }
+  let a = A();
+  if (!a || a.conectado || a.demo) a = novaAba(tipo);   // aba em uso: abre numa aba nova
+  if (!a) return;
+  selecionarTipo(tipo); conectar(a);
+}));
+
+// ---- Skills: escolher quais comandos executar (um a um, todos ou nenhum) ----
+function desenharSelecaoSkill() {
+  const cbs = [...$("#rot-cmds").querySelectorAll("[data-ci]")], n = cbs.filter((c) => c.checked).length;
+  $("#rot-sel").innerHTML = cbs.length ? `<button class="btn mini" data-todos>☑ Marcar todos</button> <button class="btn mini" data-nenhum>☐ Desmarcar todos</button>
+    <span class="rot-cont">${n} de ${cbs.length} comando(s) selecionado(s)</span>` : "";
+  const t = $("#rot-sel").querySelector("[data-todos]"), z = $("#rot-sel").querySelector("[data-nenhum]");
+  if (t) t.onclick = () => { cbs.forEach((c) => (c.checked = true)); desenharSelecaoSkill(); };
+  if (z) z.onclick = () => { cbs.forEach((c) => (c.checked = false)); desenharSelecaoSkill(); };
+  $("#rot-executar").disabled = !n;
+  $("#rot-executar").textContent = n === cbs.length ? "▶ Executar na aba ativa" : `▶ Executar ${n} comando(s) na aba ativa`;
+}
+
+// ================= 🗂 BIBLIOTECA: sessões, gravações, evidências, logs, relatórios e Skills num só lugar =================
+const BIB = { sec: "sessoes", hist: [], evs: [], rels: [], skills: [], log: null, filtroEv: null };
+async function abrirBiblioteca(sec = "sessoes", filtroEv = null) {
+  BIB.filtroEv = filtroEv; BIB.log = null; $("#bib-busca").value = "";
+  abrirModal("#modal-bib"); $("#bib-lista").innerHTML = `<p class="vazio">Carregando…</p>`;
+  const [h, e, r, s] = await Promise.all([api.historico(), api.evid_lista(), api.biblioteca_relatorios(), api.roteiros()]);
+  BIB.hist = h || []; BIB.evs = (e && e.itens) || []; BIB.rels = (r && r.itens) || []; BIB.skills = s || [];
+  $("#bib-sub").textContent = r && r.cliente ? "· " + r.cliente : "";
+  const n = { sessoes: BIB.hist.length, gravacoes: BIB.hist.filter((x) => x.grav_existe).length, evidencias: BIB.evs.length,
+              logs: BIB.hist.filter((x) => x.log_existe).length, relatorios: BIB.rels.length, skills: BIB.skills.length };
+  $("#bib-nav").querySelectorAll("[data-sec]").forEach((b) => (b.querySelector(".bib-n").textContent = n[b.dataset.sec]));
+  irBib(sec);
+}
+function irBib(sec) {
+  BIB.sec = sec; BIB.log = null;
+  $("#bib-nav").querySelectorAll("[data-sec]").forEach((b) => b.classList.toggle("ativa", b.dataset.sec === sec));
+  desenharBib();
+}
+const _dt = (iso) => { const [d, t] = String(iso || "").replace("T", " ").split(" "); const [y, m, dd] = (d || "").split("-"); return dd ? `${dd}/${m}/${y} ${String(t || "").slice(0, 5)}` : "—"; };
+function desenharBib() {
+  const q = $("#bib-busca").value.trim().toLowerCase(), L = $("#bib-lista"), info = $("#bib-info"), tem = (t) => !q || String(t).toLowerCase().includes(q);
+  L.className = "bib-lista"; L.innerHTML = "";
+  const vazio = (t) => { L.innerHTML = `<p class="vazio">${t}</p>`; };
+  if (BIB.sec === "sessoes" || BIB.sec === "gravacoes") {
+    const lista = BIB.hist.filter((r) => (BIB.sec === "sessoes" || r.grav_existe) && tem(`${r.nome} ${r.tipo} ${r.inicio} ${r.alvo || ""}`));
+    info.textContent = `${lista.length} ${BIB.sec === "sessoes" ? "sessão(ões)" : "gravação(ões)"}`;
+    if (!lista.length) return vazio(BIB.sec === "sessoes" ? "Nenhuma sessão registrada ainda." : "Nenhuma gravação ainda (ligue ⏺ gravar no cartão Evidência).");
+    lista.forEach((r) => {
+      const c = document.createElement("div"); c.className = "bib-item";
+      const evs = (r.evidencias || []).map((n) => `<button class="bib-chip" data-ev="${n}" title="Ver a evidência Nº ${pad2(n)}">Nº ${pad2(n)}</button>`).join("");
+      c.innerHTML = `<div class="bib-l1"><span class="tipo">${NOMES_TIPO[r.tipo] || esc(r.tipo)}</span> <b>${esc(r.nome)}</b>
+          <span class="bib-meta">${_dt(r.inicio)} · ${duracao(r.inicio, r.fim)}${r.ativa ? " · <b style='color:var(--verde)'>aberta agora</b>" : ""}</span></div>
+        <div class="bib-l2">${evs || `<span class="bib-meta">sem evidências</span>`}</div>
+        <div class="bib-acoes"><button class="btn mini" data-grav ${r.grav_existe ? "" : "disabled"}>▶ Assistir</button>
+          <button class="btn mini" data-log ${r.log_existe ? "" : "disabled"}>📜 Ler o log</button>
+          <button class="btn mini" data-rc>↻ Reconectar</button></div>`;
+      c.querySelector("[data-grav]").onclick = () => tocarGravacao(r.gravacao, `${r.nome} — ${_dt(r.inicio)}`);
+      c.querySelector("[data-log]").onclick = () => verLogBib(r);
+      c.querySelector("[data-rc]").onclick = () => { $("#modal-bib").classList.add("oculto"); reconectar(r); };
+      c.querySelectorAll("[data-ev]").forEach((b) => (b.onclick = () => { BIB.filtroEv = (r.evidencias || []).map(Number); irBib("evidencias"); }));
+      L.appendChild(c);
+    });
+  } else if (BIB.sec === "evidencias") {
+    let lista = BIB.evs.filter((e) => tem(`${e.num} ${e.id} ${e.comando} ${e.host} ${e.serial || ""}`));
+    if (BIB.filtroEv) lista = lista.filter((e) => BIB.filtroEv.includes(Number(e.num)));
+    info.innerHTML = `${lista.length} evidência(s)` + (BIB.filtroEv ? ` da sessão · <a href="#" id="bib-tudo">ver todas</a>` : "");
+    const t = $("#bib-tudo"); if (t) t.onclick = (ev) => { ev.preventDefault(); BIB.filtroEv = null; desenharBib(); };
+    if (!lista.length) return vazio("Nenhuma evidência neste atendimento ainda.");
+    L.className = "bib-lista bib-grade";
+    lista.forEach((e) => {
+      const c = document.createElement("button"); c.className = "bib-ev";
+      c.innerHTML = `<div class="bib-mini"><img alt=""></div><b>Nº ${pad2(e.num || 0)}</b><span>${esc(e.comando || e.host || e.arquivo)}</span><small>${_dt(e.data_hora)}</small>`;
+      api.miniatura(e.caminho).then((m) => { if (m) c.querySelector("img").src = m; });
+      c.onclick = () => verEvidencia({ ...e, cmd: e.comando, mini: "" }, null);
+      L.appendChild(c);
+    });
+  } else if (BIB.sec === "logs") {
+    if (BIB.log) return desenharLogBib(q);
+    const lista = BIB.hist.filter((r) => r.log_existe && tem(`${r.nome} ${r.tipo} ${r.inicio}`));
+    info.textContent = `${lista.length} log(s) — clique para ler aqui, com busca`;
+    if (!lista.length) return vazio("Nenhum log ainda.");
+    lista.forEach((r) => {
+      const c = document.createElement("button"); c.className = "bib-item bib-clic";
+      c.innerHTML = `<div class="bib-l1"><span class="tipo">${NOMES_TIPO[r.tipo] || esc(r.tipo)}</span> <b>${esc(r.nome)}</b> <span class="bib-meta">${_dt(r.inicio)} · ${duracao(r.inicio, r.fim)}</span></div>`;
+      c.onclick = () => verLogBib(r); L.appendChild(c);
+    });
+  } else if (BIB.sec === "relatorios") {
+    const lista = BIB.rels.filter((r) => tem(`${r.arquivo} ${r.visita}`));
+    info.textContent = `${lista.length} relatório(s) do cliente`;
+    if (!lista.length) return vazio("Nenhum relatório gerado ainda (botão 📄 Relatório no cartão Evidência).");
+    lista.forEach((r) => {
+      const c = document.createElement("div"); c.className = "bib-item";
+      c.innerHTML = `<div class="bib-l1"><b>📄 ${esc(r.arquivo)}</b>${r.assinado ? ` <span class="bib-chip ok">✍ assinado</span>` : ""}
+          <span class="bib-meta">${esc(r.visita)} · ${_dt(r.data)} · ${Math.max(1, Math.round(r.tamanho / 1024))} KB</span></div>
+        <div class="bib-acoes"><button class="btn mini" data-ver>Abrir aqui</button><button class="btn mini" data-ext>Abrir no leitor de PDF</button></div>`;
+      c.querySelector("[data-ver]").onclick = () => { $("#modal-bib").classList.add("oculto"); abrirPdf(r.caminho); };
+      c.querySelector("[data-ext]").onclick = () => api.abrir_arquivo(r.caminho);
+      L.appendChild(c);
+    });
+  } else if (BIB.sec === "skills") {
+    const lista = BIB.skills.filter((r) => tem(`${r.nome} ${r.fabricante} ${r.descricao} ${(r.comandos || []).map((c) => c.cmd).join(" ")}`));
+    info.textContent = `${lista.length} Skill(s)`;
+    const grupos = {}; lista.forEach((r) => (grupos[r.fabricante || "Outros"] = grupos[r.fabricante || "Outros"] || []).push(r));
+    Object.keys(grupos).sort().forEach((fab) => {
+      const h = document.createElement("div"); h.className = "bib-grupo"; h.textContent = fab; L.appendChild(h);
+      grupos[fab].forEach((r) => {
+        const c = document.createElement("div"); c.className = "bib-item";
+        c.innerHTML = `<div class="bib-l1"><b>⚡ ${esc(r.nome)}</b> <span class="bib-meta">${(r.comandos || []).length} comando(s)${r.somente_leitura ? " · somente leitura" : ""}</span></div>
+          <div class="bib-l2 bib-meta">${esc(r.descricao || "")}</div>
+          <div class="bib-acoes"><button class="btn mini" data-usar>Abrir para executar</button></div>`;
+        c.querySelector("[data-usar]").onclick = async () => {
+          $("#modal-bib").classList.add("oculto"); await abrirRoteiros();
+          const li = [...$("#rot-lista").querySelectorAll("li")].find((x) => x.textContent.includes(r.nome)); if (li) li.click();
+        };
+        L.appendChild(c);
+      });
+    });
+    if (!lista.length) vazio("Nenhuma Skill encontrada.");
+  }
+}
+async function verLogBib(r) {
+  if (BIB.sec !== "logs") { BIB.sec = "logs"; $("#bib-nav").querySelectorAll("[data-sec]").forEach((b) => b.classList.toggle("ativa", b.dataset.sec === "logs")); }
+  $("#bib-lista").innerHTML = `<p class="vazio">Abrindo o log…</p>`;
+  const x = await api.log_ler(r.id);
+  if (!x.ok) { toast(x.erro, "erro"); BIB.log = null; return desenharBib(); }
+  BIB.log = { r, texto: x.texto, arquivo: x.arquivo, cortado: x.cortado }; $("#bib-busca").value = ""; desenharBib();
+}
+function desenharLogBib(q) {
+  const { r, texto, arquivo, cortado } = BIB.log, L = $("#bib-lista");
+  const linhas = texto.split(/\r?\n/), achadas = q ? linhas.filter((l) => l.toLowerCase().includes(q)).length : 0;
+  $("#bib-info").innerHTML = `<a href="#" id="bib-voltar">← logs</a> · <b>${esc(r.nome)}</b> · ${esc(arquivo)} · ${linhas.length} linha(s)` + (q ? ` · <b>${achadas}</b> com "${esc(q)}"` : "") + (cortado ? " · (mostrando os primeiros 2 MB)" : "");
+  $("#bib-voltar").onclick = (ev) => { ev.preventDefault(); BIB.log = null; $("#bib-busca").value = ""; desenharBib(); };
+  const qe = esc(q || "");
+  const marca = (l) => { const e = esc(l); if (!q) return e; const i = e.toLowerCase().indexOf(qe.toLowerCase()); return i < 0 ? e : e.slice(0, i) + "<mark>" + e.slice(i, i + qe.length) + "</mark>" + e.slice(i + qe.length); };
+  L.className = "bib-lista"; L.innerHTML = `<pre class="bib-log">${linhas.map((l, i) => `<span class="${q && l.toLowerCase().includes(q) ? "achou" : ""}"><i>${i + 1}</i>${marca(l)}</span>`).join("\n")}</pre>`;
+  const p = L.querySelector(".achou"); if (p) p.scrollIntoView({ block: "center" });
+}
+$("#bib-nav").querySelectorAll("[data-sec]").forEach((b) => (b.onclick = () => { BIB.filtroEv = null; irBib(b.dataset.sec); }));
+$("#bib-busca").addEventListener("input", () => desenharBib());
