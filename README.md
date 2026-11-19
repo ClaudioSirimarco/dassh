@@ -3,7 +3,7 @@
 Shell avançado multiprotocolo (Serial, SSH, PowerShell, CMD, Azure, GCP e Web/iDRAC) com cofre de credenciais,
 sessão compartilhada com criptografia de ponta a ponta, automação por roteiros e evidências auditáveis com relatório PDF assinado. **DASSH IT Services.**
 
-**➡ Página de instalação (passo a passo): https://claudiosirimarco.github.io/dassh-console-download/**
+**➡ Página de instalação (passo a passo): https://claudiosirimarco.github.io/dassh/**
 
 ## ⬇ Baixar (Windows 10/11, 64 bits)
 

@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Créditos e agradecimentos — DASSH Console</title>
+<meta name="description" content="Homenagem às pessoas que criaram os shells e ferramentas que inspiraram o DASSH Console, e créditos das bibliotecas de código aberto usadas, com as licenças.">
+
+<link rel="icon" href="../img/favicon.ico">
+<!-- pwa:inicio -->
+<link rel="manifest" href="../manifest.webmanifest">
+<link rel="apple-touch-icon" href="../img/apple-touch-icon.png">
+<meta name="theme-color" content="#0d1117">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="DASSH">
+<!-- pwa:fim -->
+<style>
+:root{--fundo:#0b1015;--fundo2:#10171e;--painel:#141d26;--borda:#22303c;--texto:#e6edf3;--suave:#93a1ad;--verde:#00c896;--verde-cl:#5ee0b5;--aviso:#f6c86b;--raio:14px}
+*{box-sizing:border-box}
+body{margin:0;background:var(--fundo);color:var(--texto);font:16px/1.6 "Segoe UI",system-ui,-apple-system,Roboto,"Helvetica Neue",Arial,sans-serif}
+a{color:var(--verde-cl)}
+.cont{max-width:860px;margin:0 auto;padding:0 20px}
+header.topo{position:sticky;top:0;z-index:5;background:rgba(11,16,21,.92);backdrop-filter:blur(10px);border-bottom:1px solid var(--borda)}
+header.topo .cont{max-width:1080px;display:flex;align-items:center;justify-content:space-between;min-height:62px;gap:12px;flex-wrap:wrap;padding-top:8px;padding-bottom:8px}
+.marca{display:flex;align-items:center;gap:10px;text-decoration:none;color:var(--texto);font-weight:700;font-family:ui-monospace,Consolas,monospace}
+.marca svg{width:30px;height:30px}
+nav.menu{display:flex;flex-wrap:wrap;gap:4px 18px}
+nav.menu a{color:var(--suave);text-decoration:none;font-size:14.5px}
+nav.menu a:hover,nav.menu a[aria-current]{color:var(--texto)}
+nav.indice{display:flex;flex-wrap:wrap;gap:6px 16px;margin:0 0 10px}
+main{padding:44px 0 56px}
+h1{font-size:clamp(28px,5vw,40px);line-height:1.15;margin:0 0 10px;letter-spacing:-.4px}
+h2{font-size:clamp(20px,3vw,25px);margin:38px 0 8px}
+h3{font-size:17px;margin:0 0 4px}
+.sub{color:var(--suave);font-size:18px;margin:0 0 24px}
+p,li{color:#c9d3db}
+kbd,code{font:13px Consolas,monospace;background:#0b1218;border:1px solid var(--borda);border-radius:6px;padding:1px 7px;color:var(--texto);overflow-wrap:anywhere}
+.aviso{border-left:4px solid var(--aviso);background:#1b1a12;border-radius:8px;padding:14px 18px;margin:20px 0;color:#e9dcb4}
+.aviso b{color:var(--aviso)}
+.linha{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px;margin:18px 0}
+.cartao{background:var(--painel);border:1px solid var(--borda);border-radius:var(--raio);padding:18px 20px;margin:0;position:relative}
+.cartao .ano{display:inline-block;font:700 13px Consolas,monospace;color:#04231b;background:var(--verde);border-radius:999px;padding:2px 10px;margin-bottom:10px}
+.cartao p{margin:6px 0 0;font-size:15px;color:var(--suave)}
+.cartao .fonte{font-size:12.5px;margin-top:10px}
+.cartao .fonte a{color:var(--suave)}
+table.libs{width:100%;border-collapse:collapse;margin:14px 0;font-size:15px}
+table.libs th,table.libs td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--borda);vertical-align:top}
+table.libs th{color:var(--suave);font-weight:600;font-size:13.5px}
+table.libs td:first-child{font-weight:600;color:var(--texto)}
+table.libs td small{color:var(--suave)}
+footer{padding:30px 0 40px;text-align:center;color:var(--suave);font-size:13.5px;border-top:1px solid var(--borda)}
+footer a{margin:0 8px;white-space:nowrap;display:inline-block;line-height:2}
+</style>
+<link rel="stylesheet" href="../site.css">
+</head>
+<body>
+<header class="topo"><div class="cont">
+  <a class="marca" href="../"><svg viewBox="0 0 100 100" aria-hidden="true"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#00c896"/><stop offset="1" stop-color="#004e40"/></linearGradient></defs><rect x="6" y="6" width="88" height="88" rx="22" fill="url(#g)"/><polyline points="24,30 46,50 24,70" fill="none" stroke="#fff" stroke-width="9.5" stroke-linecap="round" stroke-linejoin="round"/><rect x="52" y="63.5" width="24" height="9" rx="4.5" fill="#fff"/><circle cx="73" cy="27" r="13" fill="#fff"/><polyline points="66.5,27.5 71.5,32.5 80,21.5" fill="none" stroke="#004e40" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>DASSH Console</span></a>
+  <nav class="menu"><a href="../baixar/">Baixar</a><a href="../docs/">Documentação</a><a href="../ao-vivo.html">Assistir ao vivo</a><a href="../status/">Status</a></nav>
+</div></header>
+<main><div class="cont">
+
+<h1>Créditos e agradecimentos</h1>
+<p class="sub">O DASSH Console existe porque, por mais de cinquenta anos, muita gente construiu e compartilhou o terminal que usamos todo dia.</p>
+<nav class="indice"><a href="#homenagem">Homenagem</a><a href="#bibliotecas">Bibliotecas de código aberto</a></nav>
+
+<h2 id="homenagem">Homenagem a quem criou o terminal</h2>
+<p>Os shells e as ferramentas abaixo inspiraram o jeito de trabalhar do DASSH Console. Esta seção é só uma homenagem.</p>
+<div class="aviso"><b>Sem parceria nem endosso.</b> As pessoas, projetos e empresas citados aqui não têm parceria com a DASSH IT Services,
+  não patrocinam nem recomendam o DASSH Console. Nomes e marcas pertencem aos seus titulares.</div>
+
+<div class="linha">
+  <div class="cartao"><span class="ano">1971</span><h3>Ken Thompson · Thompson shell</h3>
+    <p>O primeiro shell do Unix, lançado na primeira versão do sistema, no Bell Labs (AT&amp;T). Ele criou o Unix com Dennis Ritchie.</p>
+    <p class="fonte">Fonte: <a href="https://en.wikipedia.org/wiki/Thompson_shell">Wikipedia, “Thompson shell”</a></p></div>
+  <div class="cartao"><span class="ano">1978</span><h3>Bill Joy · C shell (csh)</h3>
+    <p>Criado quando ele era aluno de pós-graduação na Universidade da Califórnia em Berkeley. Foi distribuído a partir do 2BSD, em 1978.</p>
+    <p class="fonte">Fonte: <a href="https://en.wikipedia.org/wiki/C_shell">Wikipedia, “C shell”</a></p></div>
+  <div class="cartao"><span class="ano">1979</span><h3>Stephen Bourne · Bourne shell (sh)</h3>
+    <p>Desenvolvido no Bell Labs e lançado em 1979 com o Unix Version 7. A linguagem de script dele é a base dos shells compatíveis com <code>sh</code> até hoje.</p>
+    <p class="fonte">Fonte: <a href="https://en.wikipedia.org/wiki/Bourne_shell">Wikipedia, “Bourne shell”</a></p></div>
+  <div class="cartao"><span class="ano">1989</span><h3>Brian Fox · Bash</h3>
+    <p>O “Bourne-Again SHell”, escrito para o Projeto GNU. A primeira versão saiu em junho de 1989.</p>
+    <p class="fonte">Fonte: <a href="https://en.wikipedia.org/wiki/Bash_(Unix_shell)">Wikipedia, “Bash (Unix shell)”</a></p></div>
+  <div class="cartao"><span class="ano">1990</span><h3>Paul Falstad · Zsh</h3>
+    <p>A primeira versão do Z shell foi escrita em 1990, quando ele era estudante na Universidade de Princeton.</p>
+    <p class="fonte">Fonte: <a href="https://en.wikipedia.org/wiki/Z_shell">Wikipedia, “Z shell”</a></p></div>
+  <div class="cartao"><span class="ano">1995</span><h3>Tatu Ylönen · SSH</h3>
+    <p>Projetou a primeira versão do protocolo SSH em 1995, na Universidade de Tecnologia de Helsinque, depois de um ataque que capturou senhas na rede da universidade.</p>
+    <p class="fonte">Fonte: <a href="https://en.wikipedia.org/wiki/Secure_Shell">Wikipedia, “Secure Shell”</a></p></div>
+  <div class="cartao"><span class="ano">1999</span><h3>Simon Tatham · PuTTY</h3>
+    <p>O programador britânico começou o PuTTY em 1996 e publicou a primeira versão em janeiro de 1999. Até hoje é a ferramenta de console serial e SSH de muitos técnicos no Windows.</p>
+    <p class="fonte">Fonte: <a href="https://en.wikipedia.org/wiki/PuTTY">Wikipedia, “PuTTY”</a></p></div>
+  <div class="cartao"><span class="ano">2005</span><h3>Axel Liljencrantz · fish</h3>
+    <p>Criou o fish (“friendly interactive shell”), lançado em fevereiro de 2005.</p>
+    <p class="fonte">Fonte: <a href="https://en.wikipedia.org/wiki/Fish_(Unix_shell)">Wikipedia, “fish (Unix shell)”</a></p></div>
+  <div class="cartao"><span class="ano">2006</span><h3>Jeffrey Snover · PowerShell</h3>
+    <p>Arquiteto-chefe do PowerShell na Microsoft, publicou o “Monad Manifesto” em 2002. O Windows PowerShell 1.0 saiu em novembro de 2006 e virou código aberto e multiplataforma em 2016.</p>
+    <p class="fonte">Fonte: <a href="https://en.wikipedia.org/wiki/PowerShell">Wikipedia, “PowerShell”</a></p></div>
+</div>
+
+<h2 id="bibliotecas">Bibliotecas de código aberto</h2>
+<p>O DASSH Console usa as bibliotecas abaixo, cada uma sob a sua própria licença. Obrigado a quem as mantém.
+  As versões são as usadas na data desta página. A licença de cada uma está no pacote original.</p>
+
+<h3 style="margin-top:22px">No app para Windows (Python)</h3>
+<table class="libs tabela-cartoes">
+  <thead><tr><th>Biblioteca</th><th>Para que serve aqui</th><th>Licença</th></tr></thead>
+  <tbody>
+    <tr><td data-rotulo="Biblioteca">pywebview <small>6.2.1</small></td><td data-rotulo="Uso">Janela do app (interface em HTML)</td><td data-rotulo="Licença">BSD-3-Clause</td></tr>
+    <tr><td data-rotulo="Biblioteca">pythonnet <small>3.2.1</small></td><td data-rotulo="Uso">Ponte com o .NET usada pelo pywebview no Windows</td><td data-rotulo="Licença">MIT</td></tr>
+    <tr><td data-rotulo="Biblioteca">pySerial <small>3.5</small></td><td data-rotulo="Uso">Porta serial (cabo console)</td><td data-rotulo="Licença">BSD-3-Clause</td></tr>
+    <tr><td data-rotulo="Biblioteca">pywinpty <small>3.1.2</small></td><td data-rotulo="Uso">Terminais locais (PowerShell, CMD, CLIs de nuvem e IA)</td><td data-rotulo="Licença">MIT</td></tr>
+    <tr><td data-rotulo="Biblioteca">Paramiko <small>5.1.0</small></td><td data-rotulo="Uso">Conexões SSH</td><td data-rotulo="Licença">LGPL-2.1</td></tr>
+    <tr><td data-rotulo="Biblioteca">Playwright para Python <small>1.65.0</small></td><td data-rotulo="Uso">Aba Web (iDRAC/iLO), captura de página inteira e WhatsApp Web</td><td data-rotulo="Licença">Apache-2.0</td></tr>
+    <tr><td data-rotulo="Biblioteca">ReportLab <small>5.1.0</small></td><td data-rotulo="Uso">Geração do relatório em PDF</td><td data-rotulo="Licença">BSD</td></tr>
+    <tr><td data-rotulo="Biblioteca">pyHanko <small>0.38.1</small> e pyhanko-certvalidator <small>0.33.0</small></td><td data-rotulo="Uso">Assinatura eletrônica do PDF</td><td data-rotulo="Licença">MIT</td></tr>
+    <tr><td data-rotulo="Biblioteca">pyte <small>0.8.2</small></td><td data-rotulo="Uso">Emulador de terminal que gera o log em texto a partir da gravação</td><td data-rotulo="Licença">LGPL-3.0</td></tr>
+    <tr><td data-rotulo="Biblioteca">Pillow <small>13.0.0</small></td><td data-rotulo="Uso">Desenho da imagem de evidência</td><td data-rotulo="Licença">MIT-CMU (HPND)</td></tr>
+    <tr><td data-rotulo="Biblioteca">Eclipse Paho MQTT <small>2.2.0</small></td><td data-rotulo="Uso">Transporte da sessão ao vivo</td><td data-rotulo="Licença">EPL-2.0 ou BSD-3-Clause</td></tr>
+    <tr><td data-rotulo="Biblioteca">cryptography <small>50.0.2</small></td><td data-rotulo="Uso">Criptografia da sessão ao vivo e certificados</td><td data-rotulo="Licença">Apache-2.0 ou BSD-3-Clause</td></tr>
+    <tr><td data-rotulo="Biblioteca">aiohttp <small>3.14.5</small></td><td data-rotulo="Uso">Conector local da plataforma web</td><td data-rotulo="Licença">Apache-2.0 e MIT</td></tr>
+    <tr><td data-rotulo="Biblioteca">PyInstaller <small>6.22.3</small></td><td data-rotulo="Uso">Empacotamento do executável</td><td data-rotulo="Licença">GPL-2.0 ou posterior, com exceção que permite distribuir programas empacotados</td></tr>
+  </tbody>
+</table>
+
+<h3 style="margin-top:22px">Na interface e nas páginas web (JavaScript)</h3>
+<table class="libs tabela-cartoes">
+  <thead><tr><th>Biblioteca</th><th>Para que serve aqui</th><th>Licença</th></tr></thead>
+  <tbody>
+    <tr><td data-rotulo="Biblioteca">xterm.js e addon-serialize</td><td data-rotulo="Uso">O terminal em si, no app e na página “Assistir ao vivo”</td><td data-rotulo="Licença">MIT</td></tr>
+    <tr><td data-rotulo="Biblioteca">MQTT.js <small>5.10.1</small></td><td data-rotulo="Uso">Transporte da sessão ao vivo no navegador</td><td data-rotulo="Licença">MIT</td></tr>
+    <tr><td data-rotulo="Biblioteca">@noble/curves <small>1.6.0</small></td><td data-rotulo="Uso">X25519 (troca de chaves da sessão ao vivo)</td><td data-rotulo="Licença">MIT</td></tr>
+    <tr><td data-rotulo="Biblioteca">@noble/hashes <small>1.5.0</small></td><td data-rotulo="Uso">SHA-256, HKDF e scrypt</td><td data-rotulo="Licença">MIT</td></tr>
+  </tbody>
+</table>
+<p>E também o próprio <b>Python</b> (licença PSF) e o <b>Windows PowerShell</b>, o <b>OpenSSH</b> e as ferramentas de linha de comando de nuvem e IA que as abas abrem. Essas são instaladas e licenciadas separadamente pelos seus fornecedores.</p>
+<p style="color:var(--suave);font-size:14px">Encontrou um crédito faltando ou errado? Avise pelo <a href="https://github.com/ClaudioSirimarco/dassh-console-download/issues">GitHub</a> que corrigimos.</p>
+
+</div></main>
+<footer><div class="cont"><a href="../baixar/">Baixar</a><a href="../docs/">Docs</a><a href="../agente/">Agente local</a><a href="../app/">Plataforma web</a><a href="../status/">Status</a><a href="../privacidade/">Privacidade</a><a href="../termos/">Termos</a><a href="../creditos/">Créditos</a><br>DASSH Console · DASSH IT Services</div></footer>
+<!-- app-mobile:inicio -->
+<nav class="bnav" aria-label="Navegação principal"><a href="../"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 10.5 12 3.5l8.5 7"/><path d="M5.5 9v11h13V9"/><path d="M10 20v-5.5h4V20"/></svg><span>Início</span></a><a href="../baixar/"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11"/><path d="m7 10.5 5 5 5-5"/><path d="M5 20h14"/></svg><span>Baixar</span></a><a href="../docs/"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 3h8l4 4v14h-12z"/><path d="M14 3v4.5h4.5"/><path d="M9.5 12.5h6M9.5 16.5h6"/></svg><span>Docs</span></a><a href="../ao-vivo.html"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="2.4"/><path d="M8.2 8.2a5.4 5.4 0 0 0 0 7.6M15.8 8.2a5.4 5.4 0 0 1 0 7.6M5.3 5.3a9.5 9.5 0 0 0 0 13.4M18.7 5.3a9.5 9.5 0 0 1 0 13.4"/></svg><span>Ao vivo</span></a><a href="#mais" id="bn-mais" role="button" aria-controls="mais" aria-expanded="false" aria-haspopup="true" data-ativo="1" class="ativo"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5.5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="18.5" cy="12" r="1.3"/></svg><span>Mais</span></a></nav>
+<div class="bn-folha" id="mais" role="dialog" aria-label="Mais opções"><div class="bn-tit"><span>Mais</span><a class="bn-fechar" href="#" aria-label="Fechar">×</a></div><ul><li><a href="../agente/"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9.5 9.5h5v5h-5zM9 3v3M15 3v3M9 18v3M15 18v3M3 9h3M3 15h3M18 9h3M18 15h3"/></svg><span>Agente local</span></a></li><li><a href="../app/"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12.5" rx="2"/><path d="M8 20.5h8M12 16.5v4M7 8.5l2.5 2-2.5 2M11.5 12.5h4"/></svg><span>Plataforma web</span></a></li><li><a href="../status/"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l2.5-6 4 12 2.5-6H21"/></svg><span>Status</span></a></li><li><a href="../privacidade/"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 5 6v5.5c0 4.5 3 7.8 7 9.5 4-1.7 7-5 7-9.5V6z"/><path d="m9 12 2 2 4-4"/></svg><span>Privacidade</span></a></li><li><a href="../termos/"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 3h8l4 4v14h-12z"/><path d="M14 3v4.5h4.5"/><path d="M9.5 11.5h6M9.5 15h6M9.5 18.5h3.5"/></svg><span>Termos de uso</span></a></li><li><a href="../creditos/" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.5s-7.5-4.6-7.5-10.2A4.2 4.2 0 0 1 12 7.6a4.2 4.2 0 0 1 7.5 2.7c0 5.6-7.5 10.2-7.5 10.2z"/></svg><span>Créditos</span></a></li><li><a href="https://github.com/ClaudioSirimarco/dassh-console-download/releases"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 12.5V4.5h8l9 9-8 8z"/><circle cx="8" cy="9" r="1.4"/></svg><span>Todas as versões</span><small>GitHub ↗</small></a></li></ul></div><div class="bn-veu" id="bn-veu" aria-hidden="true"></div>
+<script>(()=>{const b=document.getElementById("bn-mais"),f=document.getElementById("mais"),v=document.getElementById("bn-veu");if(!b||!f||!v)return;const abrir=(s)=>{f.classList.toggle("aberta",s);v.classList.toggle("aberto",s);b.setAttribute("aria-expanded",String(s));b.classList.toggle("ativo",s||b.dataset.ativo==="1");if(s){const a=f.querySelector("li a");if(a)a.focus({preventScroll:true});}};b.addEventListener("click",(e)=>{e.preventDefault();abrir(!f.classList.contains("aberta"));});v.addEventListener("click",()=>abrir(false));f.querySelector(".bn-fechar").addEventListener("click",(e)=>{e.preventDefault();abrir(false);b.focus();});document.addEventListener("keydown",(e)=>{if(e.key==="Escape"&&f.classList.contains("aberta")){abrir(false);b.focus();}});if(location.hash==="#mais"){history.replaceState(null,"",location.pathname+location.search);abrir(true);}})();</script>
+<!-- app-mobile:fim -->
+</body>
+</html>
