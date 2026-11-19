@@ -58,25 +58,31 @@
 
   <div class="conexao">
     <div class="abas" id="abas">
-      <div class="grupo" data-grupo="todos"><button class="grupo-btn" title="Tipo de conexão: clique para escolher" aria-haspopup="true"><span class="gi">🔌</span> <span class="gn">Serial</span> <span class="seta">▾</span></button>
-        <div class="submenu grade oculto" role="menu" aria-label="Tipos de conexão">
-          <div class="col"><div class="col-tit">🔌 Equipamentos <small>precisam de destino</small></div>
-            <button data-tipo="serial" data-ic="🔌"><b>Serial</b><small>console de switch/roteador (COM)</small></button>
-            <button data-tipo="ssh" data-ic="🔐"><b>SSH</b><small>usuario@ip</small></button>
-            <button data-tipo="web" data-ic="🌐"><b>Web</b><small>iDRAC, iLO, iBMC, firewalls</small></button></div>
-          <div class="col"><div class="col-tit">💻 Shell <small>abrem na hora</small></div>
-            <button data-tipo="powershell" data-ic="💻" data-direto="1"><b>PowerShell</b><small>Windows PowerShell</small></button>
-            <button data-tipo="cmd" data-ic="⌨" data-direto="1"><b>CMD</b><small>Prompt de comando</small></button></div>
-          <div class="col"><div class="col-tit">☁ Nuvem <small>instalam se faltar</small></div>
-            <button data-tipo="azure" data-ic="☁" data-direto="1"><b>Azure</b><small>Azure CLI</small></button>
-            <button data-tipo="gcp" data-ic="☁" data-direto="1"><b>Google Cloud</b><small>gcloud</small></button>
-            <button data-tipo="aws" data-ic="☁" data-direto="1"><b>AWS</b><small>AWS CLI</small></button></div>
-          <div class="col"><div class="col-tit">🤖 IA <small>assistentes no terminal</small></div>
-            <button data-tipo="claude" data-ic="🤖" data-direto="1"><b>Claude Code</b><small>Anthropic</small></button>
-            <button data-tipo="codex" data-ic="🤖" data-direto="1"><b>Codex</b><small>OpenAI / ChatGPT</small></button>
-            <button data-tipo="gemini" data-ic="🤖" data-direto="1"><b>Gemini CLI</b><small>Google</small></button>
-            <button data-tipo="copilot" data-ic="🤖" data-direto="1"><b>Copilot CLI</b><small>GitHub</small></button></div>
-        </div></div>
+      <!-- seletor de conexão: categorias sempre à vista (barra segmentada) e, ao lado, os tipos da categoria escolhida -->
+      <div class="cats" role="tablist" aria-label="Categorias de conexão">
+        <div class="cat sel tem-ativo" role="tab" tabindex="0" aria-selected="true" data-cat="equip" title="Equipamentos: precisam de destino (porta COM, usuario@ip ou endereço)"><span class="ci">🔌</span><span class="cn">Equipamentos</span></div>
+        <div class="cat" role="tab" tabindex="0" data-cat="shell" title="Shell: terminais locais, abrem na hora"><span class="ci">💻</span><span class="cn">Shell</span></div>
+        <div class="cat" role="tab" tabindex="0" data-cat="nuvem" title="Nuvem: CLIs de nuvem, instalam sozinhas se faltarem"><span class="ci">☁</span><span class="cn">Nuvem</span></div>
+        <div class="cat" role="tab" tabindex="0" data-cat="ia" title="IA: assistentes no terminal"><span class="ci">🤖</span><span class="cn">IA</span></div>
+      </div>
+      <div class="tipos" id="tipos">
+        <div class="tipos-grupo" data-cat="equip">
+          <button data-tipo="serial" data-ic="🔌" class="ativa" title="Serial: console de switch/roteador (COM)"><b>Serial</b></button>
+          <button data-tipo="ssh" data-ic="🔐" title="SSH: usuario@ip"><b>SSH</b></button>
+          <button data-tipo="web" data-ic="🌐" title="Web: iDRAC, iLO, iBMC, XClarity, IPMI, firewalls"><b>Web</b></button></div>
+        <div class="tipos-grupo oculto" data-cat="shell">
+          <button data-tipo="powershell" data-ic="💻" data-direto="1" title="Windows PowerShell (abre na hora)"><b>PowerShell</b></button>
+          <button data-tipo="cmd" data-ic="⌨" data-direto="1" title="Prompt de comando (abre na hora)"><b>CMD</b></button></div>
+        <div class="tipos-grupo oculto" data-cat="nuvem">
+          <button data-tipo="azure" data-ic="☁" data-direto="1" title="Azure CLI (instala sozinho se faltar)"><b>Azure</b></button>
+          <button data-tipo="gcp" data-ic="☁" data-direto="1" title="Google Cloud CLI, gcloud (instala sozinho se faltar)"><b>Google Cloud</b></button>
+          <button data-tipo="aws" data-ic="☁" data-direto="1" title="AWS CLI (instala sozinho se faltar)"><b>AWS</b></button></div>
+        <div class="tipos-grupo oculto" data-cat="ia">
+          <button data-tipo="claude" data-ic="🤖" data-direto="1" title="Claude Code (Anthropic)"><b>Claude</b></button>
+          <button data-tipo="codex" data-ic="🤖" data-direto="1" title="Codex (OpenAI / ChatGPT)"><b>Codex</b></button>
+          <button data-tipo="gemini" data-ic="🤖" data-direto="1" title="Gemini CLI (Google)"><b>Gemini</b></button>
+          <button data-tipo="copilot" data-ic="🤖" data-direto="1" title="Copilot CLI (GitHub)"><b>Copilot</b></button></div>
+      </div>
     </div>
     <div class="slot-con" id="slot-con" title="Destino da conexão: fica sempre neste mesmo lugar, qualquer que seja o tipo">
 <div class="campos" id="campos-serial">
@@ -116,6 +122,8 @@
       <div class="barra-dir">
         <button class="btn mini destaque" id="btn-compartilhar" title="Compartilhar esta aba ao vivo (convite pelo WhatsApp)">📡<span class="rot"> Compartilhar</span></button>
         <button class="btn mini" id="btn-entrar" title="Entrar na sessão de outra pessoa com o código">🔗<span class="rot"> Entrar</span></button>
+        <span class="cel-chip oculto" id="cel-chip"></span>
+        <button class="btn mini" id="btn-celular" title="Conectado pelo celular: parear aparelhos e deixar este PC disponível para eles">📱<span class="rot"> Celular</span></button>
         <button class="btn mini" id="btn-biblioteca" title="Biblioteca: sessões, gravações, evidências, logs, relatórios e Skills num só lugar">🗂<span class="rot"> Biblioteca</span></button>
         <button class="btn mini" id="btn-historico" title="Sessões gravadas: assistir (▶), log e reconectar">⏺<span class="rot"> Gravações</span></button>
         <button class="btn mini ic" id="btn-tema" title="Tema do terminal (cores e fonte)">🎨</button>
@@ -134,7 +142,7 @@
 
   <aside class="lateral">
     <div class="card">
-      <div class="card-tit"><span>Atendimento <button class="info" data-info="atendimento" title="Como funciona">i</button></span>
+      <div class="card-tit"><span>Atendimento <button class="info" data-info="atendimento" title="Como funciona">i</button> <span class="lat-aba" id="lat-aba"></span></span>
         <button class="engrenagem" id="trocar-raiz" title="Pasta raiz dos atendimentos">⚙</button></div>
       <div class="linha-cli">
         <select id="cliente-sel" title="Cliente"></select>
@@ -151,7 +159,7 @@
     <div class="card">
       <div class="card-tit"><span>Evidência <button class="info" data-info="evidencia" title="Como funciona">i</button>
         <button class="chip-tg on" id="tg-limpar" title="Limpar a tela depois de cada evidência (Salvar/Enviar)">🧹<span class="rot"> limpar</span></button>
-        <button class="chip-tg" id="tg-ativa" title="Manter a sessão da aba ativa (evita desconexão por inatividade)">⏱<span class="rot"> ativa</span></button>
+        <button class="chip-tg" id="tg-ativa" title="Manter a sessão DESTA aba ativa (evita desconexão por inatividade) — cada aba tem o seu ⏱, também no botão da aba">⏱<span class="rot"> ativa</span></button>
         <button class="chip-tg on" id="tg-gravar" title="Gravar automaticamente as sessões novas (dá para parar/gravar em cada aba pelo REC)">⏺<span class="rot"> gravar</span></button></span>
         <span class="aba-alvo" id="aba-alvo"></span></div>
       <div class="acoes-2">
@@ -166,13 +174,14 @@
     </div>
 
     <div class="card">
-      <div class="card-tit"><span>WhatsApp <button class="info" data-info="whatsapp" title="Como conectar">i</button></span>
+      <div class="card-tit"><span>Envio <button class="info" data-info="whatsapp" title="Como conectar">i</button>
+        <button class="btn mini canais-btn" id="btn-canais" title="Canais de envio: configurar e testar e-mail e Telegram">📨</button></span>
         <span><span class="status-wa fila oculto" id="wa-fila"></span> <span class="status-wa" id="wa-status">fechado</span></span></div>
-      <div class="conversa" id="conversa">Nenhuma conversa conectada</div>
+      <div class="conversa" id="conversa" title="Destino das evidências DESTA aba">Nenhuma conversa conectada</div>
       <button class="wa-andamento oculto" id="wa-andamento" title="Ver a fila de envio"></button>
       <div class="linha-btn">
         <button class="btn" id="wa-abrir" title="Abrir o WhatsApp Web do app">Abrir<span class="rot2"> WhatsApp</span></button>
-        <button class="btn" id="wa-conectar" title="Usar a conversa aberta no WhatsApp para as evidências">Conectar<span class="rot2"> conversa</span></button>
+        <button class="btn" id="wa-conectar" title="Usar a conversa aberta no WhatsApp para as evidências DESTA aba (cada aba pode ter a sua)">Conectar<span class="rot2"> conversa</span></button>
       </div>
     </div>
 
@@ -235,19 +244,26 @@
 <!-- Roteiros de coleta -->
 <div class="modal oculto" id="modal-roteiro">
   <div class="janela">
-    <div class="jan-topo"><b>⚡ Skills de coleta <button class="info" data-info="roteiro" title="Como funciona">i</button></b>
+    <div class="jan-topo"><b>⚡ Skills — coleta e configuração <button class="info" data-info="roteiro" title="Como funciona">i</button></b>
       <button class="sug-x" data-fecha>✕</button></div>
     <div class="jan-corpo rot-corpo">
-      <div><div class="rot-busca"><input id="rot-busca" placeholder="🔍 Pesquisar (ex.: huawei, entrega, stack…)" spellcheck="false">
-        <select id="rot-filtro"><option value="">Todos os fabricantes</option></select></div>
+      <div><div class="rot-busca"><input id="rot-busca" placeholder="🔍 Pesquisar (ex.: huawei, inventário, vlan, zoning…)" spellcheck="false">
+        <select id="rot-filtro"><option value="">Todos os fabricantes</option></select>
+        <select id="rot-cat" title="Pesquisar por necessidade"><option value="">Toda finalidade</option></select></div>
       <ul class="rot-lista" id="rot-lista"></ul></div>
       <div class="rot-detalhe">
-        <div class="rot-tit" id="rot-tit">Escolha um roteiro</div>
+        <div class="rot-tit" id="rot-tit">Escolha uma Skill</div>
         <div class="rot-desc" id="rot-desc"></div>
+        <div class="rot-aviso oculto" id="rot-aviso">⚠ ESTA SKILL ALTERA A CONFIGURAÇÃO DO EQUIPAMENTO — revise a prévia antes de aplicar.</div>
+        <form class="rot-form oculto" id="rot-form" autocomplete="off" onsubmit="return false"></form>
         <div class="rot-sel" id="rot-sel"></div>
         <ol class="rot-cmds" id="rot-cmds"></ol>
+        <label class="rot-opc rot-ciente oculto" id="rot-ciente-l"><input type="checkbox" id="rot-ciente"> Revisei a prévia e autorizo <b>alterar a configuração</b> deste equipamento</label>
         <label class="rot-opc"><input type="checkbox" id="rot-enviar"> Enviar cada evidência no WhatsApp (senão só salva)</label>
-        <div class="linha-btn"><button class="btn primario" id="rot-executar" disabled>▶ Executar na aba ativa</button></div>
+        <div class="linha-btn"><button class="btn oculto" id="rot-voltar">← Voltar às perguntas</button>
+          <button class="btn oculto" id="rot-copiar" title="Copia o texto final para colar manualmente">📋 Copiar script</button>
+          <button class="btn primario oculto" id="rot-previa">Ver prévia dos comandos →</button>
+          <button class="btn primario" id="rot-executar" disabled>▶ Executar na aba ativa</button></div>
       </div>
     </div>
   </div>
@@ -282,6 +298,29 @@
 </div>
 
 <!-- Licença / convite -->
+<!-- 📱 Conectado pelo celular -->
+<div class="modal oculto" id="modal-cel">
+  <div class="janela cel-janela">
+    <div class="jan-topo"><b>📱 Conectado pelo celular</b><button class="sug-x" data-fecha>✕</button></div>
+    <div class="jan-corpo">
+      <label class="cel-disp"><input type="checkbox" id="cel-disp"> <b>Disponível para meus aparelhos</b>
+        <small>— o celular pareado pode ver as abas deste PC, assumir uma ou abrir outra (serial, PowerShell, SSH). Desligado = ninguém entra.</small></label>
+      <div class="cel-par oculto" id="cel-par">
+        <div class="cel-qr" id="cel-qr"></div>
+        <div><p class="ajuda">No celular, escaneie o QR (abre a página <b>Conectar</b>) ou abra a página e digite o código:</p>
+          <div class="cel-codigo" id="cel-codigo"></div>
+          <p class="ajuda">Vale <b id="cel-expira">5:00</b> e uma vez só. Depois confira o número que aparece no celular com o da lista abaixo.</p>
+          <button class="btn" id="cel-cancelar">Cancelar</button></div>
+      </div>
+      <button class="btn primario" id="cel-parear">📱 Parear celular</button>
+      <h4 class="cel-tit">Aparelhos confiáveis</h4>
+      <div id="cel-aparelhos" class="cel-lista"></div>
+      <h4 class="cel-tit">Registro de acesso remoto (auditoria)</h4>
+      <div id="cel-aud" class="cel-aud"></div>
+    </div>
+  </div>
+</div>
+
 <div class="modal oculto" id="modal-lic">
   <div class="janela">
     <div class="jan-topo"><b>🪪 Licença</b><button class="sug-x" data-fecha>✕</button></div>
@@ -439,12 +478,51 @@
 
 <!-- Vitrine de temas -->
 <div class="tema-pop oculto" id="tema-pop">
-  <div class="tp-tit">🎨 Tema do terminal <small>— muda só a tela; a evidência mantém o padrão aprovado</small></div>
+  <div class="tp-tit">🎨 Tema desta aba <small>— cada aba tem o seu; muda só a tela, a evidência mantém o padrão aprovado</small></div>
   <div class="tp-grade" id="tp-grade"></div>
 </div>
 
 <div class="menu-abas oculto" id="menu-abas"></div>
 <div class="popover oculto" id="popover"><div class="pop-tit" id="pop-tit"></div><div class="pop-corpo" id="pop-corpo"></div></div>
+<!-- 📨 Canais de envio (e-mail / Telegram) — a senha e o token vão para o cofre DPAPI e nunca voltam à tela -->
+<div class="modal oculto" id="modal-canais">
+  <div class="janela">
+    <div class="jan-topo"><b>📨 Canais de envio</b><button class="sug-x" data-fecha>✕</button></div>
+    <div class="jan-corpo canais-corpo">
+      <div class="canais-abas" id="canais-abas">
+        <button class="btn mini ativo" data-canal="email">📧 E-mail</button>
+        <button class="btn mini" data-canal="telegram">✈ Telegram</button>
+        <span class="canais-sit" id="canais-sit"></span>
+      </div>
+      <form class="form" id="cn-email" autocomplete="off" novalidate>
+        <div class="canais-2"><label>Servidor SMTP <input id="cn-em-servidor" placeholder="ex.: smtp.gmail.com" spellcheck="false"></label>
+          <label>Porta <input id="cn-em-porta" type="number" min="1" max="65535" placeholder="587"></label></div>
+        <label>Segurança <select id="cn-em-seguranca"><option value="starttls">STARTTLS (porta 587)</option>
+          <option value="ssl">SSL/TLS direto (porta 465)</option><option value="nenhuma">Nenhuma (só rede interna)</option></select></label>
+        <div class="canais-2"><label>Usuário <input id="cn-em-usuario" placeholder="ex.: tecnico@empresa.com" spellcheck="false"></label>
+          <label>Senha <input id="cn-em-senha" type="password" placeholder="•••••••• (vazio = manter)"></label></div>
+        <div class="canais-2"><label>Remetente <input id="cn-em-remetente" placeholder="vazio = o usuário" spellcheck="false"></label>
+          <label>Nome do remetente <input id="cn-em-nome" placeholder="ex.: DASSH · Suporte"></label></div>
+        <label>Destinatário padrão <input id="cn-em-padrao" placeholder="ex.: cliente@empresa.com, gestor@empresa.com" spellcheck="false"></label>
+        <p class="ajuda">Gmail/Outlook: use uma <b>senha de app</b>. O assunto leva o nº da evidência e o atendimento; o PNG/PDF vai anexo.</p>
+      </form>
+      <form class="form oculto" id="cn-telegram" autocomplete="off" novalidate>
+        <label>Token do bot <input id="cn-tg-token" type="password" placeholder="123456789:AA… (vazio = manter)" spellcheck="false"></label>
+        <label>chat_id padrão <span class="canais-linha"><input id="cn-tg-padrao" placeholder="ex.: 123456789 ou -1001234567890" spellcheck="false">
+          <button type="button" class="btn mini" id="cn-tg-descobrir" title="Lê as últimas mensagens recebidas pelo bot (getUpdates)">🔍 Descobrir</button></span></label>
+        <ul class="canais-chats" id="cn-tg-chats"></ul>
+        <label class="rot-opc"><input type="checkbox" id="cn-tg-arquivo"> Mandar evidências como <b>arquivo</b> (sem recompressão — o hash confere)</label>
+        <p class="ajuda">Crie o bot no <b>@BotFather</b>, mande uma mensagem para ele (ou adicione-o ao grupo) e clique em <b>Descobrir</b>.</p>
+      </form>
+      <div class="canais-teste"><label>Testar enviando para <input id="cn-alvo-teste" placeholder="vazio = só conecta / confere o login" spellcheck="false"></label></div>
+      <div class="canais-msg" id="canais-msg"></div>
+    </div>
+    <div class="jan-rodape"><button type="button" class="btn" id="cn-remover" title="Apaga a configuração e o segredo deste canal">Remover</button>
+      <button type="button" class="btn" id="cn-testar">🧪 Testar</button>
+      <button type="button" class="btn primario" id="cn-salvar">Salvar</button></div>
+  </div>
+</div>
+
 <div id="toast"></div>
 <script src="app/vendor/xterm.js"></script>
 <script src="app/vendor/addon-serialize.js"></script>

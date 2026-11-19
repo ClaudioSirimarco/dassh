@@ -47,26 +47,42 @@ function abrirTemas() {
   g.innerHTML = "";
   Object.entries(TEMAS).forEach(([id, tm]) => {
     const t = tm.t, d = document.createElement("div");
-    d.className = "tp-item" + (id === temaAtual ? " sel" : "");
+    const emUso = (A() && A().tema) || temaAtual;   // tema POR ABA: marca o da aba ativa
+    d.className = "tp-item" + (id === emUso ? " sel" : "");
     d.innerHTML = `<div class="tp-prev" style="background:${t.background};color:${t.foreground};font-family:${tm.fonte},monospace">` +
       `<span style="color:${t.green}">&lt;SW-CORE&gt;</span>display version\n` +
       `Huawei <span style="color:${t.cyan}">YunShan OS</span> 1.24\n` +
       `<span style="color:${t.yellow}">Warning</span>: <span style="color:${t.red}">fan 2 failed</span>\n` +
       `<span style="color:${t.green}">PS C:\\&gt;</span> <span style="color:${t.blue}">Get-Date</span><span style="background:${t.cursor}"> </span></div>` +
-      `<div class="tp-nome"><span>${esc(tm.nome)}</span>${id === temaAtual ? '<span class="ok">✔ em uso</span>' : ""}</div>`;
-    d.onclick = () => { aplicarTema(id, true); abrirTemas(); abrirTemas(); A() && A().term.focus(); toast("Tema: " + tm.nome); };
+      `<div class="tp-nome"><span>${esc(tm.nome)}</span>${id === emUso ? '<span class="ok">✔ nesta aba</span>' : ""}</div>`;
+    d.onclick = () => { aplicarTema(id, true); abrirTemas(); abrirTemas(); A() && A().term.focus();
+      toast(`Tema desta aba: ${tm.nome}`); };
     g.appendChild(d);
   });
   const r = $("#btn-tema").getBoundingClientRect();
   pop.style.left = Math.max(8, Math.min(r.right - 620, innerWidth - 628)) + "px"; pop.style.top = r.bottom + 8 + "px";
   pop.classList.remove("oculto");
 }
+// Tema POR ABA: cada aba guarda o seu (a.tema, a.T, a.P). temaAtual = o último escolhido (aba nova sem origem e próxima abertura).
+// TEMA/PALETA acompanham a aba ativa (usados pelo player e como padrão).
+function temaDaAba(a, id) {
+  const tm = TEMAS[id] || TEMAS.dassh;
+  a.tema = TEMAS[id] ? id : "dassh"; a.T = { ...tm.t, cursorAccent: tm.t.background }; a.P = paleta(a.T);
+  if (a.term) { a.term.options.theme = a.T; a.term.options.fontFamily = tm.fonte + ", 'Courier New', monospace"; }
+  if (a.pane) a.pane.style.background = a.T.background;
+}
+function mostrarTemaAtivo() {
+  const a = A(); if (!a || !a.T) return;
+  TEMA = a.T; PALETA = a.P;
+  document.documentElement.style.setProperty("--term", a.T.background);
+  const sel = document.querySelector("#tema"); if (sel) sel.value = a.tema;
+}
 function aplicarTema(id, salvar) {
-  const tm = TEMAS[id] || TEMAS.dassh; temaAtual = TEMAS[id] ? id : "dassh";
-  TEMA = { ...tm.t, cursorAccent: tm.t.background }; PALETA = paleta(TEMA);
-  document.documentElement.style.setProperty("--term", TEMA.background);
-  abas.forEach((a) => { a.term.options.theme = TEMA; a.term.options.fontFamily = tm.fonte + ", 'Courier New', monospace"; });
-  const sel = document.querySelector("#tema"); if (sel) sel.value = temaAtual;
+  temaAtual = TEMAS[id] ? id : "dassh";
+  const a = A();
+  if (a) { temaDaAba(a, temaAtual); mostrarTemaAtivo(); ajustarDepois(); }
+  else { const tm = TEMAS[temaAtual]; TEMA = { ...tm.t, cursorAccent: tm.t.background }; PALETA = paleta(TEMA);
+    document.documentElement.style.setProperty("--term", TEMA.background); }
   if (salvar && api) api.salvar_pref("tema", temaAtual);
 }
 const NOMES_TIPO = { serial: "Serial", powershell: "PowerShell", cmd: "CMD", ssh: "SSH", azure: "Azure", gcp: "GCP", remoto: "Remoto", web: "Web" };
@@ -171,6 +187,27 @@ function iniciarLogo() {
   }, 120);
 }
 
+// ================= atendimento/destino POR ABA: o sid da aba ativa vai junto =================
+// Nº de parâmetros ANTES do sid em cada função do backend. Quem já passa o sid (chamada com mais argumentos) não é alterado.
+const POR_ABA = { evid_lista: 0, evid_excluir: 1, evid_status: 0, usar_cliente: 1, novo_cliente: 2, dados_visita: 3,
+  nova_visita: 1, renomear_visita: 1, relatorio_gerar: 0, pdf_ler: 1, pdf_ultimo: 0, wa_enviar_arquivo: 2, importar_arquivos: 0,
+  abrir_pasta: 0, wa_usar_conversa: 0, wa_status: 0, wa_esquecer: 0, wa_abrir: 0, biblioteca_relatorios: 0, clientes: 0,
+  destino_definir: 2 };
+function comAba(base) {
+  return new Proxy(base, { get(t, nome) {
+    const f = t[nome];
+    if (typeof f !== "function") return f;
+    if (!Object.prototype.hasOwnProperty.call(POR_ABA, nome)) return f.bind(t);
+    return (...args) => {
+      const n = POR_ABA[nome];
+      if (args.length > n) return f.apply(t, args);
+      while (args.length < n) args.push(null);
+      args.push(ativa || null);
+      return f.apply(t, args);
+    };
+  } });
+}
+
 // ================= chamadas vindas do Python =================
 window.termWrite = (sid, d) => { const a = abas.get(sid); if (a) { a.term.write(d); a.ultimaEscrita = Date.now(); } };
 window.onAviso = (sid, msg) => { const a = abas.get(sid); if (a) a.term.write(`\r\n\x1b[33m[${msg}]\x1b[0m\r\n`); toast(msg, "aviso"); };
@@ -194,6 +231,7 @@ function arrumarAbas() {
   $("#nova-aba").disabled = abas.size >= 8;
   $("#nova-aba").title = abas.size >= 8 ? "Limite de 8 abas — feche uma para abrir outra" : "Nova aba (Ctrl+Alt+T)";
   const at = A() && A().btn; if (at) at.scrollIntoView({ block: "nearest", inline: "nearest" });
+  rotuloAbaLateral(A());
 }
 function arrastavel(b) {
   b.draggable = true;
@@ -229,21 +267,25 @@ document.addEventListener("mousedown", (e) => {
   const m = $("#menu-abas"); if (m && !m.contains(e.target) && e.target.id !== "lista-abas") m.classList.add("oculto");
 });
 
-function novaAba(tipo) {
+function novaAba(tipo, idFixo) {
   if (abas.size >= 8) return toast("Máximo de 8 abas", "aviso");
-  const id = "t" + (++seq);
+  const id = idFixo || "t" + (++seq);   // idFixo: aba aberta pelo celular (o Python já criou a sessão com esse id)
   const pane = document.createElement("div"); pane.className = "term-pane"; $("#terminal").appendChild(pane);
   const fsAtual = ([...abas.values()].find((x) => x.term && x.tipo !== "web") || { term: { options: { fontSize: 15 } } }).term.options.fontSize;
-  const term = new Terminal({ cols: 100, rows: 30, fontFamily: TEMAS[temaAtual].fonte + ", 'Courier New', monospace", fontSize: fsAtual,
+  const origem = A();   // aba nova herda da ativa: tema, atendimento (cliente/visita/chamado) e destino de envio
+  const temaIni = (origem && origem.tema) || temaAtual;
+  const term = new Terminal({ cols: 100, rows: 30, fontFamily: TEMAS[temaIni].fonte + ", 'Courier New', monospace", fontSize: fsAtual,
     lineHeight: 1.05, cursorBlink: true, scrollback: 5000, theme: TEMA, allowProposedApi: true });
   const a = { id, term, pane, tipo: tipo || tipoTopo(), conectado: false, nome: "Nova aba", alvo: null, params: null,
-              loginPend: null, ultimoPrompt: "", sugestao: null };
+              loginPend: null, ultimoPrompt: "", sugestao: null, herdar: origem ? origem.id : null, evLis: [] };
+  temaDaAba(a, temaIni);
   abas.set(id, a);
   const b = document.createElement("div"); b.className = "aba"; b.dataset.id = id;
-  b.innerHTML = `<span class="num"></span><span class="ponto"></span><span class="nome">Nova aba</span><span class="tempo" title="Tempo de sessão"></span><span class="rec" title="Gravação desta aba — clique para parar, gravar ou assistir">REC</span><button class="fecha" title="Fechar aba">✕</button>`;
-  b.onclick = (e) => { if (!e.target.classList.contains("fecha") && !e.target.classList.contains("rec")) ativar(id); };
+  b.innerHTML = `<span class="num"></span><span class="ponto"></span><span class="nome">Nova aba</span><span class="tempo" title="Tempo de sessão"></span><span class="ativa-tg" title="⏱ Manter esta sessão ativa (evita desconexão por inatividade) — clique para ligar/desligar">⏱</span><span class="rec" title="Gravação desta aba — clique para parar, gravar ou assistir">REC</span><button class="fecha" title="Fechar aba">✕</button>`;
+  b.onclick = (e) => { if (!e.target.classList.contains("fecha") && !e.target.classList.contains("rec") && !e.target.classList.contains("ativa-tg")) ativar(id); };
   b.onauxclick = (e) => { if (e.button === 1) { e.preventDefault(); fecharAba(id); } };   // botão do meio fecha (como no navegador)
   b.querySelector(".rec").onclick = () => menuGravacao(a);
+  b.querySelector(".ativa-tg").onclick = (e) => { e.stopPropagation(); alternarAtiva(a); };
   b.querySelector(".fecha").onclick = () => fecharAba(id);
   arrastavel(b);
   $("#abas-sessao").appendChild(b); a.btn = b;
@@ -255,6 +297,7 @@ function novaAba(tipo) {
     if (a.demo) return demoTecla(a, d);   // modo demonstração: Esc para, qualquer tecla acelera
     if (!a.conectado) return;
     if (a.share && !a.share.souAtivo) return avisoControle(a);  // observando: não digita
+    if (a.celCtrl) return avisoCel(a);   // 📱 o celular do dono está com o controle desta aba
     api.escrever(id, d); if (a.sugestao && /\r/.test(d)) esconderSugestao(a);
   });
   term.onSelectionChange(() => { const s = term.getSelection(); if (s) navigator.clipboard.writeText(s).catch(() => {}); });
@@ -287,9 +330,15 @@ async function boasVindas(a) {
 }
 
 function ativar(id) {
+  const ant = abas.get(ativa);
+  if (ant && ant.id !== id) guardarHistorico(ant);   // "Últimas evidências" da aba que sai ficam guardadas nela
+  const trocou = !ant || ant.id !== id;
   ativa = id;
   abas.forEach((a) => { a.pane.classList.toggle("ativa", a.id === id); a.btn.classList.toggle("ativa", a.id === id); });
   const a = A();
+  if (trocou) montarHistorico(a);
+  mostrarTemaAtivo();
+  carregarLateral(a);   // lateral inteira DESTA aba: cliente, visita, chamado, Próxima Nº, destino
   selecionarTipo(a.tipo, true);
   if (a.params) {
     if (a.params.porta) $("#porta").value = a.params.porta;
@@ -299,18 +348,62 @@ function ativar(id) {
   atualizarBotaoConectar();
   $("#aba-alvo").textContent = a.conectado ? a.nome : "";
   if (a.sugestao) mostrarSugestao(a, a.sugestao); else $("#sugestao").classList.add("oculto");
-  $("#tg-ativa").classList.toggle("on", !!a.manterAtiva);
+  desenharAtiva(a);
   if (a.equip && a.conectado) $("#aba-alvo").textContent = `${a.nome} · ${a.equip}`;
   desenharShare(a);
   setTimeout(() => { a.term.focus(); ajustarFonte(); arrumarAbas(); }, 0);
+}
+
+// ---------- lateral direita POR ABA ----------
+function guardarHistorico(a) {
+  const ul = $("#historico");
+  a.evLis = [...ul.querySelectorAll("li.ev-item")];
+  a.evLis.forEach((li) => li.remove());
+}
+function montarHistorico(a) {
+  const ul = $("#historico"); ul.innerHTML = "";
+  (a.evLis || []).forEach((li) => ul.appendChild(li));
+  if (!ul.children.length) ul.innerHTML = `<li class="vazio">Nenhuma ainda nesta aba</li>`;
+}
+function rotuloAbaLateral(a) {
+  const el = $("#lat-aba"); if (!el || !a) return;
+  const n = ordemAbas().indexOf(a.id) + 1;
+  el.textContent = `aba ${n || "?"}${a.conectado ? " · " + a.nome : ""}`;
+  el.title = "A lateral mostra o atendimento e o destino DESTA aba — cada aba tem os seus";
+}
+async function carregarLateral(a = A()) {
+  if (!a || !api) return;
+  rotuloAbaLateral(a);
+  let r;
+  try { r = await api.aba_contexto(a.id, a.herdar || null); } catch (e) { return; }
+  a.herdar = null;
+  if (!r || !r.ok || ativa !== a.id) return;   // trocou de aba no meio: a outra já carregou a dela
+  a.destino = r.destino;
+  desenharClientes(r.clientes); atualizarEvid(r.evid);
+  atualizarWa({ sid: a.id, conversa: r.conversa, destino: r.destino });
+}
+// ---------- ⏱ manter a sessão ativa POR ABA (botão na própria aba; o chip da lateral age na aba ativa) ----------
+function desenharAtiva(a) {
+  if (!a || !a.btn) return;
+  const t = a.btn.querySelector(".ativa-tg");
+  if (t) { t.classList.toggle("mostra", !!a.conectado && !a.demo); t.classList.toggle("on", !!a.manterAtiva && !!a.conectado); }
+  if (a.id === ativa) $("#tg-ativa").classList.toggle("on", !!a.manterAtiva && !!a.conectado);
+}
+async function alternarAtiva(a = A()) {
+  if (!a || !a.conectado) return toast("Conecte a aba primeiro", "aviso");
+  const r = await api.manter_ativa(a.id, !a.manterAtiva);
+  a.manterAtiva = !!r.ativo; desenharAtiva(a); toast(r.msg);
 }
 
 async function fecharAba(id) {
   const a = abas.get(id); if (!a) return;
   if (a.conectado) { await api.desconectar(id); if (["web", "ssh"].includes(a.tipo)) oferecerRemoverRede(); }
   a.term.dispose(); a.pane.remove(); a.btn.remove(); abas.delete(id);
+  try { api.aba_fechar(id); } catch (_) {}
+  const eraAtiva = ativa === id;
+  if (eraAtiva) { $("#historico").innerHTML = ""; ativa = null; }   // as evidências da aba fechada saem da lateral
   if (!abas.size) novaAba("serial");
-  else if (ativa === id) ativar(ordemAbas().pop());
+  else if (eraAtiva) ativar(ordemAbas().pop());
   arrumarAbas();
 }
 
@@ -323,7 +416,10 @@ function setConectado(a, on, nome) {
   desenharRec(a);
   a.btn.querySelector(".nome").textContent = on || a.nome !== "Nova aba" ? a.nome : "Nova aba";
   a.btn.title = a.nome;
-  if (a.id === ativa) { atualizarBotaoConectar(); $("#aba-alvo").textContent = on ? a.nome : ""; }
+  // ⏱ é preferência DA ABA: reconectou com ele ligado? liga de novo na sessão nova
+  if (on && a.manterAtiva && api && !a.demo) api.manter_ativa(a.id, true).then((r) => { a.manterAtiva = !!r.ativo; desenharAtiva(a); }).catch(() => {});
+  desenharAtiva(a);
+  if (a.id === ativa) { atualizarBotaoConectar(); $("#aba-alvo").textContent = on ? a.nome : ""; rotuloAbaLateral(a); }
   arrumarAbas();
 }
 
@@ -368,14 +464,34 @@ function atualizarBotaoConectar() {
 
 // ================= conexão =================
 function tipoTopo() { const b = document.querySelector("#abas button.ativa"); return b ? b.dataset.tipo : "serial"; }
+// barra de categorias: só troca os tipos à vista (não conecta nem muda o tipo da aba)
+function mostrarCategoria(cat) {
+  document.querySelectorAll("#abas .cat").forEach((c) => { const s = c.dataset.cat === cat; c.classList.toggle("sel", s); c.setAttribute("aria-selected", s); });
+  document.querySelectorAll("#abas .tipos-grupo").forEach((g) => {
+    const v = g.dataset.cat === cat; if (v && g.classList.contains("oculto")) $("#tipos").scrollLeft = 0; g.classList.toggle("oculto", !v); });
+  ajustarTipos();
+}
+// faixa dos tipos estreita (celular): o tipo ativo fica à vista e a borda esmaece quando há mais à direita/esquerda
+function ajustarTipos() {
+  const t = $("#tipos"); if (!t) return;
+  const b = t.querySelector(".tipos-grupo:not(.oculto) button.ativa");
+  if (b) { const bl = b.offsetLeft, br = bl + b.offsetWidth;   // .tipos é position: relative
+    if (bl < t.scrollLeft) t.scrollLeft = bl - 8; else if (br > t.scrollLeft + t.clientWidth) t.scrollLeft = br - t.clientWidth + 8; }
+  bordasTipos();
+}
+function bordasTipos() {
+  const t = $("#tipos"); if (!t) return;
+  const rola = t.scrollWidth > t.clientWidth + 1;
+  t.classList.toggle("mais-dir", rola && t.scrollLeft + t.clientWidth < t.scrollWidth - 2);
+  t.classList.toggle("mais-esq", rola && t.scrollLeft > 2);
+}
 const DIRETOS = ["powershell", "cmd", "azure", "gcp", "aws", "claude", "codex", "gemini", "copilot"];   // abrem na hora: não têm destino a preencher
 function selecionarTipo(tipo, silencioso) {
   document.querySelectorAll("#abas [data-tipo]").forEach((x) => x.classList.toggle("ativa", x.dataset.tipo === tipo));
-  document.querySelectorAll("#abas .grupo").forEach((g) => {   // o botão do grupo mostra o item escolhido
-    const it = g.querySelector(`[data-tipo="${tipo}"]`); g.classList.toggle("ativa", !!it);
-    if (it) { g.querySelector(".gn").textContent = it.querySelector("b").textContent.replace("🌐 ", "");
-              const gi = g.querySelector(".gi"); if (gi && it.dataset.ic) gi.textContent = it.dataset.ic; }
-  });
+  const it = document.querySelector(`#abas [data-tipo="${tipo}"]`), g = it && it.closest(".tipos-grupo");
+  if (g) { mostrarCategoria(g.dataset.cat);   // a categoria do tipo escolhido fica à vista
+    document.querySelectorAll("#abas .cat").forEach((c) => { c.classList.toggle("tem-ativo", c.dataset.cat === g.dataset.cat);
+      if (c.dataset.cat === g.dataset.cat) c.dataset.ultimo = tipo; }); }
   $("#conectar").classList.toggle("invisivel", DIRETOS.includes(tipo));   // some (mas guarda o lugar) quando não há o que conectar
   $("#campos-serial").classList.toggle("oculto", tipo !== "serial");
   $("#campos-ssh").classList.toggle("oculto", tipo !== "ssh");
@@ -791,13 +907,15 @@ async function reconectar(r) {
 }
 
 // ================= evidências =================
-function cor(cell, fg) {
-  if (fg ? cell.isFgDefault() : cell.isBgDefault()) return fg ? TEMA.foreground : TEMA.background;
+function cor(cell, fg, T = TEMA, P = PALETA) {
+  if (fg ? cell.isFgDefault() : cell.isBgDefault()) return fg ? T.foreground : T.background;
   const v = fg ? cell.getFgColor() : cell.getBgColor();
-  if (fg ? cell.isFgPalette() : cell.isBgPalette()) return PALETA[v] || (fg ? TEMA.foreground : TEMA.background);
+  if (fg ? cell.isFgPalette() : cell.isBgPalette()) return P[v] || (fg ? T.foreground : T.background);
   return "#" + v.toString(16).padStart(6, "0");
 }
 function snapshot(term) {
+  // cores do tema DA ABA (cada aba tem o seu); o backend troca o padrão do tema pelo padrão aprovado da evidência
+  const ab = [...abas.values()].find((x) => x.term === term), T = (ab && ab.T) || TEMA, P = (ab && ab.P) || PALETA;
   const b = term.buffer.active, linhas = [];
   for (let y = 0; y < term.rows; y++) {
     const ln = b.getLine(b.viewportY + y), runs = [];
@@ -806,7 +924,7 @@ function snapshot(term) {
       const c = ln && ln.getCell(x);
       if (c && c.getWidth() === 0) continue;
       const ch = (c && c.getChars()) || " ", bold = !!(c && c.isBold());
-      let fg = c ? cor(c, true) : TEMA.foreground, bg = c ? cor(c, false) : TEMA.background;
+      let fg = c ? cor(c, true, T, P) : T.foreground, bg = c ? cor(c, false, T, P) : T.background;
       if (c && c.isInverse()) [fg, bg] = [bg, fg];
       if (cur && cur[1] === fg && cur[2] === bg && cur[3] === bold) cur[0] += ch;
       else { cur = [ch, fg, bg, bold]; runs.push(cur); }
@@ -818,7 +936,7 @@ function snapshot(term) {
     const ln = b.getLine(i);
     if (ln.isWrapped && txt.length) txt[txt.length - 1] += ln.translateToString(true); else txt.push(ln.translateToString(true));
   }
-  return { cols: term.cols, rows: term.rows, bg: TEMA.background, fg: TEMA.foreground, linhas,
+  return { cols: term.cols, rows: term.rows, bg: T.background, fg: T.foreground, linhas,
            texto: txt.join("\n"), cursor: { x: b.cursorX, y: b.baseY + b.cursorY - b.viewportY } };
 }
 function limpar() {
@@ -832,11 +950,12 @@ function limpar() {
 // backend (um por vez, em segundo plano, salva em disco) — a captura nunca espera o WhatsApp.
 let filaCaptura = Promise.resolve(), capturasPendentes = 0;
 let LIMPAR_APOS = true;   // 🧹 limpar a tela depois de cada evidência (configurável no cartão Evidência)
-function evidencia(enviar, roteiro = "", aba = null, comando = "", indiceWeb = null) {
+function evidencia(enviar, roteiro = "", aba = null, comando = "", indiceWeb = null, segredos = null) {
   const a = aba || A(); if (!a) return Promise.resolve();
   if (a.demo) { toast("🎬 Aba de demonstração: é uma simulação — não gera evidência", "aviso"); return Promise.resolve(); }
   if (a.tipo === "web" && !a.conectado) { toast("Conecte a aba Web primeiro", "aviso"); return Promise.resolve(); }
   const snap = a.tipo === "web" ? null : snapshot(a.term);
+  if (snap && segredos && segredos.length) { SKL.mascararSnap(snap, segredos); comando = SKL.mascarar(comando, segredos); }   // senha da Skill nunca vai para a evidência
   capturasPendentes++;
   const p = filaCaptura.then(() => processarCaptura(a, snap, enviar, roteiro, comando, indiceWeb)).finally(() => capturasPendentes--);
   filaCaptura = p.catch(() => {});
@@ -850,13 +969,14 @@ async function processarCaptura(a, snap, enviar, roteiro, comando, indiceWeb) {
                                : await api.evidencia(a.id, snap, enviar, roteiro, comando);
     if (!r.ok) { toast(r.erro, "erro"); return; }
     if (a.tipo === "web") { a.ultimaWeb = r.mini; desenharWeb(a); if (r.partes > 1) toast(`🖥 Página inteira: ${r.partes} partes salvas (nº ${pad2(r.num - r.partes + 1)} a ${pad2(r.num)})`); }
-    atualizarEvid(r.evid);
+    atualizarEvid(r.evid);   // só mexe na lateral se a aba da evidência for a ativa (r.evid.sid)
     let st = "salva", cls = "";
     if (enviar) {
       if (r.enviado && r.enviado.fila) { st = "na fila"; cls = "fila"; toast(`Evidência nº ${pad2(r.num)} salva e na fila de envio (${r.enviado.posicao}º)`); }
       else { st = "não enviada"; cls = "erro"; toast(`Nº ${pad2(r.num)} salva e copiada, mas NÃO enviada: ${(r.enviado && r.enviado.erro) || "erro"}`, "erro"); }
     } else toast(`Evidência nº ${pad2(r.num)} salva e copiada (Ctrl+V no WhatsApp)`);
-    const ul = $("#historico"), v = ul.querySelector(".vazio"); if (v) v.remove();
+    const naTela = a.id === ativa, ul = $("#historico");
+    if (naTela) { const v = ul.querySelector(".vazio"); if (v) v.remove(); }
     // tela limpa para o próximo comando (Salvar e Enviar, botão ou atalho) — não vale para Skills e aba Web
     if (LIMPAR_APOS && !roteiro && a.tipo !== "web" && a.conectado) {
       // "cls" só quando o cursor está no PROMPT do shell: com um programa rodando na aba (ex.: Claude Code, vim, top)
@@ -870,7 +990,8 @@ async function processarCaptura(a, snap, enviar, roteiro, comando, indiceWeb) {
     li.querySelector("span").textContent = r.cmd || r.host; li.title = `${a.nome} — ${r.arquivo} — clique para ampliar`;
     li.onclick = () => verEvidencia(r, li);
     if (r.enviado && r.enviado.job) { ENVIOS.set(r.enviado.job, li); li.dataset.job = r.enviado.job; }
-    ul.prepend(li); while (ul.children.length > 30) ul.lastChild.remove();
+    if (naTela) { ul.prepend(li); while (ul.children.length > 30) ul.lastChild.remove(); }
+    else { a.evLis = [li, ...(a.evLis || [])].slice(0, 30); }   // aba em segundo plano: guarda na lista DELA
   } catch (e) { toast("Falha: " + e, "erro"); }
 }
 window.onEnvio = (job, estado, msg) => {
@@ -882,7 +1003,9 @@ window.onEnvio = (job, estado, msg) => {
   if (estado === "aguardando") toast(msg, "aviso");
 };
 let FALHAS = [], FILA = { pendentes: 0, jobs: [], falhas: [], atual: null }, filaTimer = null;
-const rotuloJob = (j) => j.tipo === "texto" ? `✉ Convite para a sessão ao vivo` : j.tipo === "doc" ? `📄 ${(j.legenda || "Relatório").slice(0, 60)}` : `🖼 Evidência nº ${pad2(j.num || 0)}`;
+const CANAL_ROT = { email: "📧 e-mail", telegram: "✈ Telegram" };   // WhatsApp (padrão) não ganha rótulo
+const rotuloJob = (j) => (j.tipo === "texto" ? `✉ Convite para a sessão ao vivo` : j.tipo === "doc" ? `📄 ${(j.legenda || "Relatório").slice(0, 60)}` : `🖼 Evidência nº ${pad2(j.num || 0)}`) +
+  (CANAL_ROT[j.canal] ? ` · ${CANAL_ROT[j.canal]}` : "");
 window.onFila = (f) => {
   FILA = f; FALHAS = f.falhas || [];
   const el = $("#wa-fila"), and = $("#wa-andamento");
@@ -898,7 +1021,7 @@ window.onFila = (f) => {
       (L.total > 1 ? ` · ${L.feitos} de ${L.total} (${pct}%)` : "") + barra;
   } else if (a && a.estado === "aguardando") {
     and.className = "wa-andamento";
-    and.innerHTML = `⏳ ${f.pendentes} na fila — abra o WhatsApp`;
+    and.innerHTML = `⏳ ${f.pendentes} na fila — ` + (CANAL_ROT[a.canal] ? `configure o ${CANAL_ROT[a.canal]} em 📨 Canais` : "abra o WhatsApp");
   } else if (FALHAS.length) {
     and.className = "wa-andamento erro"; and.innerHTML = `⚠ ${FALHAS.length} envio(s) falharam — clique para reenviar`;
   } else if (f.pendentes) {
@@ -914,7 +1037,9 @@ function desenharFila() {
   const a = f.atual, L = f.lote || { total: 0, feitos: 0 }, pct = L.total ? Math.round((L.feitos / L.total) * 100) : 0;
   $("#fila-agora").innerHTML = (a && a.estado === "enviando"
     ? `<b style="color:var(--verde-cl)">Agora:</b> enviando ${esc(rotuloJob(a))} há ${a.segundos || 0}s (tentativa ${(a.tentativas || 0) + 1} de 3)`
-    : a && a.estado === "aguardando" ? `<b style="color:var(--aviso)">Agora:</b> aguardando o WhatsApp — clique em <b>Abrir WhatsApp</b>`
+    : a && a.estado === "aguardando" ? (CANAL_ROT[a.canal]
+      ? `<b style="color:var(--aviso)">Agora:</b> aguardando o ${CANAL_ROT[a.canal]} — configure em <b>📨 Canais de envio</b>`
+      : `<b style="color:var(--aviso)">Agora:</b> aguardando o WhatsApp — clique em <b>Abrir WhatsApp</b>`)
     : f.pendentes ? "Preparando o próximo envio…" : `<b style="color:var(--verde-cl)">Tudo enviado.</b> Nada na fila.`) +
     (L.total ? `<div style="margin-top:6px;display:flex;gap:10px;align-items:center"><span class="fila-barra" style="flex:1;height:8px">` +
       `<i style="width:${pct}%"></i></span><b>${L.feitos} de ${L.total} (${pct}%)</b></div>` : "");
@@ -970,10 +1095,15 @@ async function verEvidencia(r, li, mantemLista = false) {
 // ================= painéis =================
 function atualizarEvid(e) {
   if (!e) return;
+  if (e.sid && ativa && e.sid !== ativa) return;   // resposta de outra aba: a lateral mostra só a aba ativa
   if (!e.ok) { $("#visita-nome").textContent = e.erro; return; }
   $("#visita-nome").textContent = e.visita_nome; $("#visita-nome").parentElement.title = e.visita;
   $("#proximo").textContent = "Nº " + pad2(e.proximo);
-  const sel = $("#cliente-sel"); if (sel.value !== e.cliente_nome && [...sel.options].some((o) => o.value === e.cliente_nome)) sel.value = e.cliente_nome;
+  const sel = $("#cliente-sel");
+  if (e.cliente_nome && ![...sel.options].some((o) => o.value === e.cliente_nome)) {   // cliente criado em outra aba
+    const o = document.createElement("option"); o.value = o.textContent = e.cliente_nome; sel.appendChild(o);
+  }
+  if (sel.value !== e.cliente_nome) sel.value = e.cliente_nome;
   // dados do atendimento: chamado/mudança vai no rodapé de cada evidência e no relatório
   const ch = e.info && e.info.chamado;
   $("#renomear-visita").innerHTML = ch ? `✎ <span class="chamado-tag">Chamado ${esc(ch)}</span>`
@@ -982,6 +1112,7 @@ function atualizarEvid(e) {
 }
 let ULTIMO_EVID = null;
 function desenharClientes(c) {
+  if (!c || !c.clientes) return;
   const sel = $("#cliente-sel"); sel.innerHTML = "";
   c.clientes.forEach((n) => { const o = document.createElement("option"); o.value = n; o.textContent = n; sel.appendChild(o); });
   sel.value = c.atual; sel.title = c.raiz + "\\" + c.atual;
@@ -1018,7 +1149,7 @@ async function novaVisita() {
   if (!r.ok) return toast(r.erro, "erro");
   if (v.chamado) { const x = await api.dados_visita(v.desc, v.chamado, ""); if (x.ok) r.evid = x.evid; }
   atualizarEvid(r.evid);
-  $("#historico").innerHTML = `<li class="vazio">Nenhuma ainda nesta visita</li>`;
+  if (!r.sid || r.sid === ativa) $("#historico").innerHTML = `<li class="vazio">Nenhuma ainda nesta visita</li>`;
   toast(`📁 Nova visita: ${r.evid.visita_nome}` + (r.conectadas.length ? " — reconecte a aba para o log também ir para ela" : ""));
 }
 async function renomearVisita() {
@@ -1033,13 +1164,23 @@ async function renomearVisita() {
   if (!r.ok) return toast(r.erro, "erro");
   atualizarEvid(r.evid); toast("Atendimento: " + r.evid.visita_nome + (v.chamado ? " · Chamado " + v.chamado : ""));
 }
+const NOME_CANAL = { whatsapp: "WhatsApp", email: "E-mail", telegram: "Telegram" };
 function atualizarWa(s) {
   if (s && s.ocupado) return;  // WhatsApp enviando: mantém o status atual
   const st = $("#wa-status");
-  if (s && s.aberto) { st.textContent = s.logado ? "conectado" : "leia o QR code"; st.className = "status-wa " + (s.logado ? "ok" : "aviso"); }
-  else { st.textContent = "fechado"; st.className = "status-wa"; }
-  const c = $("#conversa");
-  if (s && s.conversa) { c.textContent = s.conversa; c.classList.add("ok"); } else { c.textContent = "Nenhuma conversa conectada"; c.classList.remove("ok"); }
+  if (s && ("aberto" in s)) {   // estado do WhatsApp do app (é um só para todas as abas)
+    if (s.aberto) { st.textContent = s.logado ? "conectado" : "leia o QR code"; st.className = "status-wa " + (s.logado ? "ok" : "aviso"); }
+    else { st.textContent = "fechado"; st.className = "status-wa"; }
+  }
+  if (s && s.sid && ativa && s.sid !== ativa) return;   // destino de outra aba: não mostra aqui
+  // destino DESTA aba: conversa do WhatsApp (ou e-mail / Telegram, quando o canal existir)
+  const c = $("#conversa"), d = (s && s.destino) || { canal: "whatsapp", alvo: s && s.conversa };
+  const alvo = d.canal === "whatsapp" ? (s && s.conversa) || d.alvo : d.alvo;
+  const pre = d.canal && d.canal !== "whatsapp" ? `${NOME_CANAL[d.canal] || d.canal}: ` : "";
+  if (alvo) { c.textContent = pre + alvo; c.classList.add("ok"); }
+  else { c.textContent = pre ? pre + "nenhum destino" : "Nenhuma conversa conectada"; c.classList.remove("ok"); }
+  c.title = "Destino das evidências DESTA aba (cada aba pode enviar para uma pessoa/grupo diferente)";
+  const a = A(); if (a && (!s || !s.sid || s.sid === a.id)) a.destino = d.canal ? { canal: d.canal, alvo } : a.destino;
 }
 
 // ================= compartilhamento ao vivo =================
@@ -1186,6 +1327,94 @@ async function abrirConvite(a = A()) {
     `<small style="color:var(--suave)">Abra o WhatsApp para escolher da lista — ou digite o nome.</small>`;
   $("#cv-chips").querySelectorAll("[data-n]").forEach((b) => (b.onclick = () => { $("#cv-para").value = b.dataset.n; }));
 }
+// ================= 📱 conectado pelo celular (aparelhos do dono) =================
+let CEL = null, celTimer = null;
+function avisoCel(a) {
+  const agora = Date.now(); if (agora - (a._avisoT || 0) < 2500) return; a._avisoT = agora;
+  toast(`📱 ${a.celCtrl} está com o controle desta aba — clique em “Retomar” no indicador 📱`, "aviso");
+}
+function desenharCel() {
+  const e = CEL || { conectados: [], aparelhos: [], controles: {} };
+  abas.forEach((a) => { a.celCtrl = (e.controles || {})[a.id] || null; if (a.btn) a.btn.classList.toggle("cel-ctrl", !!a.celCtrl); });
+  const chip = $("#cel-chip"), con = e.conectados || [];
+  chip.classList.toggle("oculto", !con.length);
+  const at = A(), ctrlAt = at && at.celCtrl;
+  chip.innerHTML = con.length ? `<span class="bola"></span>📱 conectado: <b>${esc(con.map((c) => c.nome).join(", "))}</b>` +
+    (ctrlAt ? `<button class="btn mini" id="cel-retomar" title="Voltar a digitar no PC">Retomar</button>` : "") +
+    con.map((c) => `<button class="cel-x" data-dx="${esc(c.id)}" title="Desconectar ${esc(c.nome)}">✕</button>`).join("") : "";
+  chip.onclick = (ev) => { if (!ev.target.closest("button")) abrirCelular(); };
+  const r = chip.querySelector("#cel-retomar"); if (r) r.onclick = () => api.cel_retomar(at.id);
+  chip.querySelectorAll("[data-dx]").forEach((b) => (b.onclick = () => api.cel_desconectar(b.dataset.dx)));
+  if ($("#modal-cel").classList.contains("oculto")) return;
+  $("#cel-disp").checked = !!e.disponivel;
+  $("#cel-aparelhos").innerHTML = (e.aparelhos || []).map((ap) => {
+    const c = con.find((x) => x.id === ap.id);
+    return `<div class="cel-ap"><span class="cel-ic">📱</span><div class="cel-ap-txt"><b>${esc(ap.nome)}</b>${c ? ` <span class="cel-on">● conectado desde ${esc(c.desde)}</span>` : ""}
+      <small>pareado em ${esc(ap.criado)} · último acesso ${esc(ap.ultimo || "nunca")} · conferência <b>${esc(ap.sas || "")}</b></small></div>
+      ${c ? `<button class="btn" data-dx="${esc(ap.id)}">Desconectar</button>` : ""}<button class="btn perigo" data-rv="${esc(ap.id)}" data-nome="${esc(ap.nome)}">Revogar</button></div>`;
+  }).join("") || `<p class="ajuda">Nenhum aparelho pareado ainda.</p>`;
+  $("#cel-aparelhos").querySelectorAll("[data-dx]").forEach((b) => (b.onclick = () => api.cel_desconectar(b.dataset.dx)));
+  $("#cel-aparelhos").querySelectorAll("[data-rv]").forEach((b) => (b.onclick = () =>
+    pedido(`Revogar <b>${esc(b.dataset.nome)}</b>? Ele perde o acesso a este PC na hora (para usar de novo, será preciso parear).`, "Revogar", "Cancelar",
+      async (ok) => { if (!ok) return; const r = await api.cel_revogar(b.dataset.rv); CEL = r; desenharCel(); celAuditoria(); toast("Aparelho revogado"); })));
+  const p = e.pareando;
+  if (!p) { $("#cel-par").classList.add("oculto"); $("#cel-parear").classList.remove("oculto"); clearInterval(celTimer); }
+}
+async function celAuditoria() {
+  const lista = (await api.cel_auditoria(60)) || [];
+  const ROT = { pareado: "pareou", conectado: "conectou", desconectado: "desconectou", assumir: "assumiu o controle", devolver: "devolveu o controle",
+    assistir: "começou a assistir", digitou: "digitou", abrir: "pediu aba nova", aberta: "abriu a aba", abrir_falhou: "falhou ao abrir aba",
+    revogado: "foi revogado", recusado: "foi recusado", disponivel_ligado: "PC ficou disponível", disponivel_desligado: "PC ficou indisponível" };
+  $("#cel-aud").innerHTML = lista.map((r) => `<div><span class="q">${esc(r.quando.slice(5))}</span> <b>${esc(r.nome || "")}</b> ${esc(ROT[r.acao] || r.acao)}` +
+    `${r.aba ? ` <i>${esc(r.aba)}</i>` : r.sid ? ` <i>${esc(r.sid)}</i>` : ""}${r.tipo ? ` (${esc(r.tipo)}${r.destino ? " " + esc(r.destino) : r.porta ? " " + esc(r.porta) : ""})` : ""}` +
+    `${r.d ? ` <code>${esc(r.d)}</code>` : ""}${r.motivo ? ` — ${esc(r.motivo)}` : ""}</div>`).join("") || `<p class="ajuda">Nada registrado ainda.</p>`;
+}
+async function abrirCelular() {
+  abrirModal("#modal-cel");
+  const r = await api.cel_estado();
+  if (r && r.ok) CEL = r; else if (r) toast(r.erro, "erro");
+  desenharCel(); celAuditoria();
+}
+async function celParear() {
+  const r = await api.cel_parear();
+  if (!r.ok) return toast(r.erro, "erro");
+  $("#cel-qr").innerHTML = r.qr;   // SVG gerado pelo próprio app (qr.py), sem dados de terceiros
+  $("#cel-codigo").textContent = r.codigo;
+  $("#cel-par").classList.remove("oculto"); $("#cel-parear").classList.add("oculto");
+  const fim = Date.now() + r.expira_em * 1000;
+  clearInterval(celTimer);
+  celTimer = setInterval(() => {
+    const s = Math.max(0, Math.round((fim - Date.now()) / 1000));
+    $("#cel-expira").textContent = `${Math.floor(s / 60)}:${pad2(s % 60)}`;
+    if (!s) { clearInterval(celTimer); $("#cel-par").classList.add("oculto"); $("#cel-parear").classList.remove("oculto"); }
+  }, 500);
+}
+window.onCelular = (tipo, d) => {
+  if (tipo === "estado") { CEL = d; desenharCel(); if (!$("#modal-cel").classList.contains("oculto")) celAuditoria(); return; }
+  if (tipo === "pareado") { $("#cel-par").classList.add("oculto"); $("#cel-parear").classList.remove("oculto"); clearInterval(celTimer);
+    return toast(`📱 ${d.nome} pareado — confira o número de conferência no celular`); }
+  if (tipo === "conectado") return toast(`📱 ${d.nome} conectou a este PC`);
+};
+window.onCelAba = (sid, nome, tipo, alvo, gravando) => {   // aba aberta PELO CELULAR: o Python já conectou, aqui só aparece a aba
+  if (abas.has(sid)) return;
+  const a = novaAba(tipo, sid); if (!a) return;
+  a.tipo = tipo; a.alvo = alvo; a.gravando = !!gravando; a.term.write("\x1bc");
+  setConectado(a, true, nome); desenharCel();
+  toast(`📱 Aba “${nome}” aberta pelo celular`);
+};
+function iniciarCelular() {
+  $("#btn-celular").onclick = abrirCelular;
+  $("#cel-parear").onclick = celParear;
+  $("#cel-cancelar").onclick = () => api.cel_parear_cancelar();
+  $("#cel-disp").onchange = async (e) => {
+    const r = await api.cel_disponivel(e.target.checked);
+    if (!r.ok) { e.target.checked = !e.target.checked; return toast(r.erro, "erro"); }
+    CEL = r; desenharCel(); celAuditoria();
+    toast(r.disponivel ? "📱 PC disponível para os seus aparelhos pareados" : "PC indisponível para aparelhos — ninguém entra");
+  };
+  api.cel_estado().then((r) => { if (r && r.ok) { CEL = r; desenharCel(); } }).catch(() => {});
+}
+
 async function entrarSessao(codigo) {
   if (!(await garantirNome())) return;
   if (!codigo) {
@@ -1318,6 +1547,74 @@ const RE_PROMPT = /([<\[][^\s<>\[\]]+[>\]]|[\w\-.()]+[#>$]|PS [A-Z]:\\[^>]*>|[A-
 const RE_LEITURA = /^\s*(display|dis |show |dir |get |get-|ping |tracert |traceroute |ipconfig|systeminfo|hostname|hostnamectl|uname|uptime|df |free|ip -br|ip a|ss -|systemctl --failed|systemctl status|cat \/proc|\/[a-z0-9\- \/]+ print|esxcli [a-z0-9 \-]+ (list|get)|(switchshow|switchstatusshow|fabricshow|nsshow|nscamshow|firmwareshow|sfpshow|porterrshow|portperfshow|portshow|zoneshow|cfgshow|sensorshow|psshow|fanshow|tempshow|errdump|licenseshow|islshow|trunkshow|slotshow|chassisshow|ipaddrshow|hashow|version)\b|iscsiadm -m (session|node)|multipath -ll|lsblk)/i;
 let ROTEIROS = [], rotSel = null;
 
+// ---- Skills de CONFIGURAÇÃO: funções puras (as mesmas regras de skills.py; tools/test_skills_config.py confere as duas) ----
+const SKL = (() => {
+  const RE_MARC = /\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}/g;
+  const RE_IP = /^(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}$/;
+  const RE_WWN = /^([0-9A-Fa-f]{2}:){7}[0-9A-Fa-f]{2}$/;
+  const MASC = "********";
+  const mascaraValida = (v) => {
+    if (!RE_IP.test(v || "")) return false;
+    const n = v.split(".").reduce((x, p) => ((x << 8) | +p) >>> 0, 0), inv = (~n) >>> 0;
+    return n !== 0 && ((inv & (inv + 1)) >>> 0) === 0;
+  };
+  const opcoes = (v) => (v.opcoes || []).map((o) => (o && typeof o === "object" ? { valor: String(o.valor ?? ""), rotulo: o.rotulo || String(o.valor ?? "") } : { valor: String(o), rotulo: String(o) }));
+  function validarValor(v, valor) {
+    const s = valor == null ? "" : String(valor), t = v.tipo || "texto", rot = v.rotulo || v.id;
+    if (!s.trim()) return v.obrigatorio ? `${rot}: obrigatório` : "";
+    if (t === "ip" && !RE_IP.test(s.trim())) return `${rot}: IP inválido (ex.: 192.168.10.2)`;
+    if (t === "mascara" && !mascaraValida(s.trim())) return `${rot}: máscara inválida (ex.: 255.255.255.0)`;
+    if (t === "wwn" && !RE_WWN.test(s.trim())) return `${rot}: WWN inválido (ex.: 10:00:00:90:fa:12:34:56)`;
+    if (t === "vlan" || t === "numero") {
+      if (!/^\d+$/.test(s.trim())) return `${rot}: use só números`;
+      const n = +s, [mi, ma] = t === "vlan" ? [1, 4094] : [v.min, v.max];
+      if ((mi != null && n < mi) || (ma != null && n > ma)) return t === "numero" ? `${rot}: fora da faixa ${mi}–${ma}` : `${rot}: VLAN deve ser de 1 a 4094`;
+    }
+    if (t === "lista" && v.opcoes && v.opcoes.length && !opcoes(v).some((o) => o.valor === s)) return `${rot}: escolha uma das opções`;
+    if (v.regex && !new RegExp(v.regex).test(s)) return `${rot}: ${v.ajuda || "formato inválido"}`;
+    if (t !== "senha" && /[\r\n]/.test(s)) return `${rot}: não use quebra de linha`;
+    return "";
+  }
+  function validar(vars, valores, ignorar = []) {
+    const e = {};
+    (vars || []).forEach((v) => { if (ignorar.includes(v.id)) return; const m = validarValor(v, (valores || {})[v.id]); if (m) e[v.id] = m; });
+    return e;
+  }
+  const preencher = (txt, valores) => String(txt || "").replace(RE_MARC, (m, id) => (valores && id in valores ? String(valores[id]) : m));
+  const marcadores = (txt) => [...String(txt || "").matchAll(RE_MARC)].map((m) => m[1]);
+  const segredos = (vars, valores) => [...new Set((vars || []).filter((v) => v.tipo === "senha").map((v) => String((valores || {})[v.id] || "")).filter(Boolean))].sort((a, b) => b.length - a.length);
+  const ordenar = (l) => [...new Set((l || []).filter(Boolean))].sort((a, b) => b.length - a.length);
+  const mascarar = (txt, segs) => ordenar(segs).reduce((t, s) => t.split(s).join(MASC), String(txt || ""));
+  const mesmoTam = (txt, segs) => ordenar(segs).reduce((t, s) => t.split(s).join("*".repeat(s.length)), String(txt || ""));
+  function mascararSnap(snap, segs) {   // tela capturada: oculta mantendo as colunas
+    if (!snap || !segs || !segs.length) return snap;
+    (snap.linhas || []).forEach((runs) => {
+      const lin = runs.map((r) => r[0]).join(""), nova = mesmoTam(lin, segs);
+      if (nova !== lin) { let p = 0; runs.forEach((r) => { const n = r[0].length; r[0] = nova.slice(p, p + n); p += n; }); }
+    });
+    if ("texto" in snap) snap.texto = mesmoTam(snap.texto, segs);
+    return snap;
+  }
+  // monta os comandos finais: cmd (o que é digitado; senha do cofre fica como {{id}} e o backend completa),
+  // mostra (o que aparece na prévia/evidência/barra, senhas como ********)
+  function montar(rot, valores, cofreRefs = {}) {
+    const vars = rot.variaveis || [], segs = segredos(vars, valores);
+    const real = {}, mostra = {};
+    vars.forEach((v) => {
+      if (cofreRefs[v.id]) { mostra[v.id] = MASC; return; }
+      const x = (valores || {})[v.id] == null ? "" : String(valores[v.id]);
+      real[v.id] = x; mostra[v.id] = v.tipo === "senha" && x ? MASC : x;
+    });
+    return (rot.comandos || []).map((c, i) => {
+      const usados = [...marcadores(c.cmd), ...(c.respostas || []).flatMap((r) => marcadores(r.enviar))];
+      const cofre = {}; usados.forEach((id) => { if (cofreRefs[id]) cofre[id] = cofreRefs[id]; });
+      return { ...c, i, modelo: c.cmd, cmd: preencher(c.cmd, real), mostra: preencher(c.cmd, mostra), cofre, segredos: segs,
+               respostas: (c.respostas || []).map((r) => ({ ...r, modelo: r.enviar, enviar: preencher(r.enviar, real), mostra: preencher(r.enviar, mostra) })) };
+    });
+  }
+  return { validarValor, validar, preencher, marcadores, segredos, mascarar, mascararSnap, montar, opcoes, mascaraValida, MASC };
+})();
+
 // Espera o comando TERMINAR: saída parada + cursor num prompt ou num "---- More ----".
 // Sem prompt reconhecível (equipamento diferente), aceita após 8 s parado. Limite geral: max.
 function esperarSaida(a, desde, quieto = 900, max = 120000) {
@@ -1346,12 +1643,12 @@ function desenharRoteiro(a) {
 // Saída maior que a tela e sem paginação (PowerShell, Linux): captura tela por tela rolando o terminal.
 async function capturarRolando(a, ini, c, nomeRot, enviar) {
   const b = a.term.buffer.active, R = a.term.rows, fim = b.baseY + b.cursorY, total = fim - ini + 1;
-  if (total <= R || ini < 0) { await evidencia(enviar, nomeRot, a, c.cmd); a.roteiro.evid++; desenharRoteiro(a); return; }
+  if (total <= R || ini < 0) { await evidencia(enviar, nomeRot, a, c.mostra || c.cmd, null, c.segredos); a.roteiro.evid++; desenharRoteiro(a); return; }
   const n = Math.min(Math.ceil(total / R), c.paginas || 8);
   for (let k = 0; k < n && !a.roteiro.parar; k++) {
     a.term.scrollToLine(Math.min(ini + k * R, b.baseY));
     await new Promise((r) => setTimeout(r, 120));
-    await evidencia(enviar, nomeRot, a, c.cmd); a.roteiro.evid++; desenharRoteiro(a);
+    await evidencia(enviar, nomeRot, a, c.mostra || c.cmd, null, c.segredos); a.roteiro.evid++; desenharRoteiro(a);
   }
   a.term.scrollToBottom();
 }
@@ -1363,7 +1660,20 @@ async function executarRoteiro(rot, enviar) {
   if (a.tipo === "web") return toast("Roteiros são para abas de terminal (Serial, SSH, PowerShell…)", "aviso");
   const proibidos = rot.somente_leitura ? rot.comandos.filter((c) => !RE_LEITURA.test(c.cmd)) : [];
   if (proibidos.length) return toast(`Roteiro bloqueado: "${proibidos[0].cmd}" não é comando de consulta`, "erro");
-  if (!rot.somente_leitura && !(await confirmar(`⚠ <b>${esc(rot.nome)}</b> GRAVA arquivos (ex.: cópia para o pendrive). Não altera a configuração do equipamento. Executar?`))) return;
+  const config = rot.tipo_skill === "configuracao";
+  if (config && !(await confirmar(`⚠ <b>ESTA SKILL ALTERA A CONFIGURAÇÃO DO EQUIPAMENTO</b><br><b>${esc(rot.nome)}</b>: ${rot.comandos.length} comando(s) serão digitados na aba <b>${esc(a.nome || "")}</b>, um por vez, com evidência de cada tela. Confirma a execução?`))) return;
+  if (!config && !rot.somente_leitura && !(await confirmar(`⚠ <b>${esc(rot.nome)}</b> GRAVA arquivos (ex.: cópia para o pendrive). Não altera a configuração do equipamento. Executar?`))) return;
+  // Skill de configuração: digita pelo backend (completa a senha do cofre e passa a ocultá-la no log/gravação/evidência)
+  const digitar = async (c, texto) => {
+    if (!config) { api.escrever(a.id, texto + "\r"); return true; }
+    if (api.skill_escrever) {
+      const r = await api.skill_escrever(a.id, texto, c.cofre || {}, c.segredos || []);
+      if (r && r.ok === false) { toast(r.erro || "Falha ao digitar o comando", "erro"); return false; }
+      return true;
+    }
+    if (Object.keys(c.cofre || {}).length) { toast("Senha do cofre indisponível nesta versão: digite a senha no formulário", "erro"); return false; }
+    api.escrever(a.id, texto + "\r"); return true;
+  };
   const passos = [...rot.comandos];
   a.roteiro = { nome: rot.nome, i: 0, total: passos.length, evid: 0, parar: false };
   for (let k = 0; k < passos.length; k++) {
@@ -1378,17 +1688,29 @@ async function executarRoteiro(rot, enviar) {
       c = { cmd: `dir ${c.copiar_pasta}`, paginas: 6 };   // a listagem também vira evidência
       a.term.clear();
     }
-    a.roteiro.i++; a.roteiro.atual = c.cmd; desenharRoteiro(a);
-    const env = enviar && (!rot.whatsapp || rot.whatsapp.includes(c.cmd));   // só as evidências-chave vão para o WhatsApp
+    a.roteiro.i++; a.roteiro.atual = c.mostra || c.cmd; desenharRoteiro(a);
+    const env = enviar && (!rot.whatsapp || rot.whatsapp.includes(c.modelo || c.cmd));   // só as evidências-chave vão para o WhatsApp
     let desde = Date.now();
     if (SHELL_WIN.includes(a.tipo)) {        // shells do Windows: limpar no próprio shell (o ConPTY redesenha a tela)
       api.escrever(a.id, "cls\r"); await esperarSaida(a, desde, 600, 10000);
     } else a.term.clear();
     const buf0 = a.term.buffer.active, ini = buf0.baseY + buf0.cursorY;   // linha onde o comando começa
-    desde = Date.now(); api.escrever(a.id, c.cmd + "\r");
+    desde = Date.now();
+    if (!(await digitar(c, c.cmd))) { a.roteiro.parar = true; break; }
     await esperarSaida(a, desde);
     for (let n = 0; c.confirmar && n < 3 && /\[\s*Y\s*\/\s*N\s*\]\s*:?\s*$/i.test(linhaCursor(a.term)); n++) {   // "Copy ...? [Y/N]:"
       desde = Date.now(); api.escrever(a.id, "y\r"); await esperarSaida(a, desde, 1500, 120000);
+    }
+    // perguntas do equipamento previstas na Skill ("[Y/N]", "modulus", "[sudo] password"…): responde o que o modelo manda
+    for (let n = 0; (c.respostas || []).length && n < 4 && !a.roteiro.parar; n++) {
+      const ln = linhaCursor(a.term), r = c.respostas.find((x) => { try { return new RegExp(x.padrao, "i").test(ln); } catch (_) { return false; } });
+      if (!r) break;
+      if (!r.enviar && SKL.marcadores(r.modelo || "").length && !Object.keys(c.cofre || {}).length) {
+        toast(`O equipamento perguntou "${ln.trim().slice(-60)}" e o campo da Skill está vazio — Skill interrompida`, "erro");
+        a.roteiro.parar = true; break;
+      }
+      desde = Date.now(); if (!(await digitar(c, r.enviar))) { a.roteiro.parar = true; break; }
+      await esperarSaida(a, desde, 1200, 60000);
     }
     for (let pag = 1; ; pag++) {
       if (a.roteiro.parar) break;
@@ -1398,7 +1720,7 @@ async function executarRoteiro(rot, enviar) {
       }
       // até o limite: evidência de cada página; depois do limite NÃO corta a saída (o fabricante quer tudo):
       // continua paginando até o fim e o conteúdo integral fica no log da sessão (anexado ao PDF)
-      if (pag <= (c.paginas || 8)) { await evidencia(env, rot.nome, a, c.cmd); a.roteiro.evid++; desenharRoteiro(a); }
+      if (pag <= (c.paginas || 8)) { await evidencia(env, rot.nome, a, c.mostra || c.cmd, null, c.segredos); a.roteiro.evid++; desenharRoteiro(a); }
       else if (pag > 2000) { desde = Date.now(); api.escrever(a.id, "\x03"); await esperarSaida(a, desde, 800, 5000); break; }
       a.term.clear(); desde = Date.now(); api.escrever(a.id, " ");   // próxima página
       await esperarSaida(a, desde);
@@ -1422,28 +1744,107 @@ async function abrirRoteiros() {
   ROTEIROS = await api.roteiros();
   const fab = [...new Set(ROTEIROS.map((r) => r.fabricante).filter(Boolean))].sort(), f = $("#rot-filtro");
   f.innerHTML = `<option value="">Todos os fabricantes</option>` + fab.map((x) => `<option>${esc(x)}</option>`).join("");
+  const fin = [...new Set(ROTEIROS.flatMap((r) => r.finalidade || []))].sort((x, y) => x.localeCompare(y)), g = $("#rot-cat");
+  if (g) {
+    g.innerHTML = `<option value="">Toda finalidade</option><option value="@coleta">🔎 Só coleta (consulta)</option><option value="@configuracao">⚙ Só configuração</option>` +
+      fin.map((x) => `<option>${esc(x)}</option>`).join("");
+    g.onchange = desenharRoteiros;
+  }
   $("#rot-busca").value = ""; $("#rot-busca").oninput = desenharRoteiros; f.onchange = desenharRoteiros;
   desenharRoteiros(); abrirModal("#modal-roteiro"); setTimeout(() => $("#rot-busca").focus(), 50);
 }
+const ehConfig = (r) => r && r.tipo_skill === "configuracao";
 function desenharRoteiros() {
   const ul = $("#rot-lista"); ul.innerHTML = "";
-  const a = A(), tipo = a && a.tipo, q = $("#rot-busca").value.trim().toLowerCase(), fab = $("#rot-filtro").value;
+  const a = A(), tipo = a && a.tipo, q = $("#rot-busca").value.trim().toLowerCase(), fab = $("#rot-filtro").value, cat = ($("#rot-cat") || {}).value || "";
   const lista = ROTEIROS.filter((r) => (!fab || r.fabricante === fab) &&
-    (!q || [r.nome, r.fabricante, r.descricao, ...r.comandos.map((c) => c.cmd)].join(" ").toLowerCase().includes(q)));
+    (!cat || (cat === "@coleta" ? !ehConfig(r) : cat === "@configuracao" ? ehConfig(r) : (r.finalidade || []).includes(cat))) &&
+    (!q || [r.nome, r.fabricante, r.descricao, ...(r.finalidade || []), ...r.comandos.map((c) => c.cmd)].join(" ").toLowerCase().includes(q)));
   if (!lista.length) ul.innerHTML = `<li style="cursor:default;color:var(--suave)">Nenhuma Skill encontrada.</li>`;
   lista.sort((x, y) => (x.tipo === tipo ? 0 : 1) - (y.tipo === tipo ? 0 : 1) || x.nome.localeCompare(y.nome)).forEach((r, i) => {
     const li = document.createElement("li");
-    li.innerHTML = `${esc(r.nome)}<small>${esc(r.fabricante || "")} · ${r.comandos.length} comandos${r.tipo === tipo ? '<span class="tag">combina com esta aba</span>' : ""}</small>`;
+    li.innerHTML = `${ehConfig(r) ? '<span class="tag tag-config">⚙ configuração</span> ' : ""}${esc(r.nome)}<small>${esc(r.fabricante || "")} · ${r.comandos.length} comandos${(r.finalidade || []).length ? " · " + esc(r.finalidade.join(", ")) : ""}${r.tipo === tipo ? '<span class="tag">combina com esta aba</span>' : ""}</small>`;
     li.onclick = () => {
       rotSel = r; ul.querySelectorAll("li").forEach((x) => x.classList.remove("sel")); li.classList.add("sel");
       $("#rot-tit").textContent = r.nome; $("#rot-desc").textContent = (r.descricao || "") + (r.somente_leitura ? " · somente leitura" : "");
-      $("#rot-cmds").innerHTML = r.comandos.map((c, i) => `<li><label class="rot-cmd"><input type="checkbox" data-ci="${i}" checked> <span>${esc(c.cmd)}</span> ${c.paginas && c.paginas !== 8 ? `<small>(até ${c.paginas} pág.)</small>` : ""}</label></li>`).join("");
-      desenharSelecaoSkill();
-      $("#rot-cmds").querySelectorAll("[data-ci]").forEach((cb) => (cb.onchange = desenharSelecaoSkill));
-      $("#rot-executar").disabled = false;
+      mostrarSkill(r);
     };
     ul.appendChild(li); if (i === 0) li.click();
   });
+}
+
+// ---- Skill de configuração: 1) perguntas  2) prévia com caixa por comando  3) confirmação explícita ----
+let skillCfg = null;   // { fase: "form"|"previa", valores, cofre, cmds }
+function mostrarSkill(r) {
+  const cfgS = ehConfig(r), el = (id) => $(id);
+  el("#rot-aviso").classList.toggle("oculto", !cfgS);
+  ["#rot-voltar", "#rot-copiar", "#rot-previa"].forEach((x) => el(x).classList.add("oculto"));
+  el("#rot-ciente-l").classList.add("oculto"); el("#rot-ciente").checked = false;
+  if (!cfgS) {
+    skillCfg = null; el("#rot-form").classList.add("oculto"); el("#rot-form").innerHTML = "";
+    el("#rot-executar").classList.remove("oculto");
+    $("#rot-cmds").innerHTML = r.comandos.map((c, i) => `<li><label class="rot-cmd"><input type="checkbox" data-ci="${i}" checked> <span>${esc(c.cmd)}</span> ${c.paginas && c.paginas !== 8 ? `<small>(até ${c.paginas} pág.)</small>` : ""}</label></li>`).join("");
+    $("#rot-cmds").querySelectorAll("[data-ci]").forEach((cb) => (cb.onchange = desenharSelecaoSkill));
+    desenharSelecaoSkill();
+    return;
+  }
+  skillCfg = { fase: "form", valores: {}, cofre: {}, cmds: [] };
+  (r.variaveis || []).forEach((v) => (skillCfg.valores[v.id] = v.padrao == null ? "" : String(v.padrao)));
+  desenharFormSkill(r);
+}
+function desenharFormSkill(r) {
+  skillCfg.fase = "form";
+  const f = $("#rot-form"); f.classList.remove("oculto");
+  $("#rot-cmds").innerHTML = ""; $("#rot-sel").innerHTML = "";
+  $("#rot-executar").classList.add("oculto"); $("#rot-voltar").classList.add("oculto"); $("#rot-copiar").classList.add("oculto");
+  $("#rot-ciente-l").classList.add("oculto"); $("#rot-previa").classList.remove("oculto");
+  const credenciais = (typeof cofre !== "undefined" && cofre) || [];
+  f.innerHTML = `<div class="rot-form-tit">Responda às perguntas — os comandos serão montados com estas respostas</div>` + (r.variaveis || []).map((v) => {
+    const val = skillCfg.valores[v.id] ?? "", obr = v.obrigatorio ? ' <b class="obr" title="obrigatório">*</b>' : "";
+    let campo;
+    if (v.tipo === "lista") campo = `<select data-var="${esc(v.id)}">${SKL.opcoes(v).map((o) => `<option value="${esc(o.valor)}"${o.valor === val ? " selected" : ""}>${esc(o.rotulo)}</option>`).join("")}</select>`;
+    else if (v.tipo === "senha") campo = `<input type="password" data-var="${esc(v.id)}" value="${esc(val)}" autocomplete="new-password" spellcheck="false"${skillCfg.cofre[v.id] ? " disabled" : ""}>` +
+      (credenciais.length ? `<select data-cofre="${esc(v.id)}" title="Usar a senha de uma credencial do cofre (não passa pela interface)"><option value="">digitar</option>${credenciais.map((c) => `<option value="${esc(c.id)}"${skillCfg.cofre[v.id] === c.id ? " selected" : ""}>🔐 ${esc(c.nome)}</option>`).join("")}</select>` : "");
+    else campo = `<input type="text" data-var="${esc(v.id)}" value="${esc(val)}" spellcheck="false" placeholder="${esc(v.tipo === "ip" ? "ex.: 192.168.10.2" : v.tipo === "mascara" ? "ex.: 255.255.255.0" : v.tipo === "vlan" ? "1 a 4094" : v.tipo === "wwn" ? "10:00:00:90:fa:12:34:56" : "")}">`;
+    return `<label class="rot-campo"><span>${esc(v.rotulo || v.id)}${obr}</span><div class="rot-campo-in">${campo}</div>
+      ${v.ajuda ? `<small>${esc(v.ajuda)}</small>` : ""}<em class="rot-erro" data-erro="${esc(v.id)}"></em></label>`;
+  }).join("");
+  f.querySelectorAll("[data-var]").forEach((i) => (i.oninput = i.onchange = () => {
+    skillCfg.valores[i.dataset.var] = i.value; const e = f.querySelector(`[data-erro="${CSS.escape(i.dataset.var)}"]`); if (e) e.textContent = "";
+  }));
+  f.querySelectorAll("[data-cofre]").forEach((s) => (s.onchange = () => {
+    const id = s.dataset.cofre; if (s.value) skillCfg.cofre[id] = s.value; else delete skillCfg.cofre[id];
+    const inp = f.querySelector(`[data-var="${CSS.escape(id)}"]`); inp.disabled = !!s.value; if (s.value) inp.value = skillCfg.valores[id] = "";
+  }));
+}
+function gerarPreviaSkill(r) {
+  const f = $("#rot-form");
+  const erros = SKL.validar(r.variaveis, skillCfg.valores, Object.keys(skillCfg.cofre));
+  f.querySelectorAll("[data-erro]").forEach((e) => (e.textContent = erros[e.dataset.erro] || ""));
+  f.querySelectorAll("[data-var]").forEach((i) => i.classList.toggle("invalido", !!erros[i.dataset.var]));
+  const ids = Object.keys(erros);
+  if (ids.length) { toast(erros[ids[0]] + (ids.length > 1 ? ` (+${ids.length - 1})` : ""), "erro"); return false; }
+  skillCfg.cmds = SKL.montar(r, skillCfg.valores, skillCfg.cofre); skillCfg.fase = "previa";
+  f.classList.add("oculto"); $("#rot-previa").classList.add("oculto");
+  $("#rot-voltar").classList.remove("oculto"); $("#rot-copiar").classList.remove("oculto"); $("#rot-executar").classList.remove("oculto");
+  $("#rot-ciente-l").classList.remove("oculto"); $("#rot-ciente").checked = false;
+  $("#rot-cmds").innerHTML = skillCfg.cmds.map((c) => `<li><label class="rot-cmd"><input type="checkbox" data-ci="${c.i}"${c.marcado === false ? "" : " checked"}> <span class="mono">${esc(c.mostra)}</span>${c.nota ? `<small class="rot-nota">${esc(c.nota)}</small>` : ""}</label></li>`).join("");
+  $("#rot-cmds").querySelectorAll("[data-ci]").forEach((cb) => (cb.onchange = desenharSelecaoSkill));
+  desenharSelecaoSkill();
+  return true;
+}
+function copiarScriptSkill() {
+  if (!skillCfg || skillCfg.fase !== "previa") return;
+  const sel = [...$("#rot-cmds").querySelectorAll("[data-ci]")].filter((c) => c.checked).map((c) => +c.dataset.ci);
+  const cmds = skillCfg.cmds.filter((c) => sel.includes(c.i));
+  if (!cmds.length) return toast("Marque pelo menos um comando", "aviso");
+  const copiar = (txt, msg) => navigator.clipboard.writeText(txt).then(() => toast(msg), () => toast("Não foi possível copiar", "erro"));
+  const temSenha = cmds.some((c) => c.segredos.length && c.cmd !== c.mostra);
+  const mascarado = cmds.map((c) => c.mostra).join("\n") + "\n";
+  if (!temSenha) return copiar(cmds.map((c) => c.cmd).join("\n") + "\n", `📋 Script copiado (${cmds.length} comando(s))`);
+  pedido(`📋 O script tem <b>senha</b>. Copiar com a senha digitada (fica na área de transferência — cuidado) ou com <b>********</b> (você digita a senha ao colar)?`,
+    "Com ********", "Com a senha", (masc) => (masc ? copiar(mascarado, "📋 Script copiado com as senhas ocultas")
+      : copiar(cmds.map((c) => SKL.preencher(c.cmd, {})).join("\n") + "\n", "📋 Script copiado COM a senha — limpe a área de transferência depois")));
 }
 
 // ================= relatório =================
@@ -1671,13 +2072,19 @@ const INFO = {
     <li>A data é conferida <b>na hora de cada print</b>: virou o dia, vai para a pasta do novo dia.</li>
     <li>Numeração: continua do maior número da visita (apagou a última? o número é reaproveitado).</li></ul>
     <p class="nota">⚙ = pasta raiz dos atendimentos (configurada uma vez; hoje: “03 - Atendimentos”).</p>`],
-  roteiro: ["Skills de coleta", `
+  roteiro: ["Skills de coleta e de configuração", `
     <ul><li>Pesquise ou filtre por fabricante, escolha a Skill (Huawei, Cisco, HPE, Fortinet, Juniper, Aruba, Dell, MikroTik, ESXi, Windows, Linux) e clique em <b>Executar</b>.</li>
     <li>O app digita cada comando na aba ativa, espera a saída, <b>tira a evidência de cada tela</b> e avança o
       <b>---- More ----</b> sozinho (com limite de páginas por comando).</li>
     <li>Barra de progresso no terminal, com <b>■ Parar</b> a qualquer momento.</li>
-    <li>Roteiros <b>somente leitura</b>: só aceitam comandos de consulta (display, show, get…). Nada de configuração.</li></ul>
-    <p class="nota">Faça o login no equipamento antes. Automações próprias: arquivos .json na pasta <b>roteiros</b> do app.</p>`],
+    <li>Roteiros <b>somente leitura</b>: só aceitam comandos de consulta (display, show, get…). Nada de configuração.</li>
+    <li>Skills <b>⚙ de configuração</b> (ALTERAM o equipamento): o app faz as <b>perguntas</b> (hostname, IP, VLAN, usuário…), valida as
+      respostas, mostra a <b>prévia</b> dos comandos já preenchidos com caixa por comando e só aplica depois de você marcar
+      “Revisei a prévia e autorizo” e confirmar. Senhas aparecem como <b>********</b> na prévia, nas evidências e no log; podem vir do <b>cofre</b>.
+      <b>📋 Copiar script</b> copia o texto final para colar à mão.</li>
+    <li>Filtre por <b>finalidade</b> (inventário, saúde, VLAN, SSH, zoning…) para achar a Skill pela necessidade.</li></ul>
+    <p class="nota">Faça o login no equipamento antes. Automações próprias: arquivos .json na pasta <b>roteiros</b> do app
+      (campos <code>tipo_skill</code>, <code>finalidade</code>, <code>variaveis</code> e marcadores <code>{{id}}</code> nos comandos).</p>`],
   ultimas: ["Últimas evidências", `<p>Evidências desta execução do app: número, comando e se foi <b>salva</b>, <b>enviada</b> ou
     <b>não enviada</b>. Passe o mouse para ver a aba e o arquivo.</p><p class="nota">Sessões anteriores: botão <b>🕘 Histórico</b>.</p>`],
   abas: ["Abas e conexões", `
@@ -1740,7 +2147,7 @@ function atalho(e) {
 
 // ================= início =================
 window.addEventListener("pywebviewready", async () => {
-  api = window.pywebview.api;
+  api = comAba(window.pywebview.api);   // chamadas do atendimento/destino levam o sid da aba ativa
   const ini = await api.inicial();
   NOME = ini.cfg.nome || ""; MODO_TESTE = ini.teste || "";
   cofre = ini.cofre || [];
@@ -1782,11 +2189,7 @@ window.addEventListener("pywebviewready", async () => {
   $("#tg-gravar").onclick = () => { GRAVAR = !GRAVAR; $("#tg-gravar").classList.toggle("on", GRAVAR); api.salvar_pref("gravar_auto", GRAVAR);
     toast(GRAVAR ? "⏺ Sessões novas serão gravadas (pare em cada aba pelo REC)"
                  : "Sessões novas NÃO serão gravadas — só log em texto (grave uma aba pelo REC se precisar)"); };
-  $("#tg-ativa").onclick = async () => {
-    const a = A(); if (!a || !a.conectado) return toast("Conecte a aba primeiro", "aviso");
-    const r = await api.manter_ativa(a.id, !a.manterAtiva); a.manterAtiva = r.ativo;
-    $("#tg-ativa").classList.toggle("on", a.manterAtiva); toast(r.msg);
-  };
+  $("#tg-ativa").onclick = () => alternarAtiva(A());   // ⏱ da ABA ativa (cada aba tem o seu, também no botão da aba)
   // Enter no endereço = Conectar
   ["#web-url", "#ssh-destino"].forEach((s) => $(s).addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); conectar(); } }));
   // cronômetro de cada aba conectada
@@ -1829,11 +2232,22 @@ window.addEventListener("pywebviewready", async () => {
     if (!rotSel) return;
     const marcados = [...$("#rot-cmds").querySelectorAll("[data-ci]")].filter((c) => c.checked).map((c) => +c.dataset.ci);
     if (!marcados.length) return toast("Marque pelo menos um comando da Skill", "aviso");
+    if (ehConfig(rotSel)) {   // configuração: só depois da prévia + "revisei e autorizo" (e ainda confirma no executar)
+      if (!skillCfg || skillCfg.fase !== "previa") return toast("Responda às perguntas e veja a prévia antes", "aviso");
+      if (!$("#rot-ciente").checked) return toast("Marque “Revisei a prévia e autorizo” para aplicar", "aviso");
+      $("#modal-roteiro").classList.add("oculto");
+      return executarRoteiro({ ...rotSel, comandos: skillCfg.cmds.filter((c) => marcados.includes(c.i)) }, $("#rot-enviar").checked);
+    }
     $("#modal-roteiro").classList.add("oculto");
     executarRoteiro({ ...rotSel, comandos: rotSel.comandos.filter((_, i) => marcados.includes(i)) }, $("#rot-enviar").checked);   // só os marcados
   };
+  $("#rot-previa").onclick = () => rotSel && skillCfg && gerarPreviaSkill(rotSel);
+  $("#rot-voltar").onclick = () => rotSel && skillCfg && desenharFormSkill(rotSel);
+  $("#rot-copiar").onclick = copiarScriptSkill;
+  $("#rot-ciente").onchange = desenharSelecaoSkill;
   $("#btn-compartilhar").onclick = () => compartilhar();
   $("#btn-entrar").onclick = () => entrarSessao();
+  iniciarCelular();
   $("#btn-tema").onclick = (e) => { e.stopPropagation(); abrirTemas(); };
   document.addEventListener("mousedown", (e) => { if (!e.target.closest("#tema-pop, #btn-tema")) $("#tema-pop").classList.add("oculto"); });
   $("#cliente-sel").onchange = async (e) => {
@@ -2223,12 +2637,24 @@ async function autoteste() {
     usuario_ok: !!m && m[1] === "usuario_teste", senha_ok: !!m && m[2] === "senha_teste_123" }));
 }
 
-// menus dos tipos de conexão (abrir/fechar): independente do resto da inicialização
-function fecharMenusTipos() { document.querySelectorAll("#abas .submenu").forEach((m) => m.classList.add("oculto")); }
-document.querySelectorAll("#abas .grupo-btn").forEach((g) => g.addEventListener("click", (e) => {
-  e.stopPropagation(); const m = g.nextElementSibling, abrir = m.classList.contains("oculto"); fecharMenusTipos(); m.classList.toggle("oculto", !abrir);
-}));
-document.addEventListener("click", fecharMenusTipos);
+// categorias dos tipos de conexão (barra segmentada): independente do resto da inicialização.
+// Equipamentos já escolhe o tipo (Serial/SSH/Web só preenchem o destino); Shell/Nuvem/IA só mostram os tipos (abrem ao clicar no tipo).
+document.querySelectorAll("#abas .cat").forEach((c) => {
+  const ir = () => {
+    const cat = c.dataset.cat; mostrarCategoria(cat);
+    const ativo = document.querySelector(`#abas .tipos-grupo[data-cat="${cat}"] button.ativa`);
+    if (cat === "equip" && !ativo) {
+      const a = A(); if (a && a.conectado) return;   // aba conectada: só mostra; o tipo muda ao abrir uma aba nova
+      selecionarTipo(c.dataset.ultimo || "serial");
+    }
+  };
+  c.addEventListener("click", ir);
+  c.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); ir(); } });
+});
+$("#tipos").addEventListener("wheel", (e) => { const t = e.currentTarget; if (e.deltaY && t.scrollWidth > t.clientWidth) { e.preventDefault(); t.scrollLeft += e.deltaY; } }, { passive: false });
+$("#tipos").addEventListener("scroll", bordasTipos, { passive: true });
+window.addEventListener("resize", ajustarTipos);
+ajustarTipos();
 
 // ---- licença / convite: mostra o plano e ativa um código recebido (conferido offline pelo backend) ----
 async function desenharLicenca() {
@@ -2250,7 +2676,7 @@ $("#lic-ativar").onclick = async () => {
 
 // clique nos tipos de conexão (ligado no carregamento: funciona antes mesmo do backend responder)
 document.querySelectorAll("#abas [data-tipo]").forEach((b) => b.addEventListener("click", async () => {
-  fecharMenusTipos(); const tipo = b.dataset.tipo;
+  const tipo = b.dataset.tipo;
   if (!DIRETOS.includes(tipo)) {   // Serial / SSH / Web: escolhe o tipo e preenche o destino ao lado
     const a = A(); if (a && a.conectado) return toast("Desconecte esta aba ou abra uma nova (＋) para outro tipo", "aviso");
     return selecionarTipo(tipo);
@@ -2269,8 +2695,10 @@ function desenharSelecaoSkill() {
   const t = $("#rot-sel").querySelector("[data-todos]"), z = $("#rot-sel").querySelector("[data-nenhum]");
   if (t) t.onclick = () => { cbs.forEach((c) => (c.checked = true)); desenharSelecaoSkill(); };
   if (z) z.onclick = () => { cbs.forEach((c) => (c.checked = false)); desenharSelecaoSkill(); };
-  $("#rot-executar").disabled = !n;
-  $("#rot-executar").textContent = n === cbs.length ? "▶ Executar na aba ativa" : `▶ Executar ${n} comando(s) na aba ativa`;
+  const cfgS = ehConfig(rotSel), ciente = $("#rot-ciente") && $("#rot-ciente").checked;
+  $("#rot-executar").disabled = !n || (cfgS && (!skillCfg || skillCfg.fase !== "previa" || !ciente));
+  $("#rot-executar").textContent = cfgS ? `⚠ Aplicar ${n} comando(s) na aba ativa` : n === cbs.length ? "▶ Executar na aba ativa" : `▶ Executar ${n} comando(s) na aba ativa`;
+  $("#rot-executar").classList.toggle("perigo", !!cfgS);
 }
 
 // ================= 🗂 BIBLIOTECA: sessões, gravações, evidências, logs, relatórios e Skills num só lugar =================
@@ -2353,14 +2781,14 @@ function desenharBib() {
       L.appendChild(c);
     });
   } else if (BIB.sec === "skills") {
-    const lista = BIB.skills.filter((r) => tem(`${r.nome} ${r.fabricante} ${r.descricao} ${(r.comandos || []).map((c) => c.cmd).join(" ")}`));
+    const lista = BIB.skills.filter((r) => tem(`${r.nome} ${r.fabricante} ${r.descricao} ${(r.finalidade || []).join(" ")} ${(r.comandos || []).map((c) => c.cmd).join(" ")}`));
     info.textContent = `${lista.length} Skill(s)`;
     const grupos = {}; lista.forEach((r) => (grupos[r.fabricante || "Outros"] = grupos[r.fabricante || "Outros"] || []).push(r));
     Object.keys(grupos).sort().forEach((fab) => {
       const h = document.createElement("div"); h.className = "bib-grupo"; h.textContent = fab; L.appendChild(h);
       grupos[fab].forEach((r) => {
         const c = document.createElement("div"); c.className = "bib-item";
-        c.innerHTML = `<div class="bib-l1"><b>⚡ ${esc(r.nome)}</b> <span class="bib-meta">${(r.comandos || []).length} comando(s)${r.somente_leitura ? " · somente leitura" : ""}</span></div>
+        c.innerHTML = `<div class="bib-l1"><b>${r.tipo_skill === "configuracao" ? "⚙" : "⚡"} ${esc(r.nome)}</b> <span class="bib-meta">${(r.comandos || []).length} comando(s)${r.somente_leitura ? " · somente leitura" : ""}${r.tipo_skill === "configuracao" ? " · ALTERA a configuração" : ""}${(r.finalidade || []).length ? " · " + esc(r.finalidade.join(", ")) : ""}</span></div>
           <div class="bib-l2 bib-meta">${esc(r.descricao || "")}</div>
           <div class="bib-acoes"><button class="btn mini" data-usar>Abrir para executar</button></div>`;
         c.querySelector("[data-usar]").onclick = async () => {
@@ -2392,3 +2820,113 @@ function desenharLogBib(q) {
 }
 $("#bib-nav").querySelectorAll("[data-sec]").forEach((b) => (b.onclick = () => { BIB.filtroEv = null; irBib(b.dataset.sec); }));
 $("#bib-busca").addEventListener("input", () => desenharBib());
+// ================= 📨 Canais de envio (e-mail / Telegram) =================
+// Configura e testa os canais. Senha do e-mail e token do bot vão para o cofre DPAPI (Python) e NUNCA voltam
+// para a tela: o campo fica vazio e "vazio = manter". O seletor de destino por aba usa api.enviar_destino().
+const CANAIS = { atual: "email", lista: [] };
+function canaisMsg(txt, cls = "") { const m = $("#canais-msg"); m.textContent = txt || ""; m.className = "canais-msg " + cls; }
+function canaisCfg(nome) { return (CANAIS.lista.find((c) => c.canal === nome) || {}).config || {}; }
+function canaisMostrar(nome) {
+  CANAIS.atual = nome;
+  document.querySelectorAll("#canais-abas [data-canal]").forEach((b) => b.classList.toggle("ativo", b.dataset.canal === nome));
+  $("#cn-email").classList.toggle("oculto", nome !== "email");
+  $("#cn-telegram").classList.toggle("oculto", nome !== "telegram");
+  const item = CANAIS.lista.find((c) => c.canal === nome), sit = $("#canais-sit");
+  sit.textContent = item && item.configurado ? "✔ configurado" : "não configurado";
+  sit.className = "canais-sit" + (item && item.configurado ? " ok" : "");
+  $("#cn-alvo-teste").placeholder = nome === "email" ? "e-mail (vazio = só confere o login)" : "chat_id (vazio = só confere o token)";
+  document.querySelectorAll("#modal-canais .invalido").forEach((e) => e.classList.remove("invalido"));
+  canaisMsg("");
+}
+function canaisPreencher() {
+  const e = canaisCfg("email"), t = canaisCfg("telegram");
+  $("#cn-em-servidor").value = e.servidor || ""; $("#cn-em-porta").value = e.porta || "";
+  $("#cn-em-seguranca").value = e.seguranca || "starttls"; $("#cn-em-usuario").value = e.usuario || "";
+  $("#cn-em-remetente").value = e.remetente || ""; $("#cn-em-nome").value = e.nome_remetente || "";
+  $("#cn-em-padrao").value = e.padrao || ""; $("#cn-em-senha").value = "";
+  $("#cn-em-senha").placeholder = e.tem_senha ? "•••••••• guardada no cofre (vazio = manter)" : "senha (ou senha de app)";
+  $("#cn-tg-token").value = ""; $("#cn-tg-padrao").value = t.padrao || ""; $("#cn-tg-arquivo").checked = !!t.foto_como_arquivo;
+  $("#cn-tg-token").placeholder = t.tem_token ? "•••••••• guardado no cofre (vazio = manter)" : "123456789:AA… (do @BotFather)";
+  $("#cn-tg-chats").innerHTML = "";
+}
+function canaisDados() {
+  if (CANAIS.atual === "email") {
+    const seg = $("#cn-em-seguranca").value;
+    return { servidor: $("#cn-em-servidor").value.trim(), porta: Number($("#cn-em-porta").value) || (seg === "ssl" ? 465 : 587),
+             seguranca: seg, usuario: $("#cn-em-usuario").value.trim(), senha: $("#cn-em-senha").value,
+             remetente: $("#cn-em-remetente").value.trim(), nome_remetente: $("#cn-em-nome").value.trim(),
+             padrao: $("#cn-em-padrao").value.trim() };
+  }
+  return { token: $("#cn-tg-token").value.trim(), padrao: $("#cn-tg-padrao").value.trim(), foto_como_arquivo: $("#cn-tg-arquivo").checked };
+}
+// mesma validação do Python (envio.py) — aqui só para marcar o campo errado na hora
+function canaisValidar(d) {
+  const err = [], marca = (sel, msg) => { $(sel).classList.add("invalido"); err.push(msg); };
+  document.querySelectorAll("#modal-canais .invalido").forEach((e) => e.classList.remove("invalido"));
+  const email = (x) => /^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+$/.test(x);
+  if (CANAIS.atual === "email") {
+    if (!d.servidor) marca("#cn-em-servidor", "Informe o servidor SMTP.");
+    if (!(d.porta >= 1 && d.porta <= 65535)) marca("#cn-em-porta", "Porta inválida.");
+    const rem = d.remetente || d.usuario;
+    if (!rem || !email(rem)) marca(d.remetente ? "#cn-em-remetente" : "#cn-em-usuario", "Informe o e-mail do remetente.");
+    if (d.usuario && !d.senha && !canaisCfg("email").tem_senha) marca("#cn-em-senha", "Informe a senha (ou senha de app).");
+    const ruins = d.padrao.split(/[,;]/).map((x) => x.trim()).filter(Boolean).filter((x) => !email(x));
+    if (ruins.length) marca("#cn-em-padrao", "Destinatário inválido: " + ruins[0]);
+  } else {
+    if (d.token && !/^\d+:[\w-]{20,}$/.test(d.token)) marca("#cn-tg-token", "Token inválido (formato 123456789:AA…).");
+    if (!d.token && !canaisCfg("telegram").tem_token) marca("#cn-tg-token", "Informe o token do bot.");
+    if (d.padrao && !/^(-?\d{3,}|@\w{4,})$/.test(d.padrao)) marca("#cn-tg-padrao", "chat_id inválido (número ou @canal).");
+  }
+  return err;
+}
+async function abrirCanais() {
+  abrirModal("#modal-canais");
+  try { CANAIS.lista = api ? await api.envio_canais() : []; } catch (e) { CANAIS.lista = []; }
+  canaisPreencher(); canaisMostrar(CANAIS.atual);
+}
+async function canaisSalvar() {
+  const d = canaisDados(), err = canaisValidar(d);
+  if (err.length) { canaisMsg(err[0], "erro"); return false; }
+  if (!api) { canaisMsg("Indisponível fora do aplicativo.", "erro"); return false; }
+  canaisMsg("Salvando…");
+  const r = await api.envio_configurar(CANAIS.atual, d);
+  if (!r.ok) { canaisMsg(r.erro || "Não foi possível salvar.", "erro"); return false; }
+  CANAIS.lista = r.canais || CANAIS.lista; canaisPreencher(); canaisMostrar(CANAIS.atual);
+  canaisMsg("✔ Salvo. Segredo guardado no cofre do Windows.", "ok"); return true;
+}
+(function ligarCanais() {
+  if (!$("#modal-canais")) return;
+  $("#btn-canais").onclick = (ev) => { ev.stopPropagation(); abrirCanais(); };
+  $("#modal-canais [data-fecha]").onclick = (ev) => fecharModal(ev.target);
+  document.querySelectorAll("#canais-abas [data-canal]").forEach((b) => (b.onclick = () => canaisMostrar(b.dataset.canal)));
+  $("#cn-em-seguranca").onchange = () => { const p = $("#cn-em-porta");
+    if (!p.value || p.value === "587" || p.value === "465") p.value = $("#cn-em-seguranca").value === "ssl" ? 465 : 587; };
+  $("#cn-salvar").onclick = canaisSalvar;
+  $("#cn-testar").onclick = async () => {
+    const d = canaisDados();
+    const novo = CANAIS.atual === "email" ? !!(d.senha || d.servidor !== (canaisCfg("email").servidor || "")) : !!d.token;
+    if (novo && !(await canaisSalvar())) return;       // testa o que está na tela
+    if (!api) return canaisMsg("Indisponível fora do aplicativo.", "erro");
+    canaisMsg("Testando…");
+    const r = await api.envio_testar(CANAIS.atual, $("#cn-alvo-teste").value.trim());
+    canaisMsg(r.ok ? "✔ " + (r.msg || "Funcionou.") : "✖ " + (r.erro || "Falhou."), r.ok ? "ok" : "erro");
+  };
+  $("#cn-remover").onclick = async () => {
+    if (!api || !confirm("Remover a configuração deste canal (inclui o segredo no cofre)?")) return;
+    const r = await api.envio_configurar(CANAIS.atual, { remover: true });
+    if (r.ok) { CANAIS.lista = r.canais; canaisPreencher(); canaisMostrar(CANAIS.atual); canaisMsg("Canal removido.", "ok"); }
+  };
+  $("#cn-tg-descobrir").onclick = async () => {
+    const d = canaisDados();
+    if (d.token && !(await canaisSalvar())) return;
+    if (!api) return canaisMsg("Indisponível fora do aplicativo.", "erro");
+    canaisMsg("Lendo as mensagens recebidas pelo bot…");
+    const r = await api.envio_telegram_chats(), ul = $("#cn-tg-chats"); ul.innerHTML = "";
+    if (!r.ok) return canaisMsg("✖ " + r.erro, "erro");
+    (r.chats || []).forEach((c) => { const li = document.createElement("li");
+      li.textContent = `${c.nome} · ${c.chat_id}`; li.title = "Usar este chat_id";
+      li.onclick = () => { $("#cn-tg-padrao").value = c.chat_id; $("#cn-alvo-teste").value = c.chat_id; canaisMsg("chat_id escolhido — clique em Salvar."); };
+      ul.appendChild(li); });
+    canaisMsg(r.chats && r.chats.length ? "Clique no chat para usar o chat_id." : r.dica, r.chats && r.chats.length ? "ok" : "");
+  };
+})();

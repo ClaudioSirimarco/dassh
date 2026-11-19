@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src wss://broker.emqx.io:8084 wss://test.mosquitto.org:8081; worker-src 'self' blob:; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0f14">
+<meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="DASSH">
+<title>DASSH Conectado</title>
+<link rel="stylesheet" href="vendor/xterm.css">
+<style>
+  :root { --fundo: #0b0f14; --cartao: #131a22; --borda: #233041; --texto: #e6edf3; --suave: #8b98a8; --verde: #00dc78; --verde2: #5ee0b5;
+          --amarelo: #f0c674; --vermelho: #ff6b6b; --azul: #6cb6ff; --raio: 14px; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: var(--fundo); color: var(--texto);
+               font: 15px/1.4 -apple-system, "Segoe UI", Roboto, sans-serif; }
+  body { display: flex; flex-direction: column; min-height: 100dvh; padding-bottom: env(safe-area-inset-bottom); }
+  header { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 10px; padding: calc(10px + env(safe-area-inset-top)) 16px 10px;
+           background: rgba(11, 15, 20, .94); border-bottom: 1px solid var(--borda); backdrop-filter: blur(8px); }
+  .marca { font-weight: 800; letter-spacing: .5px; }
+  .marca span { color: var(--verde); }
+  .pilula { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-radius: 99px; font-size: 13px;
+            background: #1c2430; color: var(--suave); border: 1px solid var(--borda); max-width: 62vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pilula .bola { width: 8px; height: 8px; border-radius: 50%; background: currentColor; flex: none; }
+  .pilula.on { color: var(--verde); border-color: #1d5f45; background: #0f2a20; }
+  .pilula.meio { color: var(--amarelo); border-color: #5f4f1d; background: #2a240f; }
+  main { flex: 1; padding: 16px; display: flex; flex-direction: column; gap: 14px; max-width: 720px; width: 100%; margin: 0 auto; }
+  .tela { display: none; flex-direction: column; gap: 14px; }
+  .tela.ativa { display: flex; }
+  .cartao { background: var(--cartao); border: 1px solid var(--borda); border-radius: var(--raio); padding: 16px; }
+  h1 { font-size: 20px; margin: 0 0 4px; } h2 { font-size: 16px; margin: 0 0 10px; color: var(--suave); font-weight: 600; }
+  p { margin: 6px 0; color: var(--suave); }
+  label { display: block; font-size: 13px; color: var(--suave); margin: 10px 0 4px; }
+  input, select { width: 100%; font: inherit; font-size: 16px; color: var(--texto); background: #0e141b; border: 1px solid var(--borda);
+                  border-radius: 10px; padding: 12px; }
+  #par-codigo { font: 600 20px Consolas, monospace; letter-spacing: 2px; text-transform: uppercase; text-align: center; }
+  button { font: inherit; border: 0; cursor: pointer; border-radius: 12px; padding: 12px 16px; color: var(--texto); background: #223041; }
+  button:disabled { opacity: .5; }
+  .primario { background: var(--verde); color: #04140d; font-weight: 700; }
+  .perigo { background: #3a1d22; color: var(--vermelho); }
+  .largo { width: 100%; margin-top: 14px; padding: 14px; font-size: 16px; }
+  .linha { display: flex; gap: 8px; align-items: center; }
+  .linha > * { flex: 1; }
+  .msg { min-height: 20px; font-size: 14px; } .msg.erro { color: var(--vermelho); } .msg.ok { color: var(--verde2); }
+  .sas { font: 700 26px Consolas, monospace; letter-spacing: 4px; color: var(--verde2); text-align: center; margin: 8px 0; }
+  .aba-card { display: flex; align-items: center; gap: 12px; padding: 12px; border: 1px solid var(--borda); border-radius: 12px; background: #0f151c; }
+  .aba-card + .aba-card { margin-top: 10px; }
+  .aba-card .ic { font-size: 22px; width: 34px; text-align: center; }
+  .aba-card .txt { flex: 1; min-width: 0; }
+  .aba-card b { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .aba-card small { color: var(--suave); display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .aba-card .acoes { display: flex; gap: 6px; } .aba-card .acoes button { padding: 10px 12px; font-size: 14px; }
+  .selo { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 99px; background: #0f2a20; color: var(--verde); margin-left: 4px; }
+  .selo.pc { background: #1c2430; color: var(--suave); }
+  .vazio { text-align: center; color: var(--suave); padding: 18px 0; }
+  .seg { display: flex; background: #0e141b; border: 1px solid var(--borda); border-radius: 12px; padding: 3px; gap: 3px; }
+  .seg button { flex: 1; padding: 10px 4px; background: transparent; color: var(--suave); font-size: 14px; }
+  .seg button.sel { background: #223041; color: var(--texto); font-weight: 600; }
+  /* terminal */
+  #tela-term { flex: 1; gap: 8px; margin: -16px; }
+  .term-topo { display: flex; align-items: center; gap: 8px; padding: 10px 12px 0; }
+  .term-topo b { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .term-topo button { padding: 9px 12px; font-size: 14px; }
+  .papel { font-size: 12px; padding: 3px 9px; border-radius: 99px; background: #2a240f; color: var(--amarelo); white-space: nowrap; }
+  .papel.ativo { background: #0f2a20; color: var(--verde); }
+  #term-caixa { margin: 0 8px; border: 1px solid var(--borda); border-radius: 10px; background: #000; overflow: auto; -webkit-overflow-scrolling: touch;
+                padding: 4px; min-height: 40vh; }
+  .teclas { display: flex; gap: 6px; overflow-x: auto; padding: 0 8px 2px; scrollbar-width: none; }
+  .teclas button { flex: none; padding: 10px 12px; font: 600 14px Consolas, monospace; background: #1a2330; border: 1px solid var(--borda); }
+  .entrada { display: flex; gap: 8px; padding: 0 8px 10px; }
+  .entrada input { flex: 1; font-family: Consolas, monospace; }
+  .entrada button { flex: none; }
+  .toast { position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom)); transform: translateX(-50%) translateY(120px);
+           background: #223041; color: var(--texto); padding: 11px 16px; border-radius: 12px; max-width: 92vw; transition: transform .25s; z-index: 9;
+           box-shadow: 0 6px 24px rgba(0, 0, 0, .5); font-size: 14px; }
+  .toast.on { transform: translateX(-50%) translateY(0); } .toast.erro { background: #3a1d22; }
+  .rodape { text-align: center; font-size: 12px; color: var(--suave); }
+</style>
+</head>
+<body>
+<header>
+  <div class="marca">D<span>A</span>SSH <small style="font-weight:500;color:var(--suave)">Conectado</small></div>
+  <div class="pilula" id="estado"><span class="bola"></span><span id="estado-txt">Desconectado</span></div>
+</header>
+<main>
+  <!-- 1) pareamento -->
+  <section class="tela" id="tela-parear">
+    <div class="cartao">
+      <h1>📱 Parear este celular</h1>
+      <p>No PC, abra o DASSH Console e toque em <b>📱 Celular → Parear celular</b>. Escaneie o QR ou digite o código (vale 5 minutos, uma vez só).</p>
+      <label for="par-codigo">Código de pareamento</label>
+      <input id="par-codigo" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="16" placeholder="ABCD-EFGH-JKLM">
+      <label for="par-nome">Nome deste aparelho</label>
+      <input id="par-nome" maxlength="40" placeholder="ex.: iPhone do Claudio">
+      <button class="primario largo" id="par-btn">Parear</button>
+      <div class="msg" id="par-msg"></div>
+    </div>
+    <p class="rodape">🔒 As chaves deste aparelho são criadas aqui e nunca saem dele. O servidor de retransmissão só vê dados cifrados.</p>
+  </section>
+
+  <!-- 2) PC pareado: conectar / lista de sessões -->
+  <section class="tela" id="tela-sessoes">
+    <div class="cartao" id="cartao-pc">
+      <div class="linha" style="align-items:flex-start">
+        <div><h1 id="pc-nome">PC</h1><p id="pc-info">Pareado</p></div>
+        <button class="primario" id="btn-conectar" style="flex:none">Conectar</button>
+      </div>
+      <div class="msg" id="con-msg"></div>
+      <div id="sas-caixa" style="display:none"><p>Confira no PC (lista de aparelhos) este número:</p><div class="sas" id="sas"></div></div>
+    </div>
+    <div class="cartao" id="cartao-abas" style="display:none">
+      <h2>Sessões abertas no PC</h2>
+      <div id="lista-abas"><div class="vazio">Nenhuma aba de terminal aberta.</div></div>
+    </div>
+    <div class="cartao" id="cartao-nova" style="display:none">
+      <h2>Abrir uma aba nova no PC</h2>
+      <div class="seg" id="nova-tipo"><button data-tipo="serial" class="sel">🔌 Serial</button><button data-tipo="powershell">⚡ PowerShell</button><button data-tipo="ssh">🔐 SSH</button></div>
+      <div id="nova-serial"><div class="linha"><div><label for="nova-porta">Porta</label><select id="nova-porta"></select></div>
+        <div style="flex:.7"><label for="nova-baud">Velocidade</label><select id="nova-baud"><option>9600</option><option>19200</option><option>38400</option><option>57600</option><option>115200</option></select></div></div></div>
+      <div id="nova-ssh" style="display:none"><label for="nova-destino">Destino</label><input id="nova-destino" placeholder="usuario@10.0.0.1" autocapitalize="off" autocorrect="off" spellcheck="false"></div>
+      <button class="primario largo" id="nova-btn">Abrir no PC</button>
+      <div class="msg" id="nova-msg"></div>
+    </div>
+    <div class="linha"><button class="perigo" id="btn-desconectar" style="display:none">Desconectar</button><button id="btn-esquecer">Esquecer este PC</button></div>
+  </section>
+
+  <!-- 3) terminal -->
+  <section class="tela" id="tela-term">
+    <div class="term-topo">
+      <button id="btn-voltar" title="Voltar à lista">‹</button>
+      <b id="term-nome">Aba</b>
+      <span class="papel" id="term-papel">assistindo</span>
+      <button class="primario" id="btn-controle">Assumir</button>
+    </div>
+    <div id="term-caixa"><div id="term"></div></div>
+    <div class="teclas" id="teclas">
+      <button data-tecla="ctrlc">Ctrl+C</button><button data-tecla="tab">Tab</button><button data-tecla="esc">Esc</button>
+      <button data-tecla="cima">↑</button><button data-tecla="baixo">↓</button><button data-tecla="esq">←</button><button data-tecla="dir">→</button>
+      <button data-tecla="enter">⏎</button><button data-tecla="ctrld">Ctrl+D</button><button data-tecla="ctrlz">Ctrl+Z</button>
+      <button data-tecla="ctrll">Ctrl+L</button><button data-tecla="espaco">Espaço</button><button data-tecla="q">q</button><button data-tecla="zoom">A±</button>
+    </div>
+    <div class="entrada">
+      <input id="cmd-linha" placeholder="digite o comando…" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" enterkeyhint="send">
+      <button class="primario" id="cmd-enviar">Enviar ⏎</button>
+    </div>
+  </section>
+</main>
+<div class="toast" id="toast"></div>
+<script src="vendor/mqtt.min.js"></script>
+<script src="vendor/xterm.js"></script>
+<script type="module" src="ponte-remota.js"></script>
+</body>
+</html>

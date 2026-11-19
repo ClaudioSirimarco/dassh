@@ -41,7 +41,7 @@
   const msg = (t, erro) => { const e = tela.querySelector("#par-msg"); e.textContent = t; e.style.color = erro ? "#ff8b8b" : "#c9d1d9"; };
   const mostrar = () => { if (!tela.isConnected) document.body.appendChild(tela); };
   tela.querySelector("#par-abrir").onclick = () => acionar(true);
-  tela.querySelector("#par-ir").onclick = () => { const v = tela.querySelector("#par-cred").value.trim(); if (/^\d{2,5}\.[A-Za-z0-9_-]{16,}$/.test(v)) { cred = v; gravarSessao(v); conectar(); } else msg("Formato: PORTA.CÓDIGO (ex.: 8977.abc…)", true); };
+  tela.querySelector("#par-ir").onclick = () => { ws_.manual = true; const v = tela.querySelector("#par-cred").value.trim(); if (/^\d{2,5}\.[A-Za-z0-9_-]{16,}$/.test(v)) { cred = v; gravarSessao(v); conectar(); } else msg("Formato: PORTA.CÓDIGO (ex.: 8977.abc…)", true); };
   tela.querySelector("#par-cred").onkeydown = (e) => { if (e.key === "Enter") tela.querySelector("#par-ir").click(); };
 
   // ---- RPC ----
@@ -79,14 +79,18 @@
       document.body.appendChild(a); a.click(); a.remove();
     } catch (_) {}
     const ate = Date.now() + 30000;
-    while (Date.now() < ate) {
+    ws_.manual = false;
+    while (Date.now() < ate && !ws_.manual) {
       for (const p of PORTAS) {
+        if (ws_.manual) { ws_.acionando = false; return; }   // o usuário preferiu digitar o código: para a busca automática
         if (await testar(p, S, 600)) { cred = p + "." + S; gravarSessao(cred); ws_.acionando = false; msg("Conectado. Carregando…"); return conectar(); }
       }
+      if (ws_.manual) { ws_.acionando = false; return; }
       msg("Aguardando o DASSH Conector responder… (se o navegador perguntou, clique em Abrir)");
       await dormir(700);
     }
     ws_.acionando = false;
+    if (ws_.manual) return;
     msg(peloBotao ? "O Conector não respondeu. Ele está instalado? Veja \"Ainda não tenho o Conector\"." :
       "Não encontrei o DASSH Conector. Clique em \"Abrir o DASSH Conector\" ou instale-o pelo link ao lado.", true);
   }
