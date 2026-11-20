@@ -4328,5 +4328,6 @@ function chatEfeitoDigitar(el) {
   f.before(bar);
 })();
 (function chatBolhaLogo() {
-  const ic = document.querySelector(".chat-bolha-ic"); if (ic) ic.innerHTML = '<img src="logo.svg" alt="">';
+  const ic = document.querySelector(".chat-bolha-ic"), lg = document.getElementById("logo");   // logo embutido (vale em qualquer página)
+  if (ic && lg) { const c = lg.cloneNode(true); c.removeAttribute("id"); c.setAttribute("class", "chat-logo"); ic.textContent = ""; ic.appendChild(c); }
 })();
