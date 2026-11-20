@@ -85,6 +85,136 @@
     abrir_link: async (u) => { window.open(u, "_blank", "noopener"); return true; },
   };
   const api = new Proxy({}, { get: (_, nome) => (typeof nome === "string" && nome !== "then") ? (...a) => (EXTRAS[nome] ? EXTRAS[nome](...a) : rpc(nome, a)) : undefined });
+  const nunca = () => new Promise(() => {});
+
+  // =================================================================================================================
+  // ☁ CONTA DASSH NO NAVEGADOR (portal): o login acontece aqui, direto no servidor de contas (Supabase Auth, chave PUBLICÁVEL),
+  // sem precisar do Conector. É a MESMA conta do app e do Conector (nuvem.py). Quando o computador conecta (Conector ou celular
+  // pareado), a página entrega o access token e o computador o confere no servidor e abre a mesma conta: um login só.
+  // "Lembrar de mim" = localStorage; sem lembrar = só esta aba (sessionStorage).
+  // =================================================================================================================
+  const NUVEM_URL = "https://hxrdhetvrejiyrfdcfjo.supabase.co", NUVEM_CHAVE = "sb_publishable_v8iFSJ-BblooLQidj2XXyw_iQ63m5GR";
+  const K_NV = "dassh.nuvem.web", K_PKCE = "dassh.pkce";
+  const VOLTA = location.origin + location.pathname;
+  const PROVS = [["google", "Google"], ["azure", "Microsoft"], ["apple", "Apple"], ["github", "GitHub"]];
+  const TRADUZ = [["invalid login credentials", "E-mail ou senha incorretos."],
+    ["email not confirmed", "Confirme o seu e-mail (abra o link que enviamos) e entre de novo."],
+    ["user already registered", "Já existe uma conta com este e-mail. Use \"Entrar\"."],
+    ["password should be at least", "A senha precisa ter pelo menos 8 caracteres."],
+    ["unable to validate email address", "E-mail inválido."],
+    ["email rate limit exceeded", "Muitos e-mails enviados agora. Tente de novo em alguns minutos."],
+    ["for security purposes", "Aguarde alguns segundos e tente de novo."],
+    ["provider is not enabled", "Este tipo de login ainda não está ativado."]];
+  const nv = {
+    ler() { for (const st of [sessionStorage, localStorage]) { try { const d = JSON.parse(st.getItem(K_NV) || "null"); if (d && d.access_token) return d; } catch (_) {} } return null; },
+    gravar(d) {
+      try { sessionStorage.removeItem(K_NV); localStorage.removeItem(K_NV); } catch (_) {}
+      if (d) try { (d.lembrar ? localStorage : sessionStorage).setItem(K_NV, JSON.stringify(d)); } catch (_) {}
+    },
+    async req(metodo, caminho, corpo, token) {
+      let r;
+      try {
+        r = await fetch(NUVEM_URL + caminho, { method: metodo, body: corpo === undefined ? undefined : JSON.stringify(corpo),
+          headers: { apikey: NUVEM_CHAVE, "Content-Type": "application/json", Authorization: "Bearer " + (token || NUVEM_CHAVE) } });
+      } catch (_) { const e = new Error("Sem conexão com o servidor de contas."); e.semRede = true; throw e; }
+      const t = await r.text(); let d = {}; try { d = t ? JSON.parse(t) : {}; } catch (_) {}
+      if (!r.ok) {
+        const m = String(d.error_description || d.msg || d.message || d.error || "").toLowerCase();
+        const tr = TRADUZ.find(([k]) => m.includes(k));
+        throw new Error(tr ? tr[1] : "O servidor de contas recusou (" + r.status + ")" + (m ? ": " + m : "."));
+      }
+      return d;
+    },
+    aceitar(r, lembrar) {
+      const u = r.user || {}, meta = u.user_metadata || {};
+      if (!r.access_token || !u.id) throw new Error("Resposta inesperada do servidor de contas.");
+      const d = { access_token: r.access_token, refresh_token: r.refresh_token || "", expira: Date.now() + ((+r.expires_in || 3600) - 60) * 1000,
+        uid: u.id, email: String(u.email || meta.email || "").toLowerCase(), nome: meta.full_name || meta.name || meta.user_name || "", lembrar: !!lembrar };
+      nv.gravar(d); return d;
+    },
+    async valida() {   // sessão válida (renova sozinha perto de expirar) ou null
+      await nv.retorno;
+      const d = nv.ler(); if (!d) return null;
+      if (Date.now() < d.expira) return d;
+      if (!d.refresh_token) { nv.gravar(null); return null; }
+      try { return nv.aceitar(await nv.req("POST", "/auth/v1/token?grant_type=refresh_token", { refresh_token: d.refresh_token }), d.lembrar); }
+      catch (e) { if (!e.semRede) nv.gravar(null); return null; }
+    },
+    async provedores() {
+      if (!nv._prov) nv._prov = nv.req("GET", "/auth/v1/settings").then((x) => x.external || {}).catch(() => ({}));
+      const ext = await nv._prov;
+      return PROVS.map(([id, nome]) => ({ id, nome, disponivel: !!ext[id] }));
+    },
+    retorno: null, erroRetorno: "",
+  };
+  const b64url = (b) => btoa(String.fromCharCode(...new Uint8Array(b))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  (function retornoDoLogin() {   // volta do Google/GitHub (PKCE): troca o código pela sessão e limpa a barra de endereços
+    const qs = new URLSearchParams(location.search), code = qs.get("code"), err = qs.get("error_description") || qs.get("error");
+    if (!code && !err) return;
+    try { history.replaceState(null, "", location.pathname + location.hash); } catch (_) {}
+    let pk = null; try { pk = JSON.parse(sessionStorage.getItem(K_PKCE) || "null"); sessionStorage.removeItem(K_PKCE); } catch (_) {}
+    if (err || !pk) { nv.erroRetorno = err ? "Login não concluído: " + err : "Login não concluído. Tente de novo."; return; }
+    nv.retorno = nv.req("POST", "/auth/v1/token?grant_type=pkce", { auth_code: code, code_verifier: pk.v })
+      .then((r) => { nv.aceitar(r, pk.lembrar); }).catch((e) => { nv.erroRetorno = e.message; });
+  })();
+  const contaOk = (d) => ({ ok: true, token: "web", email: d.email, nome: d.nome });
+  const tentar = (f) => f().catch((e) => ({ ok: false, erro: e.message, sem_rede: !!e.semRede }));
+  const CONTA_WEB = {   // as MESMAS chamadas da tela de conta já aprovada (app.js), atendidas no navegador
+    conta_estado: async () => {
+      const d = await nv.valida(), prov = await nv.provedores();
+      if (d) return { existe: true, logado: true, usuario: d.email, kdf: "Conta DASSH (nuvem)", criada: "", ultimo_login: "",
+        sessao: { expira_ociosa_s: 0, expira_idade_s: 0 }, nuvem: { provedores: prov, lembrado: d.email, ligada: d.email } };
+      return { existe: true, usuario: "", nuvem: { provedores: prov, lembrado: "" } };
+    },
+    conta_retomar: async (tok) => ({ ok: tok === "web" && !!(await nv.valida()) }),
+    conta_nuvem_retomar: async () => { const d = await nv.valida(); return d ? contaOk(d) : { ok: false, erro: nv.erroRetorno || "Nada lembrado." }; },
+    conta_nuvem_entrar: (email, senha, lembrar) => tentar(async () =>
+      contaOk(nv.aceitar(await nv.req("POST", "/auth/v1/token?grant_type=password", { email: String(email || "").trim(), password: senha || "" }), lembrar))),
+    conta_nuvem_criar: (email, senha, lembrar, nome) => tentar(async () => {
+      const r = await nv.req("POST", "/auth/v1/signup?redirect_to=" + encodeURIComponent(VOLTA), { email: String(email || "").trim(), password: senha || "", data: { full_name: nome || "" } });
+      if (r.access_token) return contaOk(nv.aceitar(r, lembrar));
+      return { ok: false, confirmar: true, erro: "Enviamos um link de confirmação para " + String(email).trim().toLowerCase() + ". Abra o e-mail, confirme e depois toque em Entrar." };
+    }),
+    conta_nuvem_oauth: async (prov, lembrar) => {
+      const v = b64url(crypto.getRandomValues(new Uint8Array(32)));
+      const c = b64url(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(v)));
+      try { sessionStorage.setItem(K_PKCE, JSON.stringify({ v, lembrar: !!lembrar })); } catch (_) {}
+      location.href = NUVEM_URL + "/auth/v1/authorize?" + new URLSearchParams({ provider: prov, redirect_to: VOLTA, code_challenge: c, code_challenge_method: "s256" });
+      return nunca();
+    },
+    conta_nuvem_recuperar: (email) => tentar(async () => {
+      await nv.req("POST", "/auth/v1/recover?redirect_to=" + encodeURIComponent(VOLTA), { email: String(email || "").trim() });
+      return { ok: true, msg: "Se existir uma conta com " + email + ", enviamos um link para criar uma senha nova." };
+    }),
+    conta_sair: async (_tok, todas) => {
+      const d = nv.ler(); nv.gravar(null);
+      if (d) nv.req("POST", "/auth/v1/logout" + (todas ? "" : "?scope=local"), {}, d.access_token).catch(() => {});
+      return { ok: true };
+    },
+    conta_tocar: async () => ({ ok: true }),
+    conta_trocar_senha: (_tok, atual, nova) => tentar(async () => {
+      const d = await nv.valida(); if (!d) throw new Error("Entre de novo.");
+      await nv.req("POST", "/auth/v1/token?grant_type=password", { email: d.email, password: atual || "" });   // confere a atual
+      await nv.req("PUT", "/auth/v1/user", { password: nova || "" }, d.access_token);
+      return { ok: true };
+    }),
+    conta_oauth_estado: async () => ({}),
+    conta_nuvem_admin: async () => ({ admin: false }),
+    conta_entrar: async () => ({ ok: false, erro: "No portal, entre com o e-mail da sua conta DASSH (ou Google/GitHub)." }),
+    conta_criar: async () => ({ ok: false, erro: "Use o seu e-mail para criar a conta DASSH." }),
+    conta_recuperar: async () => ({ ok: false, erro: "Use o e-mail da sua conta DASSH para recuperar o acesso." }),
+    conta_nuvem_ligar: async () => ({ ok: false, erro: "Entre com a sua conta DASSH." }),
+  };
+  // o computador conectou (Conector ou celular): abre nele a MESMA conta que a página já abriu (um login só)
+  async function entregarConta(chamar) {
+    try {
+      const d = await nv.valida(); if (!d) return;
+      const r = await Promise.race([chamar("conta_nuvem_sessao", [d.access_token]), dormir(15000).then(() => null)]);
+      if (r && r.ok && r.token) sessionStorage.setItem("dassh.conta", r.token);
+    } catch (_) {}   // Conector antigo (sem o método) ou sem rede: segue para a tela de conta de sempre
+  }
+  // abas do DASSH neste navegador se avisam: a que conectou ao Conector (ex.: a aberta pelo instalador) libera as outras
+  const canalAbas = typeof BroadcastChannel === "function" ? new BroadcastChannel("dassh-conector") : null;
 
   // ---- acionamento automático do Conector ----
   function testar(porta, token, ms) {   // true se o Conector desta porta aceita o segredo
@@ -136,10 +266,12 @@
         autenticado = true; ws_.tentativas = 0; tela.remove();
         if (!ws_.pronto) {
           ws_.pronto = true; window.pywebview = { api };
+          try { if (canalAbas) canalAbas.postMessage({ t: "conector", cred }); } catch (_) {}
           // só avisa a interface depois que TODA a página carregou (app.js incluso): se o Conector respondesse antes,
           // o aviso se perdia e a abertura ficava ~20 s esperando
           const avisar = () => window.dispatchEvent(new Event("pywebviewready"));
-          if (document.readyState === "complete") setTimeout(avisar, 0); else window.addEventListener("load", avisar, { once: true });
+          const quando = () => { if (document.readyState === "complete") setTimeout(avisar, 0); else window.addEventListener("load", avisar, { once: true }); };
+          entregarConta((m, a) => rpc(m, a)).finally(quando);
         }
       } else if (d.t === "res") {
         const p = ws_.pend.get(d.id); if (!p) return; ws_.pend.delete(d.id);
@@ -260,7 +392,7 @@
       const R = await carregarCanal();
       for (;;) {
         cmsg("Conectando a " + d.pc.nome + "…");
-        try { await R.conectar(); break; }
+        try { await Promise.race([R.conectar(), dormir(30000).then(() => { throw new Error("O PC não respondeu a tempo."); })]); break; }
         catch (e) {
           if (Date.now() > ate) throw e;
           cmsg("Aguardando o PC… No computador, ligue 📱 Celular → “Disponível para meus aparelhos”.");
@@ -353,7 +485,8 @@
         window.dispatchEvent(new Event("pywebviewready"));
         setTimeout(() => { rem.prontoUI = true; R.enviar({ t: "listar" }); }, 1500);   // depois que a interface montou: traz as abas do PC
       };
-      if (document.readyState === "complete") setTimeout(avisar, 0); else window.addEventListener("load", avisar, { once: true });
+      const quando = () => { if (document.readyState === "complete") setTimeout(avisar, 0); else window.addEventListener("load", avisar, { once: true }); };
+      entregarConta((m, a) => R.rpc(m, a)).finally(quando);
     }
   }
   function prepararCanal(R) {
@@ -391,16 +524,15 @@
   const PASSIVA = /^(inicial|portas|clientes|historico|conta_|verificar|area_transferencia|redimension|tamanho|config|envio_estado|fila_status|evid_status|pdf_ultimo|skills?_lista|listar|lista)|(_status|_estado|_listar|_lista|_ultimo)$/;
   const PADRAO = {
     inicial: () => ({ cfg: {}, portas: [], evid: null, cofre: [], clientes: null, rede_temp: [], teste: "", versao: "" }),
-    conta_estado: () => ({ dispensa: true }),
     fila_status: () => ({ atual: null, fila: [], lote: { total: 0, feitos: 0 } }),
     portas: () => { if (Date.now() - portal.ultimoGesto < 2000) oferecer(); return []; },
     verificar_atualizacao: () => null,
   };
-  const nunca = () => new Promise(() => {});
   const apiPortal = new Proxy({}, { get: (_, nome) => {
     if (typeof nome !== "string" || nome === "then") return undefined;
     return (...a) => {
       if (EXTRAS[nome]) return EXTRAS[nome](...a);
+      if (CONTA_WEB[nome]) return CONTA_WEB[nome](...a);
       if (PADRAO[nome]) return Promise.resolve(PADRAO[nome](...a));
       if (!PASSIVA.test(nome) && Date.now() - portal.ultimoGesto < 2000) oferecer();
       return nunca();   // espera a conexão (a página recarrega ao conectar), sem erro solto na interface
@@ -410,6 +542,8 @@
   // ---- convite para conectar (cartão discreto, no mesmo visual da tela de conexão) ----
   function oferecer(motivo) {
     if (portal.card && portal.card.isConnected) return;
+    const parOk = lerPar();
+    if (MOVEL && parOk && !parOk.revogado) { gravarRem(true); return location.reload(); }   // já aprovado: usa o túnel na hora
     const c = document.createElement("div");
     c.id = "portal-convite"; c.setAttribute("role", "dialog"); c.setAttribute("aria-labelledby", "pc-tit");
     c.style.cssText = "position:fixed;inset:0;z-index:99998;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.55);padding:16px;font:14px/1.45 'Segoe UI',system-ui,-apple-system,sans-serif;color:#e6edf3";
@@ -457,6 +591,7 @@
       }
       if (Date.now() - inicio > 6000) {
         const b = c.querySelector("#pc-baixar"); if (b) b.hidden = false;
+        vigiarConector();   // instalou/abriu? a página percebe sozinha e conecta
         c.querySelector("#pc-ir").textContent = "Já instalei — conectar";
         if (SAFARI) { pm("O Safari bloqueia a conexão local a partir desta página. Use o Conector e abra pela janela local.", true); break; }
         pm("O Conector não respondeu. Se ainda não tem, baixe e instale; depois clique em “Já instalei — conectar”.", true);
@@ -465,6 +600,41 @@
       await dormir(600);
     }
     portal.procurando = false;
+  }
+
+  // Conector rodando? (a conexão sem código só diz que ele está ali; não dá acesso a nada)
+  function haConector() {
+    return new Promise((ok) => {
+      let falta = PORTAS.length, achou = false;
+      for (const p of PORTAS) {
+        let s; try { s = new WebSocket("ws://127.0.0.1:" + p + "/ws"); } catch (_) { if (--falta === 0 && !achou) ok(false); continue; }
+        let feito = false;
+        const fim = (v) => { if (feito) return; feito = true; try { s.close(); } catch (_) {} if (v && !achou) { achou = true; ok(true); } else if (--falta === 0 && !achou) ok(false); };
+        const t = setTimeout(() => fim(false), 1500);
+        s.onopen = () => { clearTimeout(t); fim(true); };
+        s.onerror = () => { clearTimeout(t); fim(false); };
+      }
+    });
+  }
+  async function conectarSozinho() {   // Conector rodando: entrega um código novo pelo protocolo e entra
+    if (portal.sozinho) return; portal.sozinho = true;
+    const S = segredoNovo();
+    abrirProtocolo("dassh-conector://iniciar?s=" + S);
+    const ate = Date.now() + 20000;
+    while (Date.now() < ate) {
+      for (const p of PORTAS) if (await testar(p, S, 500)) { gravarSessao(p + "." + S); return location.reload(); }
+      await dormir(800);
+    }
+    portal.sozinho = false;
+  }
+  function vigiarConector() {   // depois de oferecer o download: procura por até 15 min
+    if (portal.vigia) return;
+    const ate = Date.now() + 15 * 60000;
+    portal.vigia = setInterval(async () => {
+      if (Date.now() > ate) { clearInterval(portal.vigia); portal.vigia = null; return; }
+      if (portal.sozinho || !(await haConector())) return;
+      clearInterval(portal.vigia); portal.vigia = null; conectarSozinho();
+    }, 4000);
   }
 
   // ---- shell próprio do portal (dentro das abas que já existem: mesmo visual, só para não ficar vazio) ----
@@ -519,6 +689,11 @@
     window.__portal = { tecla, boasVindas, oferecer };
     window.pywebview = { api: apiPortal };
     barraPortal();
+    if (canalAbas) canalAbas.onmessage = (ev) => {   // outra aba (ex.: a aberta pelo instalador) conectou ao Conector: esta também
+      const v = ev.data && ev.data.cred;
+      if (!MOVEL && typeof v === "string" && /^\d{2,5}\.[A-Za-z0-9_-]{16,}$/.test(v)) { gravarSessao(v); location.reload(); }
+    };
+    if (!MOVEL) haConector().then((sim) => { if (sim) conectarSozinho(); });   // Conector já instalado e aberto: conecta sozinho
     const avisar = () => window.dispatchEvent(new Event("pywebviewready"));
     if (document.readyState === "complete") setTimeout(avisar, 0); else window.addEventListener("load", avisar, { once: true });
   }
@@ -535,7 +710,7 @@
   const iniciar = () => {
     if (MODO_CEL) {   // celular/tablet: com conexão pedida nesta sessão usa o túnel aprovado; senão abre o portal
       if (codPar) { mostrarCel(true); q("#rc-codigo").value = codPar; return cmsg("Toque em “Parear e conectar” para ligar este celular ao computador."); }
-      if ((pedeCel || lerRem()) && lerPar()) { mostrarCel(false); return conectarCel(pedeCel); }
+      if ((pedeCel || lerRem()) && lerPar()) { mostrarCel(false); return conectarCel(true); }
       if (pedeCel) return mostrarCel(true);
       return entrarPortal();
     }
