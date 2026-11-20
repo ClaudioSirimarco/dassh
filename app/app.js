@@ -115,8 +115,11 @@ function ajustarFonte() {
   const cs = getComputedStyle(box);
   const W = box.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) - 6;
   const H = box.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom) - 3;   // a conta é exata: 3 px de folga bastam
+  // celular em pé: fonte legível fixa e o terminal (100 colunas) vira uma faixa larga que se arrasta para os lados
+  const retrato = matchMedia("(max-width: 600px) and (orientation: portrait)").matches;
   abas.forEach((a) => {
     if (a.tipo === "web" && a.conectado) return;
+    if (retrato) { if (a.term.options.fontSize !== 10) a.term.options.fontSize = 10; return; }
     // DETERMINÍSTICO: o tamanho depende só do espaço (W x H), das colunas/linhas e da fonte — nunca do tamanho atual.
     // Antes a conta partia da célula medida no tamanho atual; no navegador (zoom/escala 125-150%) a célula não cresce de forma
     // linear com a fonte e o resultado alternava entre dois valores (a fonte "pulsava"). Aqui: do maior ao menor, o 1º que cabe.
@@ -1467,6 +1470,7 @@ function desenharCel() {
     (ctrlAt ? `<button class="btn mini" id="cel-retomar" title="Voltar a digitar no PC">Retomar</button>` : "") +
     con.map((c) => `<button class="cel-x" data-dx="${esc(c.id)}" title="Desconectar ${esc(c.nome)}">✕</button>`).join("") : "";
   chip.onclick = (ev) => { if (!ev.target.closest("button")) abrirCelular(); };
+  celModoRemoto(con);
   if (typeof ajustarSistema === "function") ajustarSistema();
   const r = chip.querySelector("#cel-retomar"); if (r) r.onclick = () => api.cel_retomar(at.id);
   chip.querySelectorAll("[data-dx]").forEach((b) => (b.onclick = () => api.cel_desconectar(b.dataset.dx)));
@@ -1519,7 +1523,62 @@ window.onCelular = (tipo, d) => {
   if (tipo === "pareado") { $("#cel-par").classList.add("oculto"); $("#cel-parear").classList.remove("oculto"); clearInterval(celTimer);
     return toast(`📱 ${d.nome} pareado — confira o número de conferência no celular`); }
   if (tipo === "conectado") return toast(`📱 ${d.nome} conectou a este PC`);
+  if (tipo === "atividade") return celPulso(d);
 };
+
+// ---- 📱 GESTÃO REMOTA: o app inteiro mostra que está sendo operado pelo celular (diferente do vermelho da aba compartilhada) ----
+// Moldura viva em volta da janela (não bloqueia nada) + "ilha" no rodapé com quem está operando e, ao vivo, o que acabou de fazer.
+// Sem atividade, a ilha recolhe para um ponto discreto; passar o mouse mostra tudo. Só no PC (no próprio celular não aparece).
+const CEL_ILHA = { t: 0 };
+const CEL_RPC = { evidencia: "gerou uma evidência", web_evidencia: "gerou uma evidência", java_evidencia: "gerou uma evidência",
+  relatorio_gerar: "gerou o relatório", desconectar: "desconectou uma aba", aba_fechar: "fechou uma aba", roteiros: "abriu os roteiros",
+  evid_excluir: "excluiu uma evidência", historico: "abriu o histórico", biblioteca_relatorios: "abriu a Biblioteca",
+  equip_listar: "abriu Equipamentos", envio_enviar: "enviou uma evidência", wa_enviar: "enviou pelo WhatsApp" };
+const CEL_TIPO = { serial: "Serial", ssh: "SSH", powershell: "PowerShell", cmd: "CMD", web: "Web", azure: "Azure", gcp: "GCP" };
+const celAba = (d) => d.aba || ((d.sid && abas.get(d.sid)) || {}).nome || "";
+const CEL_ACOES = {
+  digitou: (d) => "digitando" + (celAba(d) ? " em " + celAba(d) : ""),
+  abrir: (d) => "abrindo " + (CEL_TIPO[d.tipo] || d.tipo || "uma aba") + (d.porta ? " " + d.porta : d.destino ? " " + d.destino : ""),
+  aberta: (d) => "abriu " + (celAba(d) || "uma aba"),
+  assumir: (d) => "assumiu " + (celAba(d) || "uma aba"),
+  devolver: () => "devolveu o controle",
+  assistir: (d) => "assistindo " + (celAba(d) || "uma aba"),
+  interface: () => "abriu a interface completa",
+  rpc: (d) => CEL_RPC[d.m] || null,
+};
+function celModoRemoto(con) {
+  const on = con.length > 0 && !document.body.classList.contains("remoto-cel");
+  document.body.classList.toggle("cel-remoto", on);
+  let m = $("#cel-moldura"), il = $("#cel-ilha");
+  if (!on) { if (m) m.remove(); if (il) il.remove(); clearTimeout(CEL_ILHA.t); return; }
+  if (!m) { m = document.createElement("div"); m.id = "cel-moldura"; m.setAttribute("aria-hidden", "true"); document.body.appendChild(m); }
+  if (!il) {
+    il = document.createElement("div"); il.id = "cel-ilha"; il.setAttribute("role", "status"); il.setAttribute("aria-live", "polite");
+    document.body.appendChild(il);
+  }
+  const nomes = con.map((c) => c.nome).join(", ");
+  il.innerHTML = `<span class="ponto"></span><span class="txt"><b>📱 ${esc(nomes)}</b><span class="longo"> está operando este computador · desde ${esc(con[0].desde)}</span><span class="cel-acao"></span></span>` +
+    `<button class="cel-enc" title="Encerrar agora o acesso remoto (o aparelho continua pareado)">Encerrar</button>`;
+  il.title = `${nomes} está operando este computador pelo celular — clique para ver os aparelhos`;
+  il.onclick = (e) => { if (e.target.closest(".cel-enc")) return con.forEach((c) => api.cel_desconectar(c.id)); abrirCelular(); };
+  celIlhaRecolher();
+}
+function celPulso(d) {
+  const f = CEL_ACOES[d && d.acao], t = f && f(d), il = $("#cel-ilha"), m = $("#cel-moldura");
+  if (!t || !il) return;
+  il.classList.remove("recolhida");
+  il.querySelector(".longo").hidden = true; il.querySelector(".cel-acao").textContent = " · " + t;
+  if (m) { m.classList.remove("pulso"); void m.offsetWidth; m.classList.add("pulso"); }
+  celIlhaRecolher();
+}
+function celIlhaRecolher() {
+  clearTimeout(CEL_ILHA.t);
+  CEL_ILHA.t = setTimeout(() => {
+    const il = $("#cel-ilha"); if (!il) return;
+    il.querySelector(".cel-acao").textContent = ""; il.querySelector(".longo").hidden = false;
+    il.classList.add("recolhida");
+  }, 7000);
+}
 window.onCelAba = (sid, nome, tipo, alvo, gravando) => {   // aba aberta PELO CELULAR: o Python já conectou, aqui só aparece a aba
   if (abas.has(sid)) return;
   const a = novaAba(tipo, sid); if (!a) return;
@@ -4457,3 +4516,25 @@ async function admAtualizar() {
 }
 setTimeout(admAtualizar, 8000);
 setInterval(admAtualizar, 60000);
+
+// ================= 📱 celular: deitado = gaveta do painel lateral (botão flutuante) · em pé = dica de arrastar/girar =================
+(() => {
+  const b = document.createElement("button");
+  b.id = "btn-painel"; b.type = "button"; b.textContent = "☰";
+  b.title = "Painel: atendimento, evidência e envio"; b.setAttribute("aria-label", b.title); b.setAttribute("aria-expanded", "false");
+  const abrir = (on) => { document.body.classList.toggle("lateral-aberta", on); b.textContent = on ? "✕" : "☰"; b.setAttribute("aria-expanded", String(on)); };
+  b.onclick = () => abrir(!document.body.classList.contains("lateral-aberta"));
+  document.body.appendChild(b);
+  document.addEventListener("pointerdown", (e) => {   // tocar fora da gaveta fecha
+    if (document.body.classList.contains("lateral-aberta") && !e.target.closest(".lateral, #btn-painel, .modal, #popover")) abrir(false);
+  }, true);
+  let fechada = false; try { fechada = localStorage.getItem("dassh.dica-gire") === "1"; } catch (_) {}
+  const t = $("#terminal");
+  if (!fechada && t) {
+    const d = document.createElement("div"); d.className = "dica-gire"; d.setAttribute("role", "note");
+    d.innerHTML = '<span>↔ Arraste o terminal para os lados · gire o celular para usar em tela cheia</span><button type="button" aria-label="Fechar dica">✕</button>';
+    d.querySelector("button").onclick = () => { d.remove(); try { localStorage.setItem("dassh.dica-gire", "1"); } catch (_) {} };
+    t.parentNode.insertBefore(d, t);
+  }
+  addEventListener("orientationchange", () => setTimeout(() => { if (typeof ajustarFonte === "function") ajustarFonte(); }, 250));
+})();

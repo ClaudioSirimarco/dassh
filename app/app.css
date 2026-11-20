@@ -1190,3 +1190,96 @@ body.ao-vivo::before { content: none; }
 #adm-selo { position: fixed; left: 12px; bottom: 10px; z-index: 300; font-size: 11px; color: var(--suave); background: rgba(13, 17, 23, .88);
   border: 1px solid #1f5a49; border-radius: 999px; padding: 4px 11px; backdrop-filter: blur(6px); pointer-events: auto; }
 #adm-selo b { color: var(--texto); } #adm-selo b.on { color: var(--verde-cl); } #adm-selo span { opacity: .5; margin: 0 2px; }
+
+/* ================= 📱 GESTÃO REMOTA: o PC inteiro mostra que está sendo operado pelo celular =================
+   Identidade própria (anil/violeta), diferente do vermelho da aba compartilhada (que continua igual): moldura viva em volta da
+   janela (não bloqueia nada) + "ilha" no rodapé com quem opera e, ao vivo, o que acabou de fazer. Sem atividade, recolhe. */
+#cel-moldura { position: fixed; inset: 0; z-index: 9000; pointer-events: none; padding: 2px;
+  background: linear-gradient(90deg, #38bdf8, #818cf8, #c084fc, #818cf8, #38bdf8); background-size: 300% 100%;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+  animation: cel-fluxo 9s linear infinite; opacity: .9; }
+#cel-moldura::after { content: ""; position: fixed; inset: 0; pointer-events: none; box-shadow: inset 0 0 22px rgba(129, 140, 248, .18); }
+#cel-moldura.pulso { animation: cel-fluxo 9s linear infinite, cel-pulso .9s ease-out; }
+@keyframes cel-fluxo { to { background-position: 300% 0; } }
+@keyframes cel-pulso { 0% { padding: 2px; opacity: .9; } 25% { padding: 4px; opacity: 1; filter: brightness(1.35); } 100% { padding: 2px; opacity: .9; } }
+#cel-ilha { position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 9001; display: flex; align-items: center; gap: 9px;
+  max-width: min(620px, calc(100vw - 32px)); padding: 6px 7px 6px 13px; border-radius: 999px; cursor: pointer;
+  background: rgba(15, 18, 34, .93); border: 1px solid rgba(129, 140, 248, .55); color: #e0e7ff; backdrop-filter: blur(8px);
+  font: 600 12.5px/1.25 "Segoe UI", system-ui, sans-serif; white-space: nowrap;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, .5), 0 0 0 4px rgba(129, 140, 248, .10); transition: padding .3s ease, max-width .35s ease, opacity .3s; }
+#cel-ilha .ponto { flex: none; width: 9px; height: 9px; border-radius: 50%; background: #a5b4fc; animation: cel-respira 2.2s ease-out infinite; }
+@keyframes cel-respira { 0% { box-shadow: 0 0 0 0 rgba(165, 180, 252, .7); } 70% { box-shadow: 0 0 0 8px rgba(165, 180, 252, 0); } 100% { box-shadow: 0 0 0 0 rgba(165, 180, 252, 0); } }
+#cel-ilha .txt { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+#cel-ilha .longo { font-weight: 400; color: #c7d2fe; }
+#cel-ilha .cel-acao { font-weight: 500; color: #a5b4fc; }
+#cel-ilha .cel-enc { flex: none; height: 26px; padding: 0 11px; border-radius: 999px; border: 1px solid rgba(165, 180, 252, .5);
+  background: rgba(129, 140, 248, .16); color: #e0e7ff; font: 600 12px inherit; cursor: pointer; }
+#cel-ilha .cel-enc:hover { background: rgba(248, 113, 113, .22); border-color: #f87171; color: #fff; }
+#cel-ilha.recolhida:not(:hover):not(:focus-within) { padding: 6px 12px; opacity: .82; }
+#cel-ilha.recolhida:not(:hover):not(:focus-within) .longo,
+#cel-ilha.recolhida:not(:hover):not(:focus-within) .cel-enc { display: none; }
+@media (prefers-reduced-motion: reduce) {
+  #cel-moldura, #cel-moldura.pulso { animation: none; } #cel-ilha .ponto { animation: none; } #cel-ilha { transition: none; } }
+
+/* ================= 📱 CELULAR EM PÉ: o shell vira uma faixa larga (widescreen), com fonte legível, que se arrasta para os lados.
+   As 100 colunas da evidência continuam iguais; só deixam de ser espremidas na largura do aparelho. ================= */
+.dica-gire { display: none; }
+@media (max-width: 600px) and (orientation: portrait) {
+  .terminal-card { min-height: 0 !important; }
+  #terminal { min-height: 0 !important; flex: none; overflow-x: auto !important; overflow-y: hidden !important; justify-content: flex-start !important;
+    padding: 6px !important; touch-action: pan-x pan-y; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; scrollbar-width: thin; }
+  #terminal .term-pane.ativa { flex: none; }
+  .dica-gire { display: flex; align-items: center; gap: 8px; margin: 2px 6px 4px; padding: 6px 10px; border-radius: 9px; font-size: 12px; color: var(--suave);
+    background: var(--painel2); border: 1px solid var(--borda); }
+  .dica-gire span { flex: 1; } .dica-gire button { background: none; border: 0; color: var(--suave); font-size: 15px; padding: 0 4px; cursor: pointer; }
+}
+
+/* ================= 📱 CELULAR/TABLET DEITADO: modo imersivo. Barras compactas numa linha, o terminal ocupa a tela e o painel
+   lateral (Atendimento, Evidência, Envio) vira uma gaveta que abre pelo botão flutuante. ================= */
+#btn-painel { display: none; }
+@media (orientation: landscape) and (max-height: 520px) {
+  html, body { height: 100% !important; min-height: 0 !important; overflow: hidden !important; }
+  .sistema { min-height: 0 !important; padding: calc(2px + env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) 2px max(10px, env(safe-area-inset-left)) !important; }
+  .sis-menu { height: 30px !important; }
+  .topo { position: static !important; flex-wrap: nowrap !important; overflow-x: auto; overflow-y: hidden; gap: 6px !important; scrollbar-width: none;
+    padding: 3px max(10px, env(safe-area-inset-right)) 3px max(10px, env(safe-area-inset-left)) !important; }
+  .topo::-webkit-scrollbar { display: none; }
+  .topo > *, .conexao, .abas { flex: none !important; width: auto !important; order: 0 !important; }
+  .conexao { flex-wrap: nowrap !important; }
+  .slot-con { width: 260px !important; }
+  .abas .cat, .abas .cat:not(.sel), .abas .tipos button, .topo .btn, .topo select { height: 30px !important; min-height: 30px !important; }
+  .corpo { flex: 1 !important; min-height: 0 !important; height: auto !important; flex-direction: row !important; gap: 0 !important;
+    padding: 3px max(6px, env(safe-area-inset-right)) 3px max(6px, env(safe-area-inset-left)) !important; }
+  .terminal-card { flex: 1; min-height: 0 !important; min-width: 0; }
+  .term-barra { flex-wrap: nowrap !important; }
+  .guia-barra { width: auto !important; }
+  .gb-btn { height: 30px !important; min-width: 30px !important; }
+  #terminal { min-height: 0 !important; padding: 2px 4px !important; }
+  .lateral { position: fixed !important; top: 0; right: 0; bottom: 0; z-index: 60; width: min(340px, 84vw) !important; overflow-y: auto !important;
+    padding: calc(10px + env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) 10px 10px !important; background: var(--fundo);
+    border-left: 1px solid var(--borda); box-shadow: -18px 0 40px rgba(0, 0, 0, .55); transform: translateX(105%); transition: transform .22s ease; }
+  body.lateral-aberta .lateral { transform: none; }
+  #btn-painel { display: grid; place-items: center; position: fixed; z-index: 61; right: max(14px, env(safe-area-inset-right)); bottom: 14px;
+    width: 46px; height: 46px; border-radius: 50%; border: 0; background: var(--verde); color: #04221b; font-size: 19px; cursor: pointer;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, .5); }
+  body.lateral-aberta #btn-painel { background: var(--painel2); color: var(--texto); border: 1px solid var(--borda); right: calc(min(340px, 84vw) + 12px); }
+  .dica-gire { display: none !important; }
+  /* cada px de altura vale terminal: faixas, abas e botões mais baixos */
+  #barra-remoto { padding: calc(1px + env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) 1px max(10px, env(safe-area-inset-left)) !important; font-size: 12px !important; }
+  #barra-remoto button { padding: 1px 9px !important; }
+  .sistema .marca img, .sistema .marca svg { width: 22px; height: 22px; }
+  .sistema .marca div { font-size: 13px; }
+  .term-barra { min-height: 0 !important; padding-top: 2px !important; padding-bottom: 0 !important; }
+  .aba { height: 28px !important; min-height: 28px !important; }
+  .gb-btn { height: 26px !important; min-width: 26px !important; font-size: 13px !important; }
+  .nova-aba { height: 26px !important; }
+  .terminal-card { border-radius: 8px; }
+  .sistema { height: 28px !important; }
+  .sistema .marca div { display: none !important; }
+  .sis-menu { height: 24px !important; padding: 0 9px !important; }
+  .sistema .btn, .sistema a.btn, .sistema button:not(.sis-menu) { min-height: 0 !important; height: 24px; }
+  .topo { padding-top: 2px !important; padding-bottom: 2px !important; }
+  .conexao > *, .conexao .btn, .conexao select, .conexao button, .abas, .abas > *, #conectar { height: 28px !important; min-height: 28px !important; }
+  .term-barra { height: 30px; align-items: center; }
+}
