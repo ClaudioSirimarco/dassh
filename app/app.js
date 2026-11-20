@@ -4204,9 +4204,9 @@ function chatPosicionar() {
   const scr = a.pane && a.pane.querySelector(".xterm-screen"), baixo = scr ? box.bottom - scr.getBoundingClientRect().bottom - 4 : 0;
   let w, h, x, y;
   if (aberto) {   // proporções originais; transparente (ajustável) para não esconder o shell
-    w = estreito ? Math.min(300, box.width - 16) : Math.min(330, livre);
+    w = Math.min(330, box.width - 16);   // mesma dimensão no app e na web; sem faixa livre, fica por cima (transparente) na borda
     h = Math.max(160, Math.min(460, box.height - 24));
-    x = estreito ? box.right - 8 - w : fim + 10 + (livre - w) / 2;
+    x = livre >= w ? fim + 10 + (livre - w) / 2 : box.right - 8 - w;
     y = box.top + (box.height - h) / 2 - 20;
   } else {   // bolha: no vão à direita (encolhe até 30 px para caber); sem vão, embaixo do texto; em último caso, na borda
     w = h = vao >= 40 ? Math.min(46, vao - 10) : 46;
@@ -4341,7 +4341,7 @@ function chatUsuario(nome) {   // "Ana Souza" -> "ana.souza" (sem acento, como n
   const topo = document.querySelector(".chat-topo"); if (!topo || $("#chat-alfa")) return;
   const r = document.createElement("input");
   r.type = "range"; r.id = "chat-alfa"; r.min = "25"; r.max = "100"; r.title = "Transparência do chat"; r.className = "chat-alfa";
-  let v = 70; try { v = +localStorage.getItem("dassh.chatAlfa") || 70; } catch (_) {}
+  let v = 60; try { v = +localStorage.getItem("dassh.chatAlfa") || 60; } catch (_) {}
   const aplicar = (x) => document.documentElement.style.setProperty("--chat-alfa", (x / 100).toFixed(2));
   r.value = v; aplicar(v);
   r.oninput = () => { aplicar(+r.value); try { localStorage.setItem("dassh.chatAlfa", r.value); } catch (_) {} };
