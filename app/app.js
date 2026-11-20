@@ -4197,9 +4197,14 @@ function chatPosicionar() {
   const fim = box.right - 20 - livre, vao = livre + 20;   // fim do texto e o vão inteiro até a borda
   const scr = a.pane && a.pane.querySelector(".xterm-screen"), baixo = scr ? box.bottom - scr.getBoundingClientRect().bottom - 4 : 0;
   let w, h, x, y;
-  $("#terminal").classList.toggle("com-chat", aberto);   // aberto: o terminal cede uma coluna própria (a fonte se ajusta sozinha)
-  if (aberto) {
-    w = 262; h = box.height - 16;
+  // aberto: ocupa a coluna da LATERAL (o shell e a fonte não mudam); deixa o rodapé livre para os avisos
+  const lat = document.querySelector(".lateral"), lr = lat && lat.getBoundingClientRect();
+  document.body.classList.toggle("chat-na-lateral", aberto && !!lr && lr.width > 200);
+  if (aberto && lr && lr.width > 200) {
+    w = lr.width; x = lr.left; y = lr.top;
+    h = Math.max(260, lr.height - 64);
+  } else if (aberto) {   // tela estreita (sem lateral ao lado): painel na borda, sem encolher o terminal
+    w = Math.min(300, box.width - 16); h = Math.max(220, box.height - 80);
     x = box.right - 8 - w; y = box.top + 8;
   } else {   // bolha: no vão à direita (encolhe até 30 px para caber); sem vão, embaixo do texto; em último caso, na borda
     w = h = vao >= 40 ? Math.min(46, vao - 10) : 46;
@@ -4208,8 +4213,10 @@ function chatPosicionar() {
   }
   el.style.setProperty("--chat-b", (aberto ? 46 : w) + "px");
   el.style.width = w + "px"; el.style.height = h + "px";
-  el.style.left = Math.round(x - card.left) + "px";
-  el.style.top = Math.round(y - card.top) + "px";
+  const fixo = document.body.classList.contains("chat-na-lateral");   // na lateral: posição na janela (fora do quadro do terminal)
+  el.style.position = fixo ? "fixed" : "";
+  el.style.left = Math.round(fixo ? x : x - card.left) + "px";
+  el.style.top = Math.round(fixo ? y : y - card.top) + "px";
 }
 let chatRO = null, chatObs = null;
 function chatObservar(a) {

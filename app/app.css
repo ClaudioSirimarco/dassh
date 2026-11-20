@@ -1130,8 +1130,12 @@ body.ao-vivo::before { content: none; }
 .chat-painel { font-size: 12px; }
 
 /* chat aberto: coluna própria à direita do shell (nunca cobre o texto) */
-#terminal.com-chat { padding-right: 282px !important; }
+body.chat-na-lateral .lateral { visibility: hidden; }   /* o chat ocupa o lugar da lateral enquanto aberto */
 .chat-topo { flex-wrap: nowrap; }
 .chat-tit { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .chat-tit small { white-space: nowrap; }
 #toast { z-index: 1000 !important; }
+
+/* mensagens todas do mesmo lado; cada pessoa pela sua cor (funciona com 2 ou 10 pessoas) */
+.chat-msg, .chat-msg.eu { max-width: 100%; align-self: stretch; border-left: 3px solid var(--cor); border-right-width: 1px; }
+.chat-msg.eu { background: #142a24; }
