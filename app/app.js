@@ -4138,12 +4138,13 @@ function chatReceber(sid, itens, doHistorico) {
     if (m.cm) c.pend = c.pend.filter((p) => p.cm !== m.cm);   // minha mensagem confirmada pelo dono: sai de "enviando…"
     c.itens.push({ mid: m.mid, quem: String(m.quem || ""), nome: String(m.nome || "Convidado").slice(0, 40),
                    txt: m.txt.slice(0, CHAT_MAX), hora: +m.hora || Date.now() });
-    if (m.quem !== eu && !doHistorico) novas++;
+    if (m.quem !== eu && !doHistorico) { novas++; if (a.id === ativa && c.aberto) c.digitar = m.mid; }
   }
   c.itens.sort((x, y) => x.hora - y.hora);
   while (c.itens.length > CHAT_GUARDA) c.itens.shift();
   const lendo = a.id === ativa && c.aberto && document.visibilityState !== "hidden";
   if (novas && !lendo) c.novas += novas;
+  if (novas) chatSom();
   if (a.id === ativa) chatDesenhar(); else chatMarcaAba(a);
 }
 function chatMarcaAba(a) { if (a.btn) a.btn.classList.toggle("chat-novo", !!(a.chat && a.chat.novas)); }
@@ -4172,10 +4173,12 @@ function chatDesenhar() {
     const meu = m.quem === eu, junta = ant && ant.quem === m.quem && m.hora - ant.hora < 120000; ant = m;
     return `<div class="chat-msg${meu ? " eu" : ""}${junta ? " junta" : ""}" style="--cor:${chatCor(m.quem)}">
       ${junta ? "" : `<div class="chat-cab"><b>${esc(meu ? "Você" : m.nome)}</b>${m.quem === "host" && !meu ? "<em>dono</em>" : ""}<time>${chatHora(m.hora)}</time></div>`}
-      <div class="chat-corpo">${esc(m.txt)}</div></div>`;
+      <div class="chat-corpo"${!meu && m.mid === c.digitar ? ' data-digita="1"' : ""}>${esc(m.txt)}</div>
+      ${!meu && chatPareceComando(m.txt) ? `<div class="chat-acoes"><button type="button" data-shell="${esc(m.mid)}" title="Coloca o comando no shell desta aba (sem Enter: você confere e aperta Enter)">▶ no shell</button><button type="button" data-copiar="${esc(m.mid)}" title="Copiar">⧉ copiar</button></div>` : ""}</div>`;
   }).join("") + c.pend.map((p) => `<div class="chat-msg eu pend${p.falhou ? " falhou" : ""}" style="--cor:${chatCor(eu)}">
       <div class="chat-corpo">${esc(p.txt)}</div><div class="chat-st">${p.falhou ? "não entregue — o dono usa uma versão sem chat" : "enviando…"}</div></div>`).join("");
   if (html !== lista._html || !html) lista.innerHTML = (lista._html = html) || `<div class="chat-vazio">Converse aqui com quem está nesta sessão.<br><small>Fica no histórico da sessão e nunca entra na evidência.</small></div>`;
+  const dg = lista.querySelector('[data-digita="1"]'); if (dg && c.digitar) { c.digitar = null; chatEfeitoDigitar(dg); }
   if (noFim || c.rolar) lista.scrollTop = lista.scrollHeight;
   c.rolar = false;
   chatPosicionar();
@@ -4283,3 +4286,47 @@ if (document.querySelector('script[src*="ponte-agente"]')) {
     m.after(a);
   }
 }
+
+// ---------- chat moderno: comando -> shell, emojis, som, digitação ----------
+function chatPareceComando(t) {
+  t = String(t || "").trim();
+  if (!t || t.length > 300 || /\n/.test(t)) return false;
+  return /^(\$ |> |# )/.test(t) || /^[a-z][\w.-]*(\s+[-\/|\w.:@=$"'\\*]+)*$/i.test(t) && /[-|\/:.=]|\b(show|display|get-|set-|ping|ip|ls|cd|cat|grep|dir|ipconfig|netstat|systemctl|az|aws|gcloud|kubectl|docker|ssh|sudo)\b/i.test(t);
+}
+function chatTextoDe(mid) { const a = A(), c = a && chatEstado(a); const m = c && c.itens.find((x) => String(x.mid) === String(mid)); return m ? m.txt.replace(/^(\$ |> |# )/, "") : ""; }
+$("#chat-lista").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-shell],[data-copiar]"); if (!b) return;
+  const a = A(), t = chatTextoDe(b.dataset.shell || b.dataset.copiar); if (!t) return;
+  if (b.dataset.copiar) { try { navigator.clipboard.writeText(t); toast("Comando copiado"); } catch (_) { toast("Não foi possível copiar", "aviso"); } return; }
+  if (!a.conectado) return toast("Conecte a aba primeiro.", "aviso");
+  if (a.share && a.share.papel === "convidado" && !a.share.souAtivo) return toast("Você está observando: peça o controle para digitar.", "aviso");
+  api.escrever(a.id, t); a.term.focus(); toast("Comando no shell — confira e aperte Enter");
+});
+let chatAudio = null;
+function chatSom() {
+  try {
+    chatAudio = chatAudio || new (window.AudioContext || window.webkitAudioContext)();
+    const t = chatAudio.currentTime;
+    [[880, 0], [1320, 0.09]].forEach(([f, d]) => {
+      const o = chatAudio.createOscillator(), g = chatAudio.createGain();
+      o.type = "sine"; o.frequency.value = f; o.connect(g); g.connect(chatAudio.destination);
+      g.gain.setValueAtTime(0.0001, t + d); g.gain.exponentialRampToValueAtTime(0.12, t + d + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + d + 0.18);
+      o.start(t + d); o.stop(t + d + 0.2);
+    });
+  } catch (_) {}
+}
+function chatEfeitoDigitar(el) {
+  const txt = el.textContent; el.textContent = ""; let i = 0;
+  const passo = () => { el.textContent = txt.slice(0, ++i); if (i < txt.length) setTimeout(passo, Math.max(8, 400 / txt.length)); };
+  passo();
+}
+(function chatEmojis() {
+  const f = $("#chat-form"); if (!f || $("#chat-emo")) return;
+  const bar = document.createElement("div"); bar.id = "chat-emo"; bar.className = "chat-emo";
+  bar.innerHTML = ["👍", "✅", "👀", "🙏", "😂", "🔥", "⚠️", "❌"].map((e) => `<button type="button" tabindex="-1">${e}</button>`).join("");
+  bar.onclick = (e) => { const b = e.target.closest("button"); if (!b) return; const i = $("#chat-txt"); i.value += b.textContent; i.focus(); };
+  f.before(bar);
+})();
+(function chatBolhaLogo() {
+  const ic = document.querySelector(".chat-bolha-ic"); if (ic) ic.innerHTML = '<img src="logo.svg" alt="">';
+})();
