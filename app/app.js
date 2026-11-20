@@ -4268,3 +4268,12 @@ async function chatEnviar() {
 // abas da tela de entrada: "Entrar" e "Criar conta" sempre visíveis
 document.querySelectorAll("[data-ctm]").forEach((b) => (b.onclick = () => contaModo(b.dataset.ctm)));
 
+// plataforma web: link discreto de volta ao site (no app instalado não aparece)
+if (document.querySelector('script[src*="ponte-agente"]')) {
+  const m = document.querySelector("header .marca, .marca");
+  if (m && !document.getElementById("volta-site")) {
+    const a = document.createElement("a");
+    a.id = "volta-site"; a.href = "../"; a.textContent = "← Site"; a.title = "Voltar ao site do DASSH";
+    m.after(a);
+  }
+}

@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>DASSH Console — terminal profissional para técnicos de infraestrutura</title>
-<meta name="description" content="DASSH Console: Serial, SSH, PowerShell, CMD, Web (iDRAC/iLO), Azure, Google Cloud, AWS e IA em abas. Skills por fabricante, evidências com SHA-256, relatório PDF com topologia, Biblioteca e sessão ao vivo cifrada de ponta a ponta.">
+<title>DASSH Console — a plataforma de operação técnica, com prova de cada comando</title>
+<meta name="description" content="Um só lugar para operar qualquer ambiente: rede, servidores, nuvem, banco de dados, mainframe, segurança e IA. Cada comando vira evidência com SHA-256, a sessão vira conhecimento pesquisável e o time acompanha ao vivo, cifrado de ponta a ponta.">
 <link rel="icon" href="img/favicon.ico">
 <!-- pwa:inicio -->
 <link rel="manifest" href="manifest.webmanifest">
@@ -34,10 +34,10 @@
   nav a { color: var(--suave); text-decoration: none; margin-left: 22px; font-size: 14.5px; }
   nav a:hover { color: var(--texto); }
   @media (max-width: 720px) { nav { display: none; } }
-  .web-topo { display: inline-flex; align-items: center; gap: 8px; padding: 8px 16px; border-radius: 999px; font-weight: 650;
-    font-size: 14.5px; text-decoration: none; color: #04231b; background: linear-gradient(135deg, #5ee0b5, var(--verde));
-    box-shadow: 0 6px 22px rgba(0,200,150,.35); white-space: nowrap; margin-left: auto; margin-right: 6px; }
-  .web-topo:hover { box-shadow: 0 8px 28px rgba(0,200,150,.55); }
+  .web-topo { display: inline-flex; align-items: center; padding: 6px 15px; border-radius: 8px; font-weight: 600; font-size: 14px;
+    text-decoration: none; color: var(--texto); border: 1px solid #2f3b48; background: transparent; white-space: nowrap; margin-left: 22px; }
+  .web-topo:hover { border-color: var(--verde); color: #fff; background: rgba(0,200,150,.08); }
+  .topo-dir { display: flex; align-items: center; }
   .btn.web { background: linear-gradient(135deg, #5ee0b5, var(--verde)); color: #04231b; border: 0; font-size: 18px;
     padding: 16px 30px; box-shadow: 0 12px 36px rgba(0,200,150,.45); }
   .btn.web:hover { box-shadow: 0 16px 44px rgba(0,200,150,.6); }
@@ -134,6 +134,8 @@
   @media (max-width: 860px) { .destaque { grid-template-columns: 1fr; gap: 20px; } .destaque.inverte .txt { order: 0; } }
   .duas { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
   @media (max-width: 760px) { .duas { grid-template-columns: 1fr; } }
+  .tres { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  @media (max-width: 900px) { .tres { grid-template-columns: 1fr; } }
   .rec.grande { padding: 24px; }
   .rec ul { margin: 8px 0 0; padding-left: 18px; color: var(--suave); font-size: 15px; }
   .rec li { margin: 7px 0; }
@@ -151,8 +153,7 @@
     <circle cx="73" cy="27" r="13" fill="#fff"/>
     <polyline points="66.5,27.5 71.5,32.5 80,21.5" fill="none" stroke="#004e40" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round"/>
   </svg><span id="tnome" aria-hidden="true"></span></a>
-  <a class="web-topo" href="app/">🌐 Abrir a plataforma web</a>
-  <nav><a href="#como">Como funciona</a><a href="#recursos">Recursos</a><a href="#instalar">Instalar</a><a href="ao-vivo.html">Assistir ao vivo</a><a href="baixar/">Baixar</a><a href="docs/">Docs</a><a href="#duvidas">Dúvidas</a></nav>
+  <div class="topo-dir"><nav><a href="#como">Como funciona</a><a href="#recursos">Recursos</a><a href="#instalar">Começar</a><a href="ao-vivo.html">Assistir ao vivo</a><a href="baixar/">Baixar</a><a href="docs/">Docs</a><a href="#duvidas">Dúvidas</a></nav><a class="web-topo" href="app/">Entrar</a></div>
 </div></header>
 
 <section class="hero"><div class="cont">
@@ -165,12 +166,12 @@
     <polyline points="66.5,27.5 71.5,32.5 80,21.5" fill="none" stroke="#004e40" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round"/>
   </svg>
   <div><div class="prompt" aria-hidden="true"><span class="ps">dassh@ops:~$</span> <span id="digita"></span><i id="caret"></i></div></div>
-  <h1>Do cabo console ao relatório.<br><span class="grad">Um terminal só, com prova de cada comando.</span></h1>
-  <p class="sub">O DASSH Console reúne <b>Serial, SSH, PowerShell, CMD, Web (iDRAC/iLO), Azure, Google Cloud, AWS e assistentes de IA</b>
-    em abas. Você coleta com <b>Skills por fabricante</b>, gera <b>evidências com ID, fuso e SHA-256</b> e entrega
-    um <b>relatório em PDF com a topologia desenhada sozinha</b>. Quem está longe acompanha <b>ao vivo, cifrado de ponta a ponta</b>.</p>
+  <h1>Todo ambiente, todo especialista, um só console.<br><span class="grad">E prova de cada comando.</span></h1>
+  <p class="sub">Rede, servidores, nuvem, banco de dados, mainframe, segurança ou IA: o DASSH Console junta <b>Serial, SSH, PowerShell,
+    interfaces Web, Azure, Google Cloud, AWS e assistentes de IA</b> numa mesma tela. Cada comando pode virar <b>evidência com SHA-256</b>,
+    cada sessão vira <b>conhecimento pesquisável</b> e o seu time acompanha <b>ao vivo, cifrado de ponta a ponta</b>, do computador ou do celular.</p>
   <div class="botoes">
-    <a class="btn web" href="app/">🌐 Abrir a plataforma web <small>no navegador · Windows, macOS e Linux</small></a>
+    <a class="btn web" href="app/">Começar agora</a>
     <span class="btn prim desativado" aria-disabled="true" title="Download temporariamente indisponível">⬇ Baixar para Windows <small>em breve</small></span>
     <a class="btn" href="ao-vivo.html">▶ Assistir ao vivo <small>pelo navegador</small></a>
   </div>
@@ -184,61 +185,84 @@
   </figure>
 </div></section>
 
+<section id="para-quem"><div class="cont">
+  <h2>Feito para quem opera tecnologia</h2>
+  <p class="lead">Do suporte N1 ao arquiteto, de quem cuida de um switch a quem administra milhares de instâncias.</p>
+  <div class="recursos">
+    <div class="rec"><div class="ic">🌐</div><h3>Redes e telecom</h3><p>Console serial, SSH e Skills para Cisco, Huawei, HPE, Aruba, Juniper, Fortinet, MikroTik e mais, com topologia desenhada da coleta.</p></div>
+    <div class="rec"><div class="ic">🖥️</div><h3>Servidores Windows e Linux</h3><p>PowerShell, CMD e SSH em abas, iDRAC, iLO e outras gerências web abertas dentro do app.</p></div>
+    <div class="rec"><div class="ic">☁️</div><h3>Nuvem e DevOps</h3><p>Azure CLI, gcloud e AWS CLI prontos, com evidência do que foi alterado em cada ambiente.</p></div>
+    <div class="rec"><div class="ic">🗄️</div><h3>Banco de dados</h3><p>Sessões de administração registradas e consultas importantes guardadas como evidência com hash.</p></div>
+    <div class="rec"><div class="ic">🧠</div><h3>IA aplicada</h3><p>Claude Code, Codex, Gemini CLI e Copilot CLI ao lado da sessão real, com o resultado registrado.</p></div>
+    <div class="rec"><div class="ic">🛡️</div><h3>Segurança e pentest ético</h3><p>Cada passo do teste autorizado gravado, com cadeia de custódia para o relatório ao cliente.</p></div>
+    <div class="rec"><div class="ic">🏛️</div><h3>Mainframe e legado</h3><p>Acesso por terminal a ambientes críticos, com registro fiel de tudo o que foi executado.</p></div>
+    <div class="rec"><div class="ic">📈</div><h3>NOC, SOC e monitoramento</h3><p>Resposta a incidente com o time assistindo ao vivo e a linha do tempo pronta para o pós-mortem.</p></div>
+    <div class="rec"><div class="ic">🏢</div><h3>MSPs, integradoras e consultorias</h3><p>O mesmo padrão de entrega em toda a equipe, para mostrar ao cliente exatamente o que foi feito.</p></div>
+  </div>
+</div></section>
+
 <section class="alt" id="valor"><div class="cont">
-  <h2>Menos janelas abertas. Mais atendimento entregue.</h2>
-  <p class="lead">PuTTY, prints, bloco de notas, planilha e o grupo do WhatsApp num fluxo só, do primeiro comando à entrega.</p>
-  <div class="duas">
-    <div class="rec grande"><div class="ic">🧰</div><h3>Para o técnico de campo</h3>
+  <h2>O trabalho técnico deixa de ser invisível.</h2>
+  <p class="lead">Hoje ele se espalha entre PuTTY, MobaXterm, SecureCRT, prints, bloco de notas e conversas. O DASSH substitui tudo isso, importa as suas sessões dessas ferramentas em um clique e deixa o que foi feito registrado,
+    provado e reaproveitável, para quem fez, para o time e para quem precisa confiar no resultado.</p>
+  <div class="tres">
+    <div class="rec grande"><div class="ic">⚡</div><h3>Opere mais rápido</h3>
       <ul>
-        <li>Abre o console do switch, o SSH do servidor e a iDRAC em abas, lado a lado.</li>
-        <li>Roda a coleta inteira com uma Skill, escolhendo comando por comando. A paginação vai até o fim sem precisar apertar espaço.</li>
-        <li><kbd>Ctrl+Alt+E</kbd> gera a evidência padronizada e manda para a conversa da equipe.</li>
-        <li>No fim, o relatório já sai pronto, com capa, evidências, logs e topologia.</li>
+        <li>Equipamento, servidor, nuvem e IA em abas lado a lado, cada uma com o seu contexto.</li>
+        <li>Skills prontas executam a coleta certa, comando por comando, sem decorar sintaxe de fabricante.</li>
+        <li>Credenciais saem do cofre direto para o login, sem aparecer na tela.</li>
       </ul></div>
-    <div class="rec grande"><div class="ic">🏢</div><h3>Para a empresa prestadora</h3>
+    <div class="rec grande"><div class="ic">🧾</div><h3>Prove o que fez</h3>
       <ul>
-        <li>Toda evidência sai no mesmo formato, com ID único, data e fuso, origem da conexão e hash SHA-256.</li>
-        <li>O relatório traz um manifesto de custódia: dá para conferir se algum arquivo mudou.</li>
-        <li>Um especialista remoto acompanha a sessão ao vivo pelo navegador, sem instalar nada. Você aprova quem entra.</li>
-        <li>Gravações e logs pesquisáveis ficam guardados para revisão e treinamento.</li>
+        <li>Evidência padronizada com ID único, data e fuso, origem e hash SHA-256.</li>
+        <li>Relatório em PDF com manifesto de custódia, logs originais e topologia montada da própria coleta.</li>
+        <li>Gravação da sessão inteira para auditoria, revisão de incidente ou treinamento.</li>
+      </ul></div>
+    <div class="rec grande"><div class="ic">🤝</div><h3>Trabalhe em equipe</h3>
+      <ul>
+        <li>Compartilhe uma aba ao vivo: quem assiste abre no navegador, sem instalar, e você decide quem digita.</li>
+        <li>Chat por aba compartilhada, para a conversa ficar junto da sessão certa.</li>
+        <li>Continue pelo celular: a mesma interface operando o seu computador, com pareamento cifrado.</li>
       </ul></div>
   </div>
 </div></section>
 
 <section id="como"><div class="cont">
   <h2>Como funciona</h2>
-  <p class="lead">Três passos, o mesmo jeito em todo atendimento.</p>
+  <p class="lead">O mesmo fluxo para qualquer especialidade: do primeiro comando à entrega.</p>
   <div class="passos">
-    <div class="passo"><h3>Conecte</h3><p>Escolha o tipo no seletor (Serial, SSH, Web, Nuvem, IA…) e clique em <b>Conectar</b>. As senhas podem vir do <b>cofre</b>, protegido pelo Windows.</p></div>
-    <div class="passo"><h3>Colete</h3><p>Abra uma <b>⚡ Skill</b> do fabricante, marque os comandos e execute. Cada saída vira uma evidência numerada. Quer registrar só um comando? <kbd>Ctrl+Alt+E</kbd>.</p></div>
-    <div class="passo"><h3>Entregue</h3><p>Clique em <b>📄 Relatório</b>: sai o PDF com evidências, logs originais, hashes e topologia, pronto para assinar e enviar pelo WhatsApp.</p></div>
+    <div class="passo"><h3>Conecte</h3><p>Escolha o destino no seletor (equipamento, servidor, shell, nuvem ou IA) e clique em <b>Conectar</b>. A senha pode vir do <b>cofre</b>.</p></div>
+    <div class="passo"><h3>Execute e registre</h3><p>Rode uma <b>⚡ Skill</b> ou trabalhe livre. <kbd>Ctrl+Alt+E</kbd> transforma qualquer saída em evidência numerada e verificável.</p></div>
+    <div class="passo"><h3>Entregue e reaproveite</h3><p>Gere o <b>📄 Relatório</b>, envie ao time e encontre tudo depois na <b>🗂 Biblioteca</b>: sessões, gravações, logs e evidências.</p></div>
   </div>
 </div></section>
 
 <section class="alt" id="recursos"><div class="cont">
   <h2>O que vem no DASSH Console</h2>
-  <p class="lead">Versão publicada: <b>1.0.5</b>. Tudo abaixo já está no app.</p>
+  <p class="lead">Tudo abaixo já funciona, no app e na plataforma web.</p>
   <div class="recursos">
-    <div class="rec"><div class="ic">🖥️</div><h3>Terminal multiprotocolo</h3><p>Serial (console de switch), SSH, PowerShell e CMD em até 8 abas, com cronômetro e diagnóstico de cabo USB-serial.</p></div>
-    <div class="rec"><div class="ic">🌐</div><h3>Web: iDRAC, iLO e firewalls</h3><p>A interface de gerência abre dentro do app, com subabas. A evidência pode ser da <b>página inteira</b>, não só do pedaço visível.</p></div>
+    <div class="rec"><div class="ic">🖥️</div><h3>Terminal multiprotocolo</h3><p>Serial, SSH, PowerShell e CMD em abas independentes, cada uma com o seu contexto, tema e destino de envio.</p></div>
+    <div class="rec"><div class="ic">🌐</div><h3>Gerências web dentro do app</h3><p>A interface de gerência abre dentro do app, com subabas. A evidência pode ser da <b>página inteira</b>, não só do pedaço visível.</p></div>
     <div class="rec"><div class="ic">☁️</div><h3>Nuvem</h3><p>Abas prontas para Azure CLI, Google Cloud (gcloud) e AWS CLI. Se a ferramenta não estiver instalada, o app instala na primeira vez.</p></div>
-    <div class="rec"><div class="ic">🤖</div><h3>IA no terminal</h3><p>Claude Code, Codex, Gemini CLI e Copilot CLI em abas, ao lado da sessão do equipamento. Cada uma usa a sua conta com o fornecedor.</p></div>
-    <div class="rec"><div class="ic">⚡</div><h3>Skills por fabricante</h3><p>Huawei, Cisco, HPE, Fortinet, Juniper, Aruba, Dell OS10, MikroTik, ESXi, Brocade FOS/ICX, iSCSI, Windows e Linux. Você <b>escolhe cada comando</b> antes de executar.</p></div>
-    <div class="rec"><div class="ic">🗂</div><h3>Biblioteca</h3><p>Sessões, gravações, evidências, logs, relatórios e Skills num só lugar. Busca dentro dos logs, player de gravação e reconexão em um clique.</p></div>
-    <div class="rec"><div class="ic">📸</div><h3>Evidência com valor de auditoria</h3><p>Imagem padronizada em 4K com ID único, data e fuso, chamado, técnico, origem e o SHA-256 do conteúdo.</p></div>
+    <div class="rec"><div class="ic">🤖</div><h3>IA no terminal</h3><p>Claude Code, Codex, Gemini CLI e Copilot CLI em abas, ao lado da sessão real. Cada uma usa a sua conta com o fornecedor.</p></div>
+    <div class="rec"><div class="ic">⚡</div><h3>Skills por fabricante</h3><p>Coleta e configuração guiadas para Huawei, Cisco, HPE, Fortinet, Juniper, Aruba, Dell, MikroTik, ESXi, Brocade, Windows, Linux e outros. Você <b>escolhe cada comando</b>.</p></div>
+    <div class="rec"><div class="ic">🗂</div><h3>Biblioteca</h3><p>Sessões, gravações, evidências, logs, relatórios, equipamentos, cofre e Skills num só lugar, com busca, filtros e importação de PuTTY, MobaXterm, SecureCRT e mais 8 ferramentas.</p></div>
+    <div class="rec"><div class="ic">📸</div><h3>Evidência com valor de auditoria</h3><p>Imagem padronizada em 4K com ID único, data e fuso, chamado, responsável, origem e o SHA-256 do conteúdo.</p></div>
     <div class="rec"><div class="ic">📄</div><h3>Relatório com topologia</h3><p>PDF com capa, evidências, logs anexados, hashes e manifesto de custódia. A topologia (stack, LLDP, Eth-Trunk) é montada a partir da própria coleta.</p></div>
     <div class="rec"><div class="ic">📡</div><h3>Ao vivo, de ponta a ponta</h3><p>Convide por código. Quem assiste abre uma página no navegador, sem instalar. Você aprova cada entrada e só passa o teclado se quiser.</p></div>
-    <div class="rec"><div class="ic">🔐</div><h3>Cofre de credenciais</h3><p>Senhas cifradas com a proteção do próprio Windows (DPAPI). O login é preenchido sem a senha aparecer na tela ou na evidência.</p></div>
-    <div class="rec"><div class="ic">💬</div><h3>Envio pelo WhatsApp</h3><p>Evidências e relatório vão para a conversa da equipe, em ordem, com uma fila que não perde nada se a conexão cair.</p></div>
+    <div class="rec"><div class="ic">🔐</div><h3>Cofre de credenciais</h3><p>Senhas cifradas no seu computador e protegidas por um PIN próprio. O login é preenchido sem a senha aparecer na tela ou na evidência.</p></div>
+    <div class="rec"><div class="ic">💬</div><h3>Envio para o time</h3><p>Evidências e relatório vão por WhatsApp, Telegram ou e-mail, em ordem, com uma fila que não perde nada se a conexão cair.</p></div>
+    <div class="rec"><div class="ic">👤</div><h3>Uma conta em todo lugar</h3><p>A mesma conta DASSH no site, no app e no celular. Seus dados de trabalho continuam no seu computador.</p></div>
+    <div class="rec"><div class="ic">📱</div><h3>Pelo celular</h3><p>Pareie uma vez e opere o seu computador pelo celular, com a interface completa e canal cifrado.</p></div>
     <div class="rec"><div class="ic">⏺</div><h3>Gravação de sessão</h3><p>A sessão é gravada e pode ser assistida depois no player, com o log em texto gerado a partir da gravação.</p></div>
   </div>
 </div></section>
 
 <section id="biblioteca"><div class="cont destaque">
   <div class="txt">
-    <h2>🗂 Biblioteca: o atendimento inteiro num lugar</h2>
-    <p>Cada sessão aparece com o equipamento, a duração e as evidências que gerou. Dali você assiste à gravação, lê o log com busca,
-      abre o relatório ou reconecta no mesmo equipamento. As Skills também ficam ali, agrupadas por fabricante.</p>
+    <h2>🗂 Biblioteca: o conhecimento do time num lugar só</h2>
+    <p>Cada sessão aparece com o destino, a duração e as evidências que gerou. Dali você assiste à gravação, lê o log com busca,
+      abre o relatório ou reconecta no mesmo destino. Equipamentos, cofre, Skills e importação de outras ferramentas também moram ali, no mesmo padrão.</p>
     <p class="nota">Tudo é lido das pastas do atendimento no seu computador. Nada sobe para a nuvem.</p>
   </div>
   <figure class="shot"><img src="img/tela-biblioteca.webp" width="2000" height="1250" loading="lazy" decoding="async"
@@ -248,10 +272,10 @@
 
 <section class="alt" id="skills"><div class="cont destaque inverte">
   <div class="txt">
-    <h2>⚡ Skills: a coleta certa, comando por comando</h2>
+    <h2>⚡ Skills: o conhecimento do especialista, pronto para usar</h2>
     <p>Escolha a Skill do fabricante e marque só o que precisa, ou use <b>Marcar todos</b>. O app executa, pagina até o fim
-      e salva cada saída como evidência numerada. Pode também mandar cada uma para o WhatsApp.</p>
-    <p class="nota">As Skills são somente leitura (comandos de consulta). Algumas ainda estão marcadas como “não validadas em equipamento real”, e o app avisa quando é o caso.</p>
+      e salva cada saída como evidência numerada. As Skills de configuração fazem perguntas, mostram a prévia e só aplicam com a sua confirmação.</p>
+    <p class="nota">Algumas Skills ainda estão marcadas como “não validadas em equipamento real”, e o app avisa quando é o caso.</p>
   </div>
   <figure class="shot"><img src="img/tela-skills.webp" width="2000" height="1250" loading="lazy" decoding="async"
     alt="Janela Skills de coleta com a lista de fabricantes e os comandos da Skill Dell OS10 com caixas de seleção">
@@ -260,10 +284,10 @@
 
 <section class="ev" id="evidencia"><div class="cont">
   <h2>Uma evidência que se explica sozinha</h2>
-  <p class="lead">Mesmo formato em todos os atendimentos: número, equipamento, comando, data com fuso, chamado, técnico, origem e o hash SHA-256
+  <p class="lead">Mesmo formato em qualquer ambiente: número, destino, comando, data com fuso, chamado, responsável, origem e o hash SHA-256
     do conteúdo. O mesmo hash aparece no manifesto de custódia do relatório.</p>
   <figure class="shot"><img src="img/evidencia-display-stack.webp" width="1920" height="1080" loading="lazy" decoding="async"
-    alt="Evidência Nº 03 do switch fictício SW-DEMO-CORE com a saída do comando display stack e a faixa de rastreabilidade com ID, chamado, técnico, origem e SHA-256">
+    alt="Evidência Nº 03 do switch fictício SW-DEMO-CORE com a saída do comando display stack e a faixa de rastreabilidade com ID, chamado, responsável, origem e SHA-256">
     <figcaption>Evidência gerada pelo próprio desenhador do app, com dados fictícios (switch, chamado e MACs de exemplo).</figcaption></figure>
 </div></section>
 
@@ -280,20 +304,12 @@
 </div></section>
 
 <section id="instalar"><div class="cont">
-  <h2>Instalar em 3 passos</h2>
-  <p class="lead">Leva menos de um minuto e não precisa de administrador.</p>
+  <h2>Comece agora, pelo navegador</h2>
+  <p class="lead">Sem instalar o app: a plataforma web usa um conector leve no seu computador para falar com terminais e portas.</p>
   <div class="passos">
-    <div class="passo"><h3>Baixe</h3><p>Clique em <b>Baixar para Windows</b>. O arquivo <kbd>DASSH-Console-Setup.exe</kbd> vai para a pasta Downloads.</p></div>
-    <div class="passo"><h3>Execute</h3><p>Abra o arquivo. Se o Windows mostrar <b>“O Windows protegeu o computador”</b>, veja abaixo. É esperado nesta fase.</p></div>
-    <div class="passo"><h3>Use</h3><p>O atalho <b>DASSH Console</b> aparece na Área de Trabalho. Escolha a conexão no topo e clique em <b>Conectar</b>.</p></div>
-  </div>
-  <div class="smart">
-    <div class="win" aria-hidden="true"><b>O Windows protegeu o computador</b>
-      O Microsoft Defender SmartScreen impediu que um aplicativo desconhecido fosse iniciado…<br><br>
-      <span class="link">Mais informações</span>
-      <div class="rodape"><span class="exec">Executar assim mesmo</span><span>Não executar</span></div></div>
-    <div class="exp">O instalador ainda não tem <b>assinatura digital de código</b>. Por isso o Windows avisa.<br><br>
-      Clique em <b>Mais informações</b> e depois em <b>Executar assim mesmo</b>. O aviso só aparece na instalação.</div>
+    <div class="passo"><h3>Baixe o Conector</h3><p>Em <a href="agente/">DASSH Conector</a>, escolha Windows, macOS ou Linux. Abra uma vez e ele passa a ser chamado pela página.</p></div>
+    <div class="passo"><h3>Abra a plataforma</h3><p>Entre em <a href="app/">plataforma web</a> e clique em <b>Abrir</b> quando o navegador perguntar pelo DASSH Conector.</p></div>
+    <div class="passo"><h3>Entre na sua conta</h3><p>Crie a conta DASSH com e-mail e senha. A mesma conta vale no site, no app e no celular.</p></div>
   </div>
 </div></section>
 
@@ -313,53 +329,45 @@
   <div class="codigo"><small>exemplo de código</small><div class="c">ABCD-EFGH-JKLM</div><small>vale enquanto a sessão estiver aberta</small></div>
 </div></section>
 
-<section id="para-quem"><div class="cont">
-  <h2>Para quem é</h2>
-  <p class="lead">Para quem mantém a infraestrutura funcionando e precisa provar o que fez.</p>
-  <div class="recursos">
-    <div class="rec"><div class="ic">🔧</div><h3>Técnicos e analistas de campo</h3><p>Instalação, entrega e manutenção de switches, servidores e storage, com console serial na mão.</p></div>
-    <div class="rec"><div class="ic">🤝</div><h3>Prestadoras e integradoras</h3><p>Equipes que precisam de evidência padronizada e relatório de entrega para o cliente final.</p></div>
-    <div class="rec"><div class="ic">🛰️</div><h3>NOC, suporte remoto e fabricantes</h3><p>Especialistas que acompanham o técnico à distância e pedem a coleta certa na hora.</p></div>
-  </div>
-</div></section>
 
-<section class="alt" id="duvidas"><div class="cont">
+<section id="duvidas"><div class="cont">
   <h2>Perguntas frequentes</h2>
-  <details><summary>Onde ficam os meus dados?</summary><p>No seu computador. Evidências, logs, gravações e relatórios ficam na pasta do atendimento;
-    as senhas do cofre ficam cifradas pelo Windows. O app não tem conta na nuvem. Só sai do computador o que você mandar: envio pelo WhatsApp,
-    a sessão ao vivo (cifrada de ponta a ponta) e o que você digitar nas abas de nuvem ou de IA, que vai para o respectivo fornecedor.</p></details>
+  <details><summary>Onde ficam os meus dados?</summary><p>No seu computador. Evidências, logs, gravações e relatórios ficam na pasta de trabalho,
+    e as senhas do cofre ficam cifradas localmente. A conta DASSH na nuvem guarda só a sua identidade e preferências. Só sai do computador o que você mandar:
+    envios para o time, a sessão ao vivo (cifrada de ponta a ponta) e o que você digitar nas abas de nuvem ou de IA, que vai para o respectivo fornecedor.</p></details>
   <details><summary>O DASSH Console é “100% seguro”?</summary><p>Nenhum software é. O que fazemos: senhas protegidas pelo Windows, sessão ao vivo
-    cifrada de ponta a ponta com aprovação de cada participante, câmera e microfone nunca usados, e hash SHA-256 para detectar alteração em evidências.
-    Mantenha o Windows atualizado e use o app só em equipamentos que você tem autorização para administrar.</p></details>
+    cifrada de ponta a ponta com aprovação de cada participante, cofre com PIN próprio, câmera e microfone nunca usados, e hash SHA-256 para detectar alteração em evidências.
+    Mantenha o sistema atualizado e use o DASSH só em ambientes que você tem autorização para operar.</p></details>
   <details><summary>O app tem assinatura digital?</summary><p>O instalador <b>ainda não</b> tem assinatura digital de código, por isso aparece o aviso do SmartScreen.
     O relatório em PDF pode ser assinado dentro do app com uma assinatura eletrônica (certificado próprio, gerado no seu computador): qualquer alteração
     posterior no PDF invalida a assinatura. Ela <b>não</b> é ICP-Brasil nem gov.br. Se o cliente exigir assinatura qualificada, ela pode ser feita depois, no mesmo PDF.</p></details>
   <details><summary>A evidência vale para auditoria?</summary><p>Ela foi desenhada para isso: formato fixo, ID único, data com fuso, origem da conexão,
     hash SHA-256 e manifesto de custódia no relatório, seguindo as boas práticas da ISO/IEC 27037. Quem decide se atende a uma norma ou contrato é
     quem audita, caso a caso.</p></details>
-  <details><summary>Existe versão web?</summary><p>Sim, a <a href="app/">plataforma web</a> está <b>em fase de testes</b>. Ela usa um
-    <a href="agente/">Conector local</a> leve no seu computador para falar com a porta serial e os terminais. Para uso no dia a dia, prefira o app para Windows.</p></details>
+  <details><summary>Existe versão web?</summary><p>Sim. A <a href="app/">plataforma web</a> é a mesma interface do app e usa o
+    <a href="agente/">DASSH Conector</a>, leve, no seu computador para falar com a porta serial e os terminais. Funciona no Windows, macOS e Linux.</p></details>
   <details><summary>Preciso pagar pelas abas de IA e de nuvem?</summary><p>As abas abrem as ferramentas oficiais de linha de comando (Claude Code, Codex,
     Gemini CLI, Copilot CLI, Azure CLI, gcloud, AWS CLI). Cada uma exige a sua própria conta e segue os termos e preços do fornecedor. O DASSH não revende nenhuma delas.</p></details>
   <details><summary>Preciso ser administrador?</summary><p>Não. A instalação é só para o seu usuário. O app só pede permissão do
     Windows em ações específicas (por exemplo, instalar o driver do cabo console ou adicionar um IP temporário) e sempre avisa antes.</p></details>
   <details><summary>O cabo console (USB-serial) não funciona</summary><p>Use o botão 🩺 ao lado da porta COM: o app diagnostica
     o cabo e o driver e indica a correção. O 🔓 libera uma porta que ficou presa em outro programa.</p></details>
-  <details><summary>Instalador ou versão portátil?</summary><p>O instalador cria atalhos e o desinstalador. A portátil roda de uma pasta ou
-    pendrive: descompacte e abra <kbd>DASSH Console.exe</kbd>. Para desinstalar: Configurações do Windows → Aplicativos → DASSH Console.</p></details>
+  <details><summary>Quando sai o app para Windows?</summary><p>O instalador e a versão portátil estão em revisão final e voltam em breve.
+    Enquanto isso, use a plataforma web com o Conector: é a mesma interface.</p></details>
 </div></section>
 
 <section class="cta-final"><div class="cont">
-  <h2>Pronto para o próximo atendimento?</h2>
-  <p class="lead">Instale em menos de um minuto ou acompanhe uma sessão pelo navegador.</p>
+  <h2>Leve o seu trabalho técnico para outro nível.</h2>
+  <p class="lead">Abra a plataforma web agora ou acompanhe uma sessão ao vivo pelo navegador.</p>
   <div class="botoes">
+    <a class="btn web" href="app/">🌐 Abrir a plataforma web</a>
     <span class="btn prim desativado" aria-disabled="true" title="Download temporariamente indisponível">⬇ Baixar para Windows <small>em breve</small></span>
     <a class="btn" href="ao-vivo.html">▶ Assistir ao vivo</a>
     <a class="btn" href="docs/">📘 Ler os guias</a>
   </div>
 </div></section>
 
-<footer><div class="cont">DASSH Console · DASSH IT Services · <a href="https://github.com/ClaudioSirimarco/dassh-console-download/releases">todas as versões</a><br>
+<footer><div class="cont">DASSH Console · DASSH IT Services · versão de testes<br>
   <a href="baixar/">Baixar</a> · <a href="docs/">Docs</a> · <a href="agente/">DASSH Conector</a> · <a href="app/">Plataforma web</a> · <a href="status/">Status</a> · <a href="privacidade/">Privacidade</a> · <a href="termos/">Termos</a> · <a href="creditos/">Créditos</a></div></footer>
 <script>
 // logo vivo (igual ao app): o cursor do logo e o da frase piscam juntos (1 s) e o logo "bate" a cada aceso
