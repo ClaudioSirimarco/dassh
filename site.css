@@ -132,3 +132,7 @@ nav.bnav, .bn-folha, .bn-veu { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+
+/* downloads do app (instalador/portátil) temporariamente desativados */
+.btn.desativado { opacity: .45; cursor: not-allowed; pointer-events: none; filter: grayscale(.6); }
+.desativado-txt { color: var(--suave, #8b949e); }
