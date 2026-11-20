@@ -1082,7 +1082,15 @@ function evidencia(enviar, roteiro = "", aba = null, comando = "", indiceWeb = n
   const snap = a.tipo === "web" ? null : snapshot(a.term);
   if (snap && segredos && segredos.length) { SKL.mascararSnap(snap, segredos); comando = SKL.mascarar(comando, segredos); }   // senha da Skill nunca vai para a evidência
   capturasPendentes++;
-  const p = filaCaptura.then(() => processarCaptura(a, snap, enviar, roteiro, comando, indiceWeb)).finally(() => capturasPendentes--);
+  const bt = $(enviar ? "#enviar" : "#salvar");   // o botão "bate" como um coração enquanto o print é gerado (só transform: leve)
+  if (bt) { bt.dataset.pulsos = String((+bt.dataset.pulsos || 0) + 1); bt.classList.add("pulsando"); }
+  const p = filaCaptura.then(() => processarCaptura(a, snap, enviar, roteiro, comando, indiceWeb)).finally(() => {
+    capturasPendentes--;
+    if (!bt) return;
+    const resta = Math.max(0, (+bt.dataset.pulsos || 1) - 1);
+    bt.dataset.pulsos = String(resta);
+    if (!resta) bt.classList.remove("pulsando");
+  });
   filaCaptura = p.catch(() => {});
   return p;
 }
@@ -2407,6 +2415,9 @@ function iniciarSistema(ini) {
 // ================= atalhos =================
 function atalho(e) {
   if (e.type !== "keydown" || !e.ctrlKey || !e.altKey) return false;
+  // a MESMA tecla passa pelo terminal (xterm) e depois sobe até o documento: só a 1ª age (antes saíam 2 prints por atalho)
+  if (e.__dasshAtalho) return true;
+  e.__dasshAtalho = true;
   const k = e.key.toLowerCase();
   if (k === "l") { limpar(); return true; }
   if (k === "p") { evidencia(false); return true; }
