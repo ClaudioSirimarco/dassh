@@ -3841,7 +3841,7 @@ const CT_LEMBRAR = "dassh.lembrar";
 const ctTemEmail = (u) => !!CONTA.nuvem && /@/.test(u || "");   // Conector antigo (sem nuvem): tudo vai para a conta local
 
 function contaModo(modo) {
-  CONTA.modo = modo;
+  CONTA.modo = modo; CONTA.ligando = false;
   document.querySelectorAll("[data-ctm]").forEach((b) => { b.classList.toggle("on", b.dataset.ctm === (modo === "recuperar" ? "entrar" : modo)); b.setAttribute("aria-selected", b.classList.contains("on")); });
   const criar = modo === "criar", rec = modo === "recuperar";
   $("#ct-sub").textContent = criar ? "Crie a sua conta DASSH" : rec ? "Recuperar o acesso" : "Entre na sua conta DASSH";
@@ -3888,9 +3888,11 @@ function contaLigarOauth(raiz) {
     if (b.classList.contains("breve")) return contaMsg(`O login com ${nome} está em ativação. Por enquanto, entre com o e-mail.`, "aviso");
     raiz.querySelectorAll("[data-oauth]").forEach((x) => (x.disabled = true));
     contaMsg(`Abrimos o ${nome} no seu navegador. Conclua lá e volte para cá…`);
-    const r = await contaApi().conta_nuvem_oauth(b.dataset.oauth, $("#ct-lembrar").checked, $("#ct-senha-local").value || null)
+    const logado = !!(CONTA.token && $("#conta-tela").classList.contains("oculto"));   // dentro da conta: associa
+    const r = await contaApi().conta_nuvem_oauth(b.dataset.oauth, $("#ct-lembrar").checked, $("#ct-senha-local").value || null, logado ? CONTA.token : null)
       .catch((err) => ({ ok: false, erro: String(err.message || err) }));
     raiz.querySelectorAll("[data-oauth]").forEach((x) => (x.disabled = false));
+    if (logado) { if (r && r.ok) { toast(`🔗 ${nome} associado à sua conta (${r.email})`); if (window.abrirConta) abrirConta(); } else toast((r && r.erro) || "Não foi possível associar.", "aviso"); return; }
     ctResultado(r);
   }));
 }
@@ -3899,7 +3901,8 @@ function ctResultado(r) {
   if (r && r.ok) { if (r.offline) toast("Sem internet: entrou no modo offline deste computador.", "aviso"); return contaEntrou(r); }
   if (r && r.precisa_senha_local) {
     $("#ct-l-local").classList.remove("oculto"); $("#ct-rot-local").textContent = `Senha da conta local "${r.usuario_local}" (só desta vez)`;
-    $("#ct-senha-local").focus();
+    $("#ct-senha-local").focus(); CONTA.ligando = true; $("#ct-ir").textContent = "Ligar e entrar";
+    $("#ct-l-senha").classList.add("oculto"); $("#ct-sociais").classList.add("oculto");
     return contaMsg("Este computador já tinha uma conta local. Digite a senha dela uma vez para ligar à sua conta DASSH — seus dados continuam.", "aviso");
   }
   if (r && r.confirmar) { contaModo("entrar"); return contaMsg(r.erro, "aviso"); }
@@ -3962,6 +3965,12 @@ $("#ct-form").onsubmit = async (e) => {
   e.preventDefault();
   const u = $("#ct-usuario").value.trim(), s = $("#ct-senha").value, s2 = $("#ct-senha2").value, email = ctTemEmail(u);
   const lembrar = $("#ct-lembrar").checked, local = $("#ct-senha-local").value || null, modo = CONTA.modo;
+  if (CONTA.ligando) {   // login na nuvem já feito: só falta a senha da conta local deste PC
+    if (!local) return contaMsg("Digite a senha da conta local deste computador.", "erro");
+    const r = await contaApi().conta_nuvem_ligar(local).catch((err) => ({ ok: false, erro: String(err.message || err) }));
+    if (r && r.ok) { CONTA.ligando = false; return contaEntrou(r); }
+    $("#ct-senha-local").value = ""; return contaMsg((r && r.erro) || "Senha incorreta.", "erro");
+  }
   if (!u) return contaMsg("Digite o seu e-mail.", "erro");
   if (!(modo === "recuperar" && email) && !s) return contaMsg("Digite a senha.", "erro");
   if ((modo === "criar" || (modo === "recuperar" && !email)) && s !== s2) return contaMsg("As senhas não conferem.", "erro");
