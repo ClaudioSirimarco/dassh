@@ -4176,7 +4176,7 @@ function chatDesenhar() {
     const meu = m.quem === eu, junta = ant && ant.quem === m.quem && m.hora - ant.hora < 120000; ant = m;
     return `<div class="chat-msg${meu ? " eu" : ""}${junta ? " junta" : ""}" style="--cor:${chatCor(m.quem)}">
       ${junta ? "" : `<div class="chat-cab"><b>${esc(meu ? "Você" : m.nome)}</b>${m.quem === "host" && !meu ? "<em>dono</em>" : ""}<time>${chatHora(m.hora)}</time></div>`}
-      <div class="chat-corpo"${!meu && m.mid === c.digitar ? ' data-digita="1"' : ""}>${esc(m.txt)}</div>
+      <div class="chat-corpo chat-term"><span class="chat-ps">${esc(chatUsuario(meu ? "voce" : m.nome))}@ops:~$</span> <span class="chat-txt"${!meu && m.mid === c.digitar ? ' data-digita="1"' : ""}>${esc(m.txt)}</span></div>
       ${!meu && chatPareceComando(m.txt) ? `<div class="chat-acoes"><button type="button" data-shell="${esc(m.mid)}" title="Coloca o comando no shell desta aba (sem Enter: você confere e aperta Enter)">▶ no shell</button><button type="button" data-copiar="${esc(m.mid)}" title="Copiar">⧉ copiar</button></div>` : ""}</div>`;
   }).join("") + c.pend.map((p) => `<div class="chat-msg eu pend${p.falhou ? " falhou" : ""}" style="--cor:${chatCor(eu)}">
       <div class="chat-corpo">${esc(p.txt)}</div><div class="chat-st">${p.falhou ? "não entregue — o dono usa uma versão sem chat" : "enviando…"}</div></div>`).join("");
@@ -4312,10 +4312,13 @@ function chatSom() {
     });
   } catch (_) {}
 }
-function chatEfeitoDigitar(el) {
-  const txt = el.textContent; el.textContent = ""; let i = 0;
-  const passo = () => { el.textContent = txt.slice(0, ++i); if (i < txt.length) setTimeout(passo, Math.max(8, 400 / txt.length)); };
+function chatEfeitoDigitar(el) {   // como o topo do site: vai digitando, com o cursor piscando
+  const txt = el.textContent; el.textContent = ""; el.classList.add("digitando"); let i = 0;
+  const passo = () => { el.textContent = txt.slice(0, ++i); if (i < txt.length) setTimeout(passo, Math.min(45, Math.max(12, 900 / txt.length))); else setTimeout(() => el.classList.remove("digitando"), 1200); };
   passo();
+}
+function chatUsuario(nome) {   // "Ana Souza" -> "ana.souza" (sem acento, como num prompt)
+  return String(nome || "convidado").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim().replace(/[^a-z0-9]+/g, ".").replace(/^\.|\.$/g, "").slice(0, 20) || "convidado";
 }
 (function chatEmojis() {
   const f = $("#chat-form"); if (!f || $("#chat-emo")) return;
