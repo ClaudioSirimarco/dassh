@@ -1179,3 +1179,9 @@ body.ao-vivo::before { content: none; }
   background: var(--verde-cl, #5ee0b5); animation: chat-caret 1s steps(1) infinite; }
 @keyframes chat-caret { 50% { opacity: 0; } }
 .chat-msg .chat-cab b { display: none; }   /* o nome já está no prompt */
+
+/* chat: dica do Tab (comandos da sessão) */
+.chat-dica { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; padding: 4px 10px 0; font: 11px ui-monospace, Consolas, monospace; color: var(--suave); }
+.chat-dica kbd { font: 600 10px ui-monospace, Consolas, monospace; border: 1px solid #2f3b48; border-radius: 4px; padding: 0 4px; color: var(--texto); }
+.chat-dica span { color: var(--verde-cl); background: rgba(0, 200, 150, .1); border-radius: 4px; padding: 1px 5px; }
+.chat-dica.oculto { display: none; }

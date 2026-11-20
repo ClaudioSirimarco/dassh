@@ -4368,3 +4368,62 @@ function shareAbaInfo(s) {
     ${chip(o.ativa, "⏳", o.ativa ? "mantém ativa" : "pode expirar", "Manter a sessão ativa")}
     ${o.tipo ? chip(true, "🔌", esc(nomeTipo(o.tipo)) + (o.alvo ? " · " + esc(o.alvo) : ""), "Conexão") : ""}</span>`;
 }
+
+
+// ---------- chat inteligente: Tab completa comandos conforme o tipo da aba compartilhada (como no shell) ----------
+const CHAT_CMDS = {
+  rede: ["display version", "display interface brief", "display ip interface brief", "display current-configuration", "display stack",
+    "display lldp neighbor brief", "display eth-trunk", "display logbuffer", "display device", "display cpu-usage", "display memory-usage",
+    "display vlan", "display mac-address", "display arp", "display ip routing-table", "system-view", "save",
+    "show version", "show running-config", "show ip interface brief", "show interfaces status", "show vlan brief", "show cdp neighbors",
+    "show lldp neighbors", "show logging", "show inventory", "show spanning-tree", "show ip route", "show mac address-table",
+    "configure terminal", "write memory", "ping", "traceroute"],
+  linux: ["ip a", "ip route", "ss -tulpn", "systemctl status", "journalctl -xe", "df -h", "free -m", "top", "uname -a", "hostnamectl",
+    "cat /etc/os-release", "sudo", "tail -f /var/log/syslog", "ping", "traceroute"],
+  powershell: ["Get-NetIPConfiguration", "Get-NetAdapter", "Get-NetIPAddress", "Get-Service", "Get-Process", "Test-NetConnection -ComputerName ",
+    "Get-EventLog -LogName System -Newest 50", "Get-WinEvent -LogName System -MaxEvents 50", "Get-ComputerInfo", "Get-Disk", "Get-Volume",
+    "Restart-Service -Name ", "Get-HotFix", "Resolve-DnsName ", "ipconfig /all", "ping", "tracert"],
+  cmd: ["ipconfig /all", "ipconfig /flushdns", "ping", "tracert", "netstat -ano", "nslookup", "systeminfo", "tasklist", "route print", "arp -a", "hostname"],
+  azure: ["az login", "az account show", "az account list -o table", "az group list -o table", "az vm list -o table", "az vm show -g  -n ",
+    "az network vnet list -o table", "az storage account list -o table"],
+  aws: ["aws sts get-caller-identity", "aws ec2 describe-instances", "aws s3 ls", "aws iam list-users", "aws ec2 describe-vpcs", "aws configure list"],
+  gcp: ["gcloud config list", "gcloud projects list", "gcloud compute instances list", "gcloud auth list", "gcloud container clusters list"],
+};
+function chatFamilias(a) {
+  const t = String((a && a.share && a.share.aba && a.share.aba.tipo) || (a && a.tipo) || "").toLowerCase();
+  if (t === "powershell") return ["powershell"];
+  if (t === "cmd") return ["cmd"];
+  if (t === "azure" || t === "aws") return [t];
+  if (t === "gcp" || t === "gcloud") return ["gcp"];
+  return ["rede", "linux"];   // serial / ssh / desconhecido: equipamentos de rede e servidores
+}
+function chatSugestoes(a) {
+  const l = chatFamilias(a).flatMap((f) => CHAT_CMDS[f] || []);
+  try {   // + comandos das Skills (quando a Biblioteca já carregou no PC de quem digita)
+    (BIB.skills || []).forEach((sk) => (sk.comandos || []).forEach((c) => { const x = typeof c === "string" ? c : c && (c.cmd || c.comando); if (x) l.push(String(x)); }));
+  } catch (_) {}
+  return [...new Set(l)];
+}
+(function chatTab() {
+  const inp = $("#chat-txt"); if (!inp) return;
+  const dica = document.createElement("div"); dica.id = "chat-dica"; dica.className = "chat-dica oculto";
+  $("#chat-form").before(dica);
+  let ciclo = null;
+  const achar = (pre) => { const p = pre.toLowerCase(); return chatSugestoes(A()).filter((c) => c.toLowerCase().startsWith(p) && c.length > pre.length); };
+  const mostrar = () => {
+    const v = inp.value, m = v.trim() && !/\s$/.test(v) ? achar(v) : [];
+    dica.classList.toggle("oculto", !m.length);
+    if (m.length) dica.innerHTML = `<kbd>Tab</kbd> ${m.slice(0, 3).map((c) => `<span>${esc(c)}</span>`).join("")}${m.length > 3 ? `<em>+${m.length - 3}</em>` : ""}`;
+  };
+  inp.addEventListener("input", () => { ciclo = null; mostrar(); });
+  inp.addEventListener("keydown", (e) => {
+    if (e.key !== "Tab") return;
+    e.preventDefault();
+    if (!ciclo) { const m = achar(inp.value); if (!m.length) return; ciclo = { base: inp.value, lista: m, i: 0 }; }
+    else ciclo.i = (ciclo.i + 1) % ciclo.lista.length;   // Tab de novo: próxima sugestão
+    inp.value = ciclo.lista[ciclo.i];
+    dica.innerHTML = `<kbd>Tab</kbd> ${ciclo.lista.length > 1 ? `${ciclo.i + 1} de ${ciclo.lista.length} · Tab de novo para a próxima` : "completo"}`;
+    dica.classList.remove("oculto");
+  });
+  inp.addEventListener("blur", () => setTimeout(() => dica.classList.add("oculto"), 150));
+})();
