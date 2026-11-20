@@ -296,7 +296,7 @@ function novaAba(tipo, idFixo) {
   term.attachCustomKeyEventHandler((e) => !atalho(e));
   term.onData((d) => {
     if (a.demo) return demoTecla(a, d);   // modo demonstração: Esc para, qualquer tecla acelera
-    if (!a.conectado) return;
+    if (!a.conectado) { if (window.__portal) window.__portal.tecla(a, d); return; }   // portal web sem computador: shell do portal
     if (a.share && !a.share.souAtivo) return avisoControle(a);  // observando: não digita
     if (a.celCtrl) return avisoCel(a);   // 📱 o celular do dono está com o controle desta aba
     api.escrever(id, d); if (a.sugestao && /\r/.test(d)) esconderSugestao(a);
@@ -308,7 +308,7 @@ function novaAba(tipo, idFixo) {
     // colar pelo Python (área de transferência do Windows): o navegador interno não pede mais permissão
     try { const t = await api.area_transferencia(); if (t && a.conectado) api.escrever(id, t.replace(/\r?\n/g, "\r")); } catch (_) {}
   });
-  boasVindas(a);
+  if (window.__portal && !idFixo) window.__portal.boasVindas(a); else boasVindas(a);
   b.oncontextmenu = (e) => { e.preventDefault(); menuAba(a, e.clientX, e.clientY); };
   term.focus();
   return a;
@@ -556,6 +556,7 @@ function selecionarTipo(tipo, silencioso) {
 async function conectar(a = A(), pularRede = false) {
   if (!a) return;
   if (a.demo) demoParar(a);   // conectar de verdade encerra a demonstração
+  if (window.__portal && !a.conectado) return window.__portal.oferecer();   // portal web sem computador: convida a conectar
   if (a.conectado) {
     await api.desconectar(a.id); setConectado(a, false); a.term.write("\r\n\x1b[90m[desconectado]\x1b[0m\r\n");
     if (["web", "ssh"].includes(a.tipo)) oferecerRemoverRede();   // fim da sessão: tira o IP temporário
@@ -2358,6 +2359,7 @@ function atalho(e) {
 
 // ================= início =================
 window.addEventListener("pywebviewready", async () => {
+  if (!CONTA.liberada) return;   // a porta da conta (mais abaixo) libera e dispara de novo; no window os ouvintes rodam na ordem de registro
   api = comAba(window.pywebview.api);   // chamadas do atendimento/destino levam o sid da aba ativa
   const ini = await api.inicial();
   NOME = ini.cfg.nome || ""; MODO_TESTE = ini.teste || "";

@@ -152,6 +152,7 @@
       ws_.pend.forEach((p) => p.falha(new Error("Conector desconectado"))); ws_.pend.clear();
       if (!ws_.pronto && !autenticado) {   // credencial velha ou Conector parado: aciona sozinho (uma vez)
         cred = ""; gravarSessao("");
+        if (!ws_.acionou && !LOCAL) return entrarPortal();   // Conector parado / código velho: segue pelo portal (conecta quando precisar)
         if (!ws_.acionou) return acionar(false);
         mostrar(); msg(ev.code === 4401 ? "Código recusado pelo Conector." : "Não consegui falar com o Conector.", true); return;
       }
@@ -172,7 +173,7 @@
   const pedeCel = /(?:^|[#&])celular(?:$|&)/.test(location.hash);
   if (codPar || pedeCel) try { history.replaceState(null, "", location.pathname + location.search); } catch (_) {}   // código fora do histórico
   const JANELA_CONECTOR = LOCAL && /^\/app(\/|$)/.test(location.pathname);   // a janela local servida pelo próprio Conector
-  const MODO_CEL = !JANELA_CONECTOR && !m && (CELULAR || !!codPar || pedeCel || lerRem());
+  const MODO_CEL = !JANELA_CONECTOR && !m && (CELULAR || (/Macintosh/.test(UA) && navigator.maxTouchPoints > 1) || !!codPar || pedeCel || lerRem());
   const escH = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const rem = { R: null, info: null, minhas: new Set(), anexadas: new Set(), soltas: new Set(), prontoUI: false, ativo: false };
   window.__remoto = rem;   // (testes) estado visível — nenhuma chave fica aqui
@@ -338,6 +339,7 @@
   }
 
   function entrarRemoto() {
+    if (portal.ativo) { gravarRem(true); return location.reload(); }   // pareou/conectou a partir do portal: recarrega já pelo túnel
     const R = rem.R, nomePc = (rem.info && rem.info.pc) || (lerPar() || { pc: {} }).pc.nome || "PC";
     telaCel.remove(); tela.remove();
     desenharBarra(true, "📱 Conectado a " + nomePc + " · usando o shell desse computador");
@@ -374,14 +376,170 @@
     if (!rem.R.cel.sess || Date.now() - rem.R.cel.ultimoRx > 15000) rem.R.conectar().catch(() => {});
   });
 
+  // =================================================================================================================
+  // 🌐 MODO PORTAL: a MESMA interface abre na hora, sem Conector e sem pareamento. Nada muda no layout: as abas mostram um
+  // shell próprio do portal (só para não ficar vazio) e, quando a pessoa pede algo que precisa de um computador, aparece o
+  // convite: no PC "Conectar este computador" (chama o Conector; se não responder, oferece baixar); no celular/tablet usa o
+  // pareamento já aprovado (túnel cifrado até o PC) ou oferece parear. Conectou -> a página recarrega já ligada ao backend real.
+  // =================================================================================================================
+  const TABLET = /Macintosh/.test(UA) && navigator.maxTouchPoints > 1;   // iPadOS se apresenta como Mac
+  const MOVEL = CELULAR || TABLET;
+  const portal = { ativo: false, ultimoGesto: 0, card: null };
+  addEventListener("pointerdown", () => { portal.ultimoGesto = Date.now(); }, true);
+  addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") portal.ultimoGesto = Date.now(); }, true);
+  // chamadas que a interface faz sozinha (início, temporizadores): respondem vazio/esperam, nunca abrem o convite
+  const PASSIVA = /^(inicial|portas|clientes|historico|conta_|verificar|area_transferencia|redimension|tamanho|config|envio_estado|fila_status|evid_status|pdf_ultimo|skills?_lista|listar|lista)|(_status|_estado|_listar|_lista|_ultimo)$/;
+  const PADRAO = {
+    inicial: () => ({ cfg: {}, portas: [], evid: null, cofre: [], clientes: null, rede_temp: [], teste: "", versao: "" }),
+    conta_estado: () => ({ dispensa: true }),
+    fila_status: () => ({ atual: null, fila: [], lote: { total: 0, feitos: 0 } }),
+    portas: () => { if (Date.now() - portal.ultimoGesto < 2000) oferecer(); return []; },
+    verificar_atualizacao: () => null,
+  };
+  const nunca = () => new Promise(() => {});
+  const apiPortal = new Proxy({}, { get: (_, nome) => {
+    if (typeof nome !== "string" || nome === "then") return undefined;
+    return (...a) => {
+      if (EXTRAS[nome]) return EXTRAS[nome](...a);
+      if (PADRAO[nome]) return Promise.resolve(PADRAO[nome](...a));
+      if (!PASSIVA.test(nome) && Date.now() - portal.ultimoGesto < 2000) oferecer();
+      return nunca();   // espera a conexão (a página recarrega ao conectar), sem erro solto na interface
+    };
+  } });
+
+  // ---- convite para conectar (cartão discreto, no mesmo visual da tela de conexão) ----
+  function oferecer(motivo) {
+    if (portal.card && portal.card.isConnected) return;
+    const c = document.createElement("div");
+    c.id = "portal-convite"; c.setAttribute("role", "dialog"); c.setAttribute("aria-labelledby", "pc-tit");
+    c.style.cssText = "position:fixed;inset:0;z-index:99998;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.55);padding:16px;font:14px/1.45 'Segoe UI',system-ui,-apple-system,sans-serif;color:#e6edf3";
+    const par = lerPar();
+    const BT = "border:0;border-radius:8px;padding:11px 16px;font-weight:600;cursor:pointer;font-size:14px";
+    let corpo;
+    if (MOVEL) corpo = par && !par.revogado
+      ? `<p style="margin:0 0 14px;color:#8b949e">Isso roda no seu computador. Este aparelho já está pareado com <b>${escH(par.pc.nome)}</b>.</p>
+         <button id="pc-ir" style="${BT};background:#00dc78;color:#04140d;width:100%">📱 Conectar a ${escH(par.pc.nome)}</button>`
+      : `<p style="margin:0 0 14px;color:#8b949e">Isso roda no seu computador. Pareie este aparelho uma vez e depois é só um toque.</p>
+         <button id="pc-ir" style="${BT};background:#00dc78;color:#04140d;width:100%">📱 Parear com meu computador</button>`;
+    else corpo = `<p style="margin:0 0 14px;color:#8b949e">Serial, SSH, PowerShell e o resto rodam neste computador pelo <b>DASSH Conector</b>,
+         um programa leve que só escuta em 127.0.0.1 e só aceita este site.</p>
+       <div id="pc-msg" role="status" aria-live="polite" style="min-height:20px;margin-bottom:10px;color:#c9d1d9"></div>
+       <div style="display:flex;gap:8px;flex-wrap:wrap">
+         <button id="pc-ir" style="${BT};background:#00a884;color:#04201a">Conectar este computador</button>
+         <a id="pc-baixar" href="${URL_CONECTOR}" target="_blank" rel="noopener" hidden style="${BT};background:#21262d;color:#e6edf3;border:1px solid #3fb9a0;text-decoration:none">Baixar o Conector</a></div>`;
+    c.innerHTML = `<div style="width:min(440px,100%);background:#161b22;border:1px solid #30363d;border-radius:14px;padding:20px;box-shadow:0 20px 60px rgba(0,0,0,.5)">
+        <h2 id="pc-tit" style="margin:0 0 6px;font-size:17px">${escH(motivo || "Conectar para continuar")}</h2>${corpo}
+        <div style="margin-top:12px;text-align:right"><a id="pc-fechar" href="#" style="color:#8b949e;font-size:13px">Continuar navegando</a></div></div>`;
+    document.body.appendChild(c); portal.card = c;
+    const fechar = () => c.remove();
+    c.querySelector("#pc-fechar").onclick = (e) => { e.preventDefault(); fechar(); };
+    c.onclick = (e) => { if (e.target === c) fechar(); };
+    c.onkeydown = (e) => { if (e.key === "Escape") fechar(); };
+    const ir = c.querySelector("#pc-ir"); ir.focus();
+    if (MOVEL) ir.onclick = () => {
+      fechar();
+      if (par && !par.revogado) { gravarRem(true); location.reload(); }   // recarrega já pelo túnel aprovado
+      else mostrarCel(true);
+    };
+    else ir.onclick = () => conectarPeloPortal(c);
+  }
+  async function conectarPeloPortal(c) {   // chama o Conector (protocolo); se não responder, oferece baixar e segue procurando
+    const pm = (t, erro) => { const e = c.querySelector("#pc-msg"); if (e) { e.textContent = t; e.style.color = erro ? "#ff8b8b" : "#c9d1d9"; } };
+    if (portal.procurando) return; portal.procurando = true;
+    const S = window.__segredoConector || segredoNovo();
+    pm("Abrindo o DASSH Conector… (se o navegador perguntar, clique em Abrir)");
+    abrirProtocolo("dassh-conector://iniciar?s=" + S);
+    const inicio = Date.now(), ate = inicio + 120000;
+    while (Date.now() < ate && c.isConnected) {
+      for (const p of PORTAS) {
+        if (!c.isConnected) break;
+        if (await testar(p, S, 500)) { gravarSessao(p + "." + S); pm("Conectado. Carregando…"); portal.procurando = false; return location.reload(); }
+      }
+      if (Date.now() - inicio > 6000) {
+        const b = c.querySelector("#pc-baixar"); if (b) b.hidden = false;
+        c.querySelector("#pc-ir").textContent = "Já instalei — conectar";
+        if (SAFARI) { pm("O Safari bloqueia a conexão local a partir desta página. Use o Conector e abra pela janela local.", true); break; }
+        pm("O Conector não respondeu. Se ainda não tem, baixe e instale; depois clique em “Já instalei — conectar”.", true);
+        break;
+      }
+      await dormir(600);
+    }
+    portal.procurando = false;
+  }
+
+  // ---- shell próprio do portal (dentro das abas que já existem: mesmo visual, só para não ficar vazio) ----
+  const PROMPT = "\x1b[1;32mvisitante@dassh-portal\x1b[0m:\x1b[1;34m~\x1b[0m$ ";
+  const linhas = new Map();
+  const AJUDA = ["Comandos do portal (rodam aqui no navegador):",
+    "  ajuda | help       esta lista",
+    "  conectar           liga este " + (MOVEL ? "aparelho ao seu computador pareado" : "computador (DASSH Conector)"),
+    "  limpar | clear     limpa a tela",
+    "  sobre              o que é o portal",
+    "Qualquer outro comando precisa de um computador conectado."];
+  function boasVindas(a) {
+    a.term.write("\x1b[38;2;94;224;181mDASSH Console\x1b[0m — portal web. Navegue à vontade; para rodar comandos, digite \x1b[1mconectar\x1b[0m.\r\n" +
+      "\x1b[90mDigite ajuda para ver os comandos do portal.\x1b[0m\r\n" + PROMPT);
+  }
+  function tecla(a, d) {
+    let l = linhas.get(a.id) || "";
+    for (const ch of d.replace(/\x1b\[[0-9;]*[A-Za-z~]|\x1bO./g, "")) {
+      if (ch === "\r") {
+        a.term.write("\r\n"); executar(a, l.trim()); l = "";
+      } else if (ch === "\x7f" || ch === "\b") {
+        if (l) { l = l.slice(0, -1); a.term.write("\b \b"); }
+      } else if (ch === "\x03") { a.term.write("^C\r\n" + PROMPT); l = ""; }
+      else if (ch >= " ") { l += ch; a.term.write(ch); }
+    }
+    linhas.set(a.id, l);
+  }
+  function executar(a, cmd) {
+    const c = cmd.toLowerCase();
+    const sai = (t) => a.term.write(t.replace(/\n/g, "\r\n") + "\r\n");
+    if (!c) {}
+    else if (c === "ajuda" || c === "help" || c === "?") sai(AJUDA.join("\n"));
+    else if (c === "limpar" || c === "clear" || c === "cls") { a.term.write("\x1b[2J\x1b[3J\x1b[H"); }
+    else if (c === "sobre") sai("Portal web do DASSH Console: a mesma plataforma do app.\nO que roda em equipamentos (serial, SSH, shell, nuvem, evidências) usa o seu computador,\npelo DASSH Conector ou pelo celular pareado.");
+    else if (c === "conectar") { sai("\x1b[36mAbrindo a conexão…\x1b[0m"); oferecer(); }
+    else { sai("\x1b[33m⚡ “" + cmd.slice(0, 60) + "” precisa de um computador conectado.\x1b[0m"); oferecer("Conectar para rodar este comando"); }
+    a.term.write(PROMPT);
+  }
+
+  // ---- barra fina no topo (mesmo estilo da barra do celular): lembra que dá para conectar ----
+  function barraPortal() {
+    barra.style.background = "#161b22"; barra.style.color = "#c9d1d9"; barra.style.borderBottom = "1px solid #30363d";
+    if (!barra.isConnected) document.body.insertBefore(barra, document.body.firstChild);
+    barra.innerHTML = `<span style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">🌐 Portal web · sem computador conectado</span>
+      <button id="barra-portal-ir" style="background:#00a884;color:#04201a;border:0;border-radius:8px;padding:3px 10px;font:inherit;cursor:pointer">${MOVEL ? "📱 Conectar ao computador" : "Conectar este computador"}</button>`;
+    barra.querySelector("#barra-portal-ir").onclick = () => oferecer();
+  }
+
+  function entrarPortal() {
+    if (portal.ativo) return;
+    portal.ativo = true; tela.remove(); telaCel.remove();
+    window.__portal = { tecla, boasVindas, oferecer };
+    window.pywebview = { api: apiPortal };
+    barraPortal();
+    const avisar = () => window.dispatchEvent(new Event("pywebviewready"));
+    if (document.readyState === "complete") setTimeout(avisar, 0); else window.addEventListener("load", avisar, { once: true });
+  }
+  // nas telas de conexão: voltar ao portal em vez de ficar preso nelas
+  const voltar = (onde, antes) => {
+    const a = document.createElement("a"); a.href = "#"; a.textContent = "Voltar ao portal (navegar sem conectar)";
+    a.style.cssText = "color:#8b98a8;display:inline-block;margin-top:14px;font-size:13px";
+    a.onclick = (e) => { e.preventDefault(); gravarRem(false); gravarSessao(""); location.reload(); };
+    onde.appendChild(a);
+  };
+  voltar(tela.firstElementChild); voltar(telaCel.firstElementChild);
+
   // começa depois que a página carregou por inteiro (o protocolo externo aberto antes disso pode segurar o carregamento)
   const iniciar = () => {
-    if (MODO_CEL) {   // celular: nada de procurar Conector local; 1 toque para operar o PC pareado
-      mostrarCel(!!codPar);
-      if (codPar) { q("#rc-codigo").value = codPar; return cmsg("Toque em “Parear e conectar” para ligar este celular ao computador."); }
-      if ((pedeCel || lerRem()) && lerPar()) return conectarCel(pedeCel);
-      return;
+    if (MODO_CEL) {   // celular/tablet: com conexão pedida nesta sessão usa o túnel aprovado; senão abre o portal
+      if (codPar) { mostrarCel(true); q("#rc-codigo").value = codPar; return cmsg("Toque em “Parear e conectar” para ligar este celular ao computador."); }
+      if ((pedeCel || lerRem()) && lerPar()) { mostrarCel(false); return conectarCel(pedeCel); }
+      if (pedeCel) return mostrarCel(true);
+      return entrarPortal();
     }
+    if (!cred && !LOCAL) return entrarPortal();   // PC sem Conector nesta sessão: portal; o Conector só é chamado quando precisar
     if (SAFARI && !LOCAL) mostrarLocal();   // Safari: a janela local é o caminho garantido (o automático é tentado mesmo assim)
     if (!LOCAL && lerPar()) {   // computador com um PC pareado (raro): oferece também operar o outro computador
       const b = document.createElement("button"); b.textContent = "📱 Conectar ao computador pareado";
