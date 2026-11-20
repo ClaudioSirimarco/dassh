@@ -4436,3 +4436,22 @@ function chatSugestoes(a) {
   });
   inp.addEventListener("blur", () => setTimeout(() => dica.classList.add("oculto"), 150));
 })();
+
+// ---------- painel do dono: só números (aparece apenas para a conta proprietária) ----------
+const ADM = { ult: null };
+async function admAtualizar() {
+  if (!api || !api.conta_nuvem_admin || !CONTA.token) return;
+  const r = await api.conta_nuvem_admin().catch(() => null);
+  let el = document.getElementById("adm-selo");
+  if (!r || !r.admin) { if (el) el.remove(); return; }
+  if (!el) {
+    el = document.createElement("div"); el.id = "adm-selo"; el.title = "Só você vê isto (dono da plataforma)";
+    document.body.appendChild(el);
+  }
+  el.innerHTML = `<b>👤 ${r.contas}</b> contas <span>·</span> <b class="on">● ${r.online}</b> online <span>·</span> <b>${r.ativos_24h}</b> ativos 24 h <span>·</span> <b>+${r.novas_hoje}</b> hoje`;
+  if (ADM.ult && r.contas > ADM.ult.contas) toast(`🎉 ${r.contas - ADM.ult.contas} nova(s) conta(s) criada(s) — agora são ${r.contas}`);
+  if (ADM.ult && r.online > ADM.ult.online) toast(`🟢 ${r.online} pessoa(s) usando a plataforma agora`);
+  ADM.ult = r;
+}
+setTimeout(admAtualizar, 8000);
+setInterval(admAtualizar, 60000);

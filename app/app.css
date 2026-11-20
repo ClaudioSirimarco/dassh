@@ -1185,3 +1185,8 @@ body.ao-vivo::before { content: none; }
 .chat-dica kbd { font: 600 10px ui-monospace, Consolas, monospace; border: 1px solid #2f3b48; border-radius: 4px; padding: 0 4px; color: var(--texto); }
 .chat-dica span { color: var(--verde-cl); background: rgba(0, 200, 150, .1); border-radius: 4px; padding: 1px 5px; }
 .chat-dica.oculto { display: none; }
+
+/* selo do dono (só números) */
+#adm-selo { position: fixed; left: 12px; bottom: 10px; z-index: 300; font-size: 11px; color: var(--suave); background: rgba(13, 17, 23, .88);
+  border: 1px solid #1f5a49; border-radius: 999px; padding: 4px 11px; backdrop-filter: blur(6px); pointer-events: auto; }
+#adm-selo b { color: var(--texto); } #adm-selo b.on { color: var(--verde-cl); } #adm-selo span { opacity: .5; margin: 0 2px; }
