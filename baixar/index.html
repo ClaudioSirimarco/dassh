@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Baixar — DASSH Console</title>
-<meta name="description" content="DASSH Console para Windows: em revisão final. Use a plataforma web com o DASSH Conector enquanto isso.">
+<meta name="description" content="Use o DASSH Console no navegador agora mesmo; baixe o DASSH Conector (Windows, macOS e Linux) para usar serial, SSH e o terminal do seu computador.">
 
 <link rel="icon" href="../img/favicon.ico">
 <!-- pwa:inicio -->
@@ -52,6 +52,12 @@ kbd,code{font:13px Consolas,monospace;background:#0b1218;border:1px solid var(--
 .grade{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px}
 footer{padding:30px 0 40px;text-align:center;color:var(--suave);font-size:13.5px;border-top:1px solid var(--borda)}
 footer a{margin:0 8px;white-space:nowrap;display:inline-block;line-height:2}
+.estado{display:inline-block;font-size:12px;font-weight:700;letter-spacing:.4px;border-radius:999px;padding:2px 10px;margin-bottom:8px}
+.estado.ok{color:#04231b;background:var(--verde-cl)}
+.estado.breve{color:#04231b;background:var(--aviso)}
+.cartao p:last-child{margin-bottom:0}
+.botoes.mini{gap:8px;margin:12px 0}
+.botoes.mini .btn{padding:8px 14px;font-size:14px;border-radius:10px}
 </style>
 <link rel="stylesheet" href="../site.css">
 </head>
@@ -63,34 +69,54 @@ footer a{margin:0 8px;white-space:nowrap;display:inline-block;line-height:2}
 <main><div class="cont">
 
 <h1>Baixar o DASSH Console</h1>
-<p class="sub">O instalador e a versão portátil para Windows estão em revisão final e voltam em breve. Enquanto isso, use a <a href="../app/">plataforma web</a> com o <a href="../agente/">DASSH Conector</a>: é a mesma interface.</p>
+<p class="sub">Comece agora pelo navegador, sem instalar nada. Para usar serial, SSH e o terminal do seu computador, instale o
+  <b>DASSH Conector</b>: leve, para Windows, macOS e Linux. O aplicativo completo para Windows está em revisão final.</p>
 <div class="botoes">
-  <span class="btn prim desativado" aria-disabled="true" title="Download temporariamente indisponível">⬇ Ver a versão mais recente <small>em breve</small></span>
-  <span class="btn desativado" aria-disabled="true" title="Download temporariamente indisponível">Instalador direto (.exe) <small>em breve</small></span>
-  <span class="btn desativado" aria-disabled="true" title="Download temporariamente indisponível">Versão portátil (um .exe) <small>em breve</small></span>
+  <a class="btn prim" href="../app/">Abrir a plataforma web</a>
+  <a class="btn" href="../agente/#baixar">⬇ Baixar o DASSH Conector</a>
 </div>
-<div class="aviso"><b>Aviso honesto sobre a assinatura digital.</b> A versão atual ainda <b>não tem assinatura digital</b> do instalador. Por isso o Windows pode exibir “O Windows protegeu o computador” (SmartScreen). Isso não significa, por si só, que o arquivo seja malicioso, mas também não é uma garantia da nossa parte: baixe somente por esta página ou pelas Releases oficiais. A assinatura está nos planos, sem data confirmada.</div>
+
+<h2>Três jeitos de usar</h2>
+<div class="grade">
+  <div class="cartao"><span class="estado ok">Disponível</span><h3>Plataforma web</h3>
+    <p>Entre com a sua conta DASSH (e-mail, Google ou GitHub) e use direto no navegador, também no celular e no tablet.
+      Quando algo precisa do computador, a própria página oferece conectar.</p>
+    <p><a href="../app/">Abrir a plataforma →</a></p></div>
+  <div class="cartao"><span class="estado ok">Disponível</span><h3>DASSH Conector</h3>
+    <p>Liga a plataforma web a este computador: cabo console, SSH, PowerShell, evidências e relatório. Depois de instalado,
+      a página encontra o Conector sozinha, sem segundo login.</p>
+    <div class="botoes mini">
+      <a class="btn prim" href="https://github.com/ClaudioSirimarco/dassh-console-download/releases/latest/download/DASSH-Conector-Windows.exe">Windows</a>
+      <a class="btn prim" href="https://github.com/ClaudioSirimarco/dassh-console-download/releases/latest/download/DASSH-Conector-macOS.dmg">macOS</a>
+      <a class="btn prim" href="https://github.com/ClaudioSirimarco/dassh-console-download/releases/latest/download/DASSH-Conector-Linux-x64.tar.gz">Linux</a></div>
+    <p><a href="../agente/">Instruções de cada sistema →</a></p></div>
+  <div class="cartao"><span class="estado breve">Em revisão final</span><h3>App para Windows</h3>
+    <p>Instalador e versão portátil, com a mesma interface em janela própria. Voltam a ser publicados aqui assim que a revisão
+      terminar; até lá, a plataforma web com o Conector faz tudo o que o app faz.</p>
+    <div class="botoes mini">
+      <span class="btn desativado" aria-disabled="true" title="Download temporariamente indisponível">Instalador · em breve</span>
+      <span class="btn desativado" aria-disabled="true" title="Download temporariamente indisponível">Portátil · em breve</span></div></div>
+</div>
+
+<h2>No celular ou no tablet</h2>
+<ol>
+  <li>No computador, com o Conector ou o app aberto, toque em <b>📱 Celular → Parear celular</b>.</li>
+  <li>No celular, abra a <a href="../app/">plataforma web</a>, entre na sua conta e aponte a câmera para o QR (ou digite o código).</li>
+  <li>Pronto: daqui em diante, tudo o que precisar do computador usa essa conexão aprovada, cifrada de ponta a ponta.</li>
+</ol>
+
+<div class="aviso"><b>Aviso honesto sobre a assinatura digital.</b> O DASSH Conector ainda <b>não tem assinatura digital</b>. Por isso
+  o Windows pode exibir “O Windows protegeu o computador” (SmartScreen) e o macOS pode pedir confirmação para abrir. Isso não
+  significa, por si só, que o arquivo seja malicioso, mas também não é uma garantia da nossa parte: baixe somente por esta página
+  ou pelas Releases oficiais. No Windows, clique em <b>Mais informações</b> e depois em <b>Executar assim mesmo</b>.</div>
+
 <h2>Requisitos</h2>
 <ul>
-  <li>Windows 10 ou 11, 64 bits.</li>
-  <li>Não é preciso ser administrador para instalar (instalação só para o seu usuário).</li>
-  <li>Algumas ações pontuais pedem permissão do Windows e avisam antes (ex.: driver do cabo console, IP temporário).</li>
-  <li>Para o cabo console USB-serial, o driver do adaptador pode ser necessário (o app tem um diagnóstico para isso).</li>
-  <li>Espaço em disco e memória mínimos: a confirmar.</li>
+  <li><b>Plataforma web:</b> um navegador atual (Chrome, Edge, Firefox ou Safari), no computador, no celular ou no tablet.</li>
+  <li><b>DASSH Conector:</b> Windows 10 ou 11 (64 bits), macOS ou Linux x64. Instala só para o seu usuário, sem administrador.</li>
+  <li><b>Cabo console USB-serial:</b> o driver do adaptador pode ser necessário; o diagnóstico do cabo indica qual.</li>
 </ul>
-<h2>Passo a passo</h2>
-<ol>
-  <li><b>Baixe</b> o instalador (<code>DASSH-Console-Setup.exe</code>) pelos botões acima.</li>
-  <li><b>Execute</b> o arquivo. Se aparecer “O Windows protegeu o computador”, clique em <b>Mais informações</b> e depois em <b>Executar assim mesmo</b>.</li>
-  <li><b>Abra</b> o atalho “DASSH Console” na Área de Trabalho e escolha uma conexão.</li>
-</ol>
-<h2>Instalador ou portátil?</h2>
-<div class="grade">
-  <div class="cartao"><h3>Instalador</h3><p>Cria atalhos e o desinstalador. Recomendado para o uso diário.</p></div>
-  <div class="cartao"><h3>Portátil</h3><p>Descompacte numa pasta ou pendrive e abra <code>DASSH Console.exe</code>, sem instalar.</p></div>
-</div>
-<h2>Desinstalar</h2>
-<p>Configurações do Windows → Aplicativos → DASSH Console → Desinstalar. Na versão portátil, basta apagar a pasta.</p>
+
 <h2>Versões anteriores</h2>
 <p><a href="https://github.com/ClaudioSirimarco/dassh-console-download/releases">Todas as versões nas Releases</a>. Dúvidas de instalação: veja a <a href="../docs/">documentação</a>.</p>
 
