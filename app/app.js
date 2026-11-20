@@ -3979,8 +3979,8 @@ $("#ct-form").onsubmit = async (e) => {
   const api = contaApi();
   let r;
   try {
-    if (modo === "criar") r = email ? await api.conta_nuvem_criar(u, s, lembrar, "", local)
-      : await api.conta_criar(u, s);   // sem e-mail: conta só deste computador (uso offline)
+    if (modo === "criar") r = email || !CONTA.nuvem ? (CONTA.nuvem ? await api.conta_nuvem_criar(u, s, lembrar, "", local) : await api.conta_criar(u, s))
+      : { ok: false, erro: "Use o seu e-mail para criar a conta DASSH (a mesma no site, no app e no celular)." };
     else if (modo === "recuperar") r = email ? await api.conta_nuvem_recuperar(u) : await api.conta_recuperar(u, $("#ct-rec").value, s);
     else if (email) {
       r = await api.conta_nuvem_entrar(u, s, lembrar, local);
