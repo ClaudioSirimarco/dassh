@@ -85,7 +85,12 @@ function aplicarTema(id, salvar) {
     document.documentElement.style.setProperty("--term", TEMA.background); }
   if (salvar && api) api.salvar_pref("tema", temaAtual);
 }
-const NOMES_TIPO = { serial: "Serial", powershell: "PowerShell", cmd: "CMD", ssh: "SSH", azure: "Azure", gcp: "GCP", remoto: "Remoto", web: "Web" };
+// Nomes OFICIAIS de cada tipo, num padrão só em toda a interface (filtros, cartões, títulos): siglas em maiúsculas (AWS, SSH, CMD),
+// nomes próprios como o fabricante escreve (Azure, Google Cloud, PowerShell).
+const NOMES_TIPO = { serial: "Serial", powershell: "PowerShell", cmd: "CMD", ssh: "SSH", web: "Web", remoto: "Remoto",
+  aws: "AWS", azure: "Azure", gcp: "Google Cloud", gcloud: "Google Cloud",
+  claude: "Claude Code", codex: "Codex", gemini: "Gemini CLI", copilot: "Copilot CLI" };
+const nomeTipo = (t) => NOMES_TIPO[String(t || "").toLowerCase()] || (t ? String(t).charAt(0).toUpperCase() + String(t).slice(1) : "");
 let NOME = "";  // nome do técnico (aparece no compartilhamento)
 const RE_USER = /(user ?name|login|usu[aá]rio)\s*:\s*$/i;
 const RE_PASS = /(password|senha)[^:]*:\s*$/i;
@@ -959,7 +964,7 @@ function desenharHist() {
     const [d, t] = r.inicio.split(" "), [y, m, dd] = d.split("-");
     const ev = r.evidencias && r.evidencias.length ? r.evidencias.map((n) => "Nº " + pad2(n)).join(", ") : "—";
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td>${dd}/${m} ${t.slice(0, 5)}</td><td><span class="tipo">${NOMES_TIPO[r.tipo] || r.tipo}</span>${esc(r.nome)}</td>
+    tr.innerHTML = `<td>${dd}/${m} ${t.slice(0, 5)}</td><td><span class="tipo">${esc(nomeTipo(r.tipo))}</span>${esc(r.nome)}</td>
       <td>${duracao(r.inicio, r.fim)}</td><td>${ev}</td>
       <td style="text-align:right;white-space:nowrap"><button class="btn" data-rc>Reconectar</button>
         <button class="btn" data-grav ${r.grav_existe ? "" : "disabled"}>▶ Gravação</button>
@@ -1355,6 +1360,8 @@ function atualizarEstadoShare(a, d) {
 }
 function desenharShare(a) {
   if (a.btn) {
+    a.btn.classList.toggle("aba-ao-vivo", !!(a.share && a.share.papel === "dono"));   // destaque fica NA guia compartilhada
+    a.btn.classList.toggle("aba-remota", !!(a.share && a.share.papel === "convidado"));
     const p = a.btn.querySelector(".ponto");
     p.classList.toggle("live", !!(a.share && a.share.papel === "dono"));
     p.classList.toggle("remoto", !!(a.share && a.share.papel === "convidado"));
@@ -1363,7 +1370,8 @@ function desenharShare(a) {
   desenharGuia(a);
   const bar = $("#share-barra"), s = a.share;
   $("#btn-compartilhar").innerHTML = `📡<span class="rot"> ${s && s.papel === "dono" ? "Ao vivo" : "Compartilhar"}</span>`;
-  document.body.classList.toggle("ao-vivo", [...abas.values()].some((x) => x.share && x.share.papel === "dono"));
+  // só a guia compartilhada (e o que é dela) fica "ao vivo"; as outras guias seguem normais
+  document.body.classList.toggle("ao-vivo", !!(s && s.papel === "dono"));
   if (!s) { bar.classList.add("oculto"); bar.innerHTML = ""; return; }
   bar.classList.remove("oculto"); bar.classList.toggle("convidado", s.papel === "convidado");
   const chips = (s.participantes || []).map((p) => {
@@ -1993,7 +2001,7 @@ async function gerarRelatorio() {
 // ---------- equipamentos salvos ----------
 // A lista mora na seção 📚 Equipamentos da 🗂 Biblioteca (busca, filtros, "Ordenar por", cartões iguais às outras seções).
 let EQ = [], eqEdit = null;
-const TIPO_NOME = { serial: "Serial", ssh: "SSH", web: "Web", powershell: "PowerShell", cmd: "CMD" };
+const TIPO_NOME = NOMES_TIPO;
 async function abrirEquip() { await abrirBiblioteca("equipamentos"); setTimeout(() => $("#bib-busca").focus(), 50); }
 function desenharEquip() {   // lista mudou (salvar/importar/remover): redesenha a seção, se for a atual
   const n = $('#bib-nav [data-sec="equipamentos"] .bib-n'); if (n) n.textContent = EQ.length;
@@ -2001,7 +2009,7 @@ function desenharEquip() {   // lista mudou (salvar/importar/remover): redesenha
 }
 function cartaoEquip(e) {
   const c = document.createElement("div"); c.className = "bib-item"; c.dataset.id = e.id;
-  c.innerHTML = `<div class="bib-l1"><span class="eq-tipo t-${esc(e.tipo)}">${TIPO_NOME[e.tipo] || esc(e.tipo)}</span> <b>${esc(e.nome)}</b>
+  c.innerHTML = `<div class="bib-l1"><span class="eq-tipo t-${esc(e.tipo)}">${esc(nomeTipo(e.tipo))}</span> <b>${esc(e.nome)}</b>
       <span class="bib-meta mono">${esc(e.destino)}</span>
       <span class="bib-meta">${e.grupo ? esc(e.grupo) + " · " : ""}último uso: ${esc(e.ultima || "—")}</span></div>
     ${e.obs ? `<div class="bib-l2 bib-meta">${esc(e.obs)}</div>` : ""}
@@ -2915,7 +2923,7 @@ function desenharSelecaoSkill() {
 const BIB = { sec: "sessoes", hist: [], evs: [], rels: [], skills: [], log: null, filtroEv: null, ft: "", fc: "", tag: "", sel: null,
               limite: 150, pinModo: null, pinEst: null };
 const _dt = (iso) => { const [d, t] = String(iso || "").replace("T", " ").split(" "); const [y, m, dd] = (d || "").split("-"); return dd ? `${dd}/${m}/${y} ${String(t || "").slice(0, 5)}` : "—"; };
-const _hist = (r) => ({ data: r.inicio, nome: r.nome, tipo: NOMES_TIPO[r.tipo] || r.tipo, cliente: r.cliente || "",
+const _hist = (r) => ({ data: r.inicio, nome: r.nome, tipo: nomeTipo(r.tipo), cliente: r.cliente || "",
                         busca: `${r.nome} ${r.tipo} ${r.inicio} ${r.alvo || ""} ${r.cliente || ""}` });
 const BIB_SEC = {
   sessoes: { lista: () => BIB.hist, campos: _hist, unid: "sessão(ões)", vazio: "Nenhuma sessão registrada ainda.", cartao: (r) => cartaoSessao(r) },
@@ -2932,7 +2940,7 @@ const BIB_SEC = {
                                                          cliente: r.visita || "", busca: `${r.arquivo} ${r.visita}` }),
                 rot: { tipo: "Assinatura", cliente: "Visita" }, unid: "relatório(s) do cliente",
                 vazio: "Nenhum relatório gerado ainda (botão 📄 Relatório no cartão Evidência).", cartao: (r) => cartaoRelatorio(r) },
-  equipamentos: { lista: () => EQ, campos: (e) => ({ data: e.ultima, nome: e.nome, tipo: TIPO_NOME[e.tipo] || e.tipo, cliente: e.grupo || "",
+  equipamentos: { lista: () => EQ, campos: (e) => ({ data: e.ultima, nome: e.nome, tipo: nomeTipo(e.tipo), cliente: e.grupo || "",
                                                      busca: `${e.nome} ${e.destino} ${e.grupo} ${e.obs}` }),
                   rot: { cliente: "Grupo / cliente" }, novosNoFim: true, unid: "equipamento(s)", id: "eq-linhas",
                   vazio: "Nenhum equipamento salvo ainda — conecte e use “＋ Salvar a aba atual”, ou ⬇ Importar / 📥 Importar de…",
@@ -3107,7 +3115,7 @@ function desenharBib() {
 function cartaoSessao(r) {
   const c = document.createElement("div"); c.className = "bib-item";
   const evs = (r.evidencias || []).map((n) => `<button class="bib-chip" data-ev="${n}" title="Ver a evidência Nº ${pad2(n)}">Nº ${pad2(n)}</button>`).join("");
-  c.innerHTML = `<div class="bib-l1"><span class="tipo">${NOMES_TIPO[r.tipo] || esc(r.tipo)}</span> <b>${esc(r.nome)}</b>
+  c.innerHTML = `<div class="bib-l1"><span class="tipo">${esc(nomeTipo(r.tipo))}</span> <b>${esc(r.nome)}</b>
       <span class="bib-meta">${_dt(r.inicio)} · ${duracao(r.inicio, r.fim)}${r.cliente ? " · " + esc(r.cliente) : ""}${r.ativa ? " · <b style='color:var(--verde)'>aberta agora</b>" : ""}</span></div>
     <div class="bib-l2">${evs || `<span class="bib-meta">sem evidências</span>`}</div>
     <div class="bib-acoes"><button class="btn mini" data-grav ${r.grav_existe ? "" : "disabled"}>▶ Assistir</button>
@@ -3128,7 +3136,7 @@ function cartaoEvidencia(e) {
 }
 function cartaoLog(r) {
   const c = document.createElement("div"); c.className = "bib-item bib-clic";
-  c.innerHTML = `<div class="bib-l1"><span class="tipo">${NOMES_TIPO[r.tipo] || esc(r.tipo)}</span> <b>${esc(r.nome)}</b>
+  c.innerHTML = `<div class="bib-l1"><span class="tipo">${esc(nomeTipo(r.tipo))}</span> <b>${esc(r.nome)}</b>
       <span class="bib-meta">${_dt(r.inicio)} · ${duracao(r.inicio, r.fim)}${r.cliente ? " · " + esc(r.cliente) : ""}</span></div>
     <div class="bib-acoes"><button class="btn mini" data-ler>📜 Ler aqui</button></div>`;
   c.onclick = () => verLogBib(r);
@@ -3398,7 +3406,7 @@ function importarUIDesenhar() {
   const l = importarUI.itens;
   $("#importarUI-linhas").innerHTML = l.length ? l.map((e) => `<tr data-i="${e._i}" class="sit-${e.situacao}">
       <td><input type="checkbox" data-sel ${e._sel ? "checked" : ""}></td><td><b>${esc(e.nome)}</b>${e.obs ? `<br><small>${esc(e.obs)}</small>` : ""}</td>
-      <td><span class="eq-tipo t-${e.tipo}">${TIPO_NOME[e.tipo] || esc(e.tipo)}</span></td><td class="mono">${esc(e.destino)}</td>
+      <td><span class="eq-tipo t-${e.tipo}">${esc(nomeTipo(e.tipo))}</span></td><td class="mono">${esc(e.destino)}</td>
       <td>${esc(e.grupo)}</td><td><small class="importarUI-sit">${importarUISit[e.situacao] || ""}</small></td></tr>`).join("")
     : `<tr><td colspan="6" class="vazio">Nenhuma sessão SSH, Serial ou Web encontrada nesse arquivo.</td></tr>`;
   $("#importarUI-linhas").querySelectorAll("tr[data-i]").forEach((tr) => {
@@ -3789,6 +3797,10 @@ window.addEventListener("pywebviewready", async (ev) => {
     if (r && r.ok) { CONTA.token = contaTok.ler(); return contaLiberar(); }
     contaTok.gravar("");
   }
+  if (e.nuvem && e.nuvem.lembrado) {   // "Lembrar de mim neste computador": entra sozinho (offline se preciso)
+    const r = await contaApi().conta_nuvem_retomar().catch(() => null);
+    if (r && r.ok) { CONTA.token = r.token; contaTok.gravar(r.token); if (r.offline) toast("Sem internet: modo offline deste computador.", "aviso"); return contaLiberar(); }
+  }
   contaMostrarTela(e);
 }, { capture: true });
 
@@ -3819,48 +3831,94 @@ function contaLiberar() {
 
 function contaMsg(t, tipo) { const m = $("#ct-msg"); m.textContent = t || ""; m.className = "ct-msg" + (tipo ? " " + tipo : ""); }
 
+const CT_ICONES = {
+  google: '<svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3 0 5.8 1.1 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3 0 5.8 1.1 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>',
+  azure: '<svg viewBox="0 0 23 23" aria-hidden="true"><path fill="#f35325" d="M1 1h10v10H1z"/><path fill="#81bc06" d="M12 1h10v10H12z"/><path fill="#05a6f0" d="M1 12h10v10H1z"/><path fill="#ffba08" d="M12 12h10v10H12z"/></svg>',
+  apple: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M16.4 12.6c0-2.6 2.1-3.8 2.2-3.9-1.2-1.8-3.1-2-3.7-2-1.6-.2-3.1.9-3.9.9-.8 0-2-.9-3.4-.9-1.7 0-3.3 1-4.2 2.6-1.8 3.1-.5 7.700 1.3 10.2.9 1.2 1.9 2.6 3.2 2.6 1.3-.1 1.8-.8 3.3-.8s2 .8 3.4.8c1.4 0 2.3-1.3 3.1-2.5 1-1.4 1.4-2.8 1.4-2.9-.1 0-2.7-1-2.7-4.1zM13.9 5c.7-.9 1.2-2 1-3.2-1 0-2.3.7-3 1.5-.7.8-1.200 2-1.1 3.1 1.2.1 2.3-.6 3.1-1.4z"/></svg>',
+  github: '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.6 0 0 3.6 0 8c0 3.5 2.3 6.5 5.5 7.6.4.1.5-.2.5-.4v-1.4c-2.2.5-2.7-1-2.7-1-.4-.9-.9-1.2-.9-1.2-.7-.5.1-.5.1-.5.8.1 1.2.8 1.2.8.7 1.3 1.9.9 2.4.7.1-.5.3-.9.5-1.1-1.8-.2-3.6-.9-3.6-4 0-.9.3-1.6.8-2.1-.1-.2-.4-1 .1-2.1 0 0 .7-.2 2.2.8.6-.2 1.3-.3 2-.3s1.4.1 2 .3c1.5-1 2.2-.8 2.2-.8.4 1.1.2 1.9.1 2.1.5.6.8 1.3.8 2.1 0 3.1-1.9 3.7-3.7 3.9.3.3.6.8.6 1.5v2.2c0 .2.1.5.6.4C13.7 14.5 16 11.5 16 8c0-4.4-3.6-8-8-8z"/></svg>',
+};
+const CT_LEMBRAR = "dassh.lembrar";
+const ctTemEmail = (u) => /@/.test(u || "");
+
 function contaModo(modo) {
   CONTA.modo = modo;
   document.querySelectorAll("[data-ctm]").forEach((b) => { b.classList.toggle("on", b.dataset.ctm === (modo === "recuperar" ? "entrar" : modo)); b.setAttribute("aria-selected", b.classList.contains("on")); });
   const criar = modo === "criar", rec = modo === "recuperar";
-  $("#ct-sub").textContent = criar ? "Criar a sua conta DASSH" : rec ? "Recuperar o acesso com a chave de recuperação" : "Entre na sua conta";
-  $("#ct-l-senha2").classList.toggle("oculto", !(criar || rec));
-  $("#ct-l-rec").classList.toggle("oculto", !rec);
+  $("#ct-sub").textContent = criar ? "Crie a sua conta DASSH" : rec ? "Recuperar o acesso" : "Entre na sua conta DASSH";
+  $("#ct-rot-usuario").textContent = criar ? "E-mail" : "E-mail (ou usuário local)";
+  $("#ct-usuario").setAttribute("autocomplete", criar ? "email" : "username");
+  $("#ct-sociais").classList.toggle("oculto", rec);
+  $("#ct-linha").classList.toggle("oculto", rec);
+  $("#ct-esqueci").classList.toggle("oculto", criar);
+  $("#ct-voltar").classList.toggle("oculto", !rec);
   $("#ct-senha").setAttribute("autocomplete", criar || rec ? "new-password" : "current-password");
-  $("#ct-senha").previousSibling.textContent = rec ? "Senha nova " : "Senha ";
-  $("#ct-ir").textContent = criar ? "Criar conta e entrar" : rec ? "Trocar a senha e entrar" : "Entrar";
-  $("#ct-esqueci").classList.toggle("oculto", modo !== "entrar");
-  $("#ct-voltar").classList.toggle("oculto", modo !== "recuperar");
+  $("#ct-l-local").classList.add("oculto"); $("#ct-senha-local").value = "";
   $("#ct-ajuda").textContent = criar
-    ? `Senha com pelo menos ${CONTA.senhaMin || 10} caracteres. Ela não é guardada em lugar nenhum: dela sai a chave que protege seus segredos (ex.: senhas do cofre).`
-    : "A conta fica só neste computador. Depois de 5 erros seguidos, a entrada trava por alguns minutos.";
+    ? "A mesma conta vale no site, no app instalado e no portátil. Senha com pelo menos 10 caracteres."
+    : rec ? "" : "A mesma conta do site, do app instalado e do portátil.";
+  ctRecCampos();
   contaMsg("");
 }
 
-function contaOauthHtml(oauth) {
-  const ps = (oauth && oauth.provedores) || [];
-  const motivo = (ps.find((p) => !p.disponivel) || {}).motivo || "";
-  return ps.map((p) => `<button type="button" class="btn oauth-btn" data-oauth="${esc(p.id)}" ${p.disponivel ? "" : "disabled"} title="${esc(p.motivo || "")}">${esc(p.nome)}</button>`).join("")
-    + (motivo ? `<p class="ajuda">${esc(motivo)}</p>` : "");
+// recuperar: com e-mail -> link por e-mail (conta DASSH); com usuário local -> chave de recuperação + senha nova
+function ctRecCampos() {
+  const criar = CONTA.modo === "criar", rec = CONTA.modo === "recuperar", email = ctTemEmail($("#ct-usuario").value);
+  $("#ct-l-senha").classList.toggle("oculto", rec && email);
+  $("#ct-rot-senha").textContent = rec ? "Senha nova" : "Senha";
+  $("#ct-l-senha2").classList.toggle("oculto", !(criar || (rec && !email)));
+  $("#ct-l-rec").classList.toggle("oculto", !(rec && !email));
+  $("#ct-ir").textContent = criar ? "Criar conta" : rec ? (email ? "Enviar link para criar senha nova" : "Trocar a senha e entrar") : "Entrar";
+}
+$("#ct-usuario").addEventListener("input", ctRecCampos);
+$("#ct-olho").onclick = () => {
+  const i = $("#ct-senha"), ver = i.type === "password";
+  i.type = ver ? "text" : "password"; $("#ct-olho").title = ver ? "Esconder a senha" : "Mostrar a senha"; i.focus();
+};
+try { $("#ct-lembrar").checked = localStorage.getItem(CT_LEMBRAR) !== "0"; } catch (_) { $("#ct-lembrar").checked = true; }
+$("#ct-lembrar").onchange = (e) => { try { localStorage.setItem(CT_LEMBRAR, e.target.checked ? "1" : "0"); } catch (_) {} };
+
+function contaOauthHtml(e) {
+  const ps = (e && e.nuvem && e.nuvem.provedores) || [];
+  return ps.map((p) => `<button type="button" class="ct-soc${p.disponivel ? "" : " breve"}" data-oauth="${esc(p.id)}" title="${p.disponivel ? "" : "Em ativação — use o e-mail por enquanto"}">${CT_ICONES[p.id] || ""}<span>${esc(p.nome)}</span></button>`).join("");
 }
 
 function contaLigarOauth(raiz) {
   raiz.querySelectorAll("[data-oauth]").forEach((b) => (b.onclick = async () => {
-    const r = await contaApi().conta_oauth_iniciar(b.dataset.oauth).catch((e) => ({ ok: false, erro: String(e.message || e) }));
-    if (r && r.ok && r.url) contaApi().abrir_link(r.url); else toast((r && r.erro) || "Indisponível.", "aviso");
+    const nome = b.querySelector("span").textContent;
+    if (b.classList.contains("breve")) return contaMsg(`O login com ${nome} está em ativação. Por enquanto, entre com o e-mail.`, "aviso");
+    raiz.querySelectorAll("[data-oauth]").forEach((x) => (x.disabled = true));
+    contaMsg(`Abrimos o ${nome} no seu navegador. Conclua lá e volte para cá…`);
+    const r = await contaApi().conta_nuvem_oauth(b.dataset.oauth, $("#ct-lembrar").checked, $("#ct-senha-local").value || null)
+      .catch((err) => ({ ok: false, erro: String(err.message || err) }));
+    raiz.querySelectorAll("[data-oauth]").forEach((x) => (x.disabled = false));
+    ctResultado(r);
   }));
+}
+
+function ctResultado(r) {
+  if (r && r.ok) { if (r.offline) toast("Sem internet: entrou no modo offline deste computador.", "aviso"); return contaEntrou(r); }
+  if (r && r.precisa_senha_local) {
+    $("#ct-l-local").classList.remove("oculto"); $("#ct-rot-local").textContent = `Senha da conta local "${r.usuario_local}" (só desta vez)`;
+    $("#ct-senha-local").focus();
+    return contaMsg("Este computador já tinha uma conta local. Digite a senha dela uma vez para ligar à sua conta DASSH — seus dados continuam.", "aviso");
+  }
+  if (r && r.confirmar) { contaModo("entrar"); return contaMsg(r.erro, "aviso"); }
+  contaMsg((r && r.erro) || "Não foi possível entrar.", "erro");
+  if (r && r.travado_s > 0) contaTravar(r.travado_s);
 }
 
 function contaMostrarTela(e, aviso) {
   CONTA.existe = !!e.existe; CONTA.usuario = e.usuario || ""; CONTA.senhaMin = e.senha_min;
   $("#ct-form").classList.remove("oculto"); $("#ct-rec-mostra").classList.add("oculto");
+  const lig = (e.nuvem && (e.nuvem.lembrado || e.nuvem.ligada)) || "";
   contaModo(e.existe ? "entrar" : "criar");
-  $("#ct-usuario").value = e.usuario || ""; $("#ct-senha").value = ""; $("#ct-senha2").value = ""; $("#ct-rec").value = "";
-  $("#ct-oauth").innerHTML = contaOauthHtml(e.oauth); contaLigarOauth($("#ct-oauth"));
+  $("#ct-usuario").value = lig || e.usuario || ""; $("#ct-senha").value = ""; $("#ct-senha2").value = ""; $("#ct-rec").value = "";
+  $("#ct-oauth").innerHTML = contaOauthHtml(e); contaLigarOauth($("#ct-oauth"));
+  ctRecCampos();
   $("#conta-tela").classList.remove("oculto");
   if (aviso) contaMsg(aviso, "aviso");
   if (e.travado_s > 0) contaTravar(e.travado_s);
-  setTimeout(() => (e.usuario ? $("#ct-senha") : $("#ct-usuario")).focus(), 30);
+  setTimeout(() => ($("#ct-usuario").value ? $("#ct-senha") : $("#ct-usuario")).focus(), 30);
 }
 
 function contaTravar(s) {
@@ -3878,16 +3936,17 @@ function contaTravar(s) {
 async function contaEntrou(r) {
   CONTA.token = r.token; contaTok.gravar(r.token);
   if (r.cofre_protegidas) toast(`🔐 ${r.cofre_protegidas} senha(s) do cofre agora também protegidas pela sua conta.`);
-  if (r.recuperacao) {   // conta nova: mostra a chave de recuperação UMA vez
+  if (r.recuperacao) {   // conta local nova: mostra a chave de recuperação UMA vez
     $("#ct-form").classList.add("oculto"); $("#ct-rec-mostra").classList.remove("oculto");
     $("#ct-rec-cod").textContent = r.recuperacao; $("#ct-rec-ok").checked = false; $("#ct-rec-seguir").disabled = true;
     return;
   }
+  if (r.email) toast(`👤 Conectado como ${r.email}`);
   contaAberta();
 }
 
 function contaAberta() {
-  $("#ct-senha").value = ""; $("#ct-senha2").value = ""; $("#ct-rec").value = "";
+  $("#ct-senha").value = ""; $("#ct-senha2").value = ""; $("#ct-rec").value = ""; $("#ct-senha-local").value = "";
   if (!CONTA.liberada) return contaLiberar();
   $("#conta-tela").classList.add("oculto");   // desbloqueio: a plataforma já estava carregada por baixo
   CONTA.trancada = false;
@@ -3897,25 +3956,32 @@ function contaAberta() {
 
 $("#ct-rec-ok").onchange = (e) => { $("#ct-rec-seguir").disabled = !e.target.checked; };
 $("#ct-rec-seguir").onclick = () => { $("#ct-rec-cod").textContent = ""; contaAberta(); };
-$("#ct-esqueci").onclick = (e) => { e.preventDefault(); contaModo("recuperar"); $("#ct-rec").focus(); };
-$("#ct-voltar").onclick = (e) => { e.preventDefault(); contaModo(CONTA.existe ? "entrar" : "criar"); };
+$("#ct-esqueci").onclick = (e) => { e.preventDefault(); contaModo("recuperar"); $("#ct-usuario").focus(); };
+$("#ct-voltar").onclick = (e) => { e.preventDefault(); contaModo("entrar"); };
 $("#ct-form").onsubmit = async (e) => {
   e.preventDefault();
-  const u = $("#ct-usuario").value.trim(), s = $("#ct-senha").value, s2 = $("#ct-senha2").value;
-  if (!u || !s) return contaMsg("Preencha usuário e senha.", "erro");
-  if (CONTA.modo !== "entrar" && s !== s2) return contaMsg("As senhas não conferem.", "erro");
-  const b = $("#ct-ir"); b.disabled = true; contaMsg(CONTA.modo === "entrar" ? "Conferindo…" : "Protegendo a conta… (leva um instante)");
+  const u = $("#ct-usuario").value.trim(), s = $("#ct-senha").value, s2 = $("#ct-senha2").value, email = ctTemEmail(u);
+  const lembrar = $("#ct-lembrar").checked, local = $("#ct-senha-local").value || null, modo = CONTA.modo;
+  if (!u) return contaMsg("Digite o seu e-mail.", "erro");
+  if (!(modo === "recuperar" && email) && !s) return contaMsg("Digite a senha.", "erro");
+  if ((modo === "criar" || (modo === "recuperar" && !email)) && s !== s2) return contaMsg("As senhas não conferem.", "erro");
+  if (modo === "criar" && s.length < 10) return contaMsg("A senha precisa ter pelo menos 10 caracteres.", "erro");
+  const b = $("#ct-ir"); b.disabled = true; contaMsg(modo === "entrar" ? "Conferindo…" : "Um instante…");
+  const api = contaApi();
   let r;
   try {
-    r = CONTA.modo === "criar" ? await contaApi().conta_criar(u, s)
-      : CONTA.modo === "recuperar" ? await contaApi().conta_recuperar(u, $("#ct-rec").value, s)
-      : await contaApi().conta_entrar(u, s);
+    if (modo === "criar") r = email ? await api.conta_nuvem_criar(u, s, lembrar, "", local)
+      : await api.conta_criar(u, s);   // sem e-mail: conta só deste computador (uso offline)
+    else if (modo === "recuperar") r = email ? await api.conta_nuvem_recuperar(u) : await api.conta_recuperar(u, $("#ct-rec").value, s);
+    else if (email) {
+      r = await api.conta_nuvem_entrar(u, s, lembrar, local);
+      if (r && !r.ok && r.sem_rede && CONTA.existe) r = await api.conta_entrar(u, s);   // sem internet: a senha vale offline neste PC
+    } else r = await api.conta_entrar(u, s);
   } catch (err) { r = { ok: false, erro: String(err.message || err) }; }
   b.disabled = false;
-  if (r && r.ok) return contaEntrou(r);
-  $("#ct-senha").value = ""; $("#ct-senha").focus();
-  contaMsg((r && r.erro) || "Não foi possível entrar.", "erro");
-  if (r && r.travado_s > 0) contaTravar(r.travado_s);
+  if (modo === "recuperar" && email) return contaMsg((r && (r.msg || r.erro)) || "", r && r.ok ? "aviso" : "erro");
+  if (!(r && r.ok)) { $("#ct-senha").value = ""; if (!(r && r.precisa_senha_local)) $("#ct-senha").focus(); }
+  ctResultado(r);
 };
 
 // sessão: atividade real renova; expirou (ou outra tela bloqueou) -> volta a pedir a senha
@@ -3960,7 +4026,7 @@ async function abrirConta() {
   $("#conta-bloquear").disabled = $("#conta-sair-todas").disabled = !e.logado;
   $("#conta-troca").classList.toggle("oculto", !e.logado);
   $("#cs-msg").textContent = ""; ["#cs-atual", "#cs-nova", "#cs-nova2"].forEach((s) => ($(s).value = ""));
-  $("#conta-oauth").innerHTML = contaOauthHtml(e.oauth); contaLigarOauth($("#conta-oauth"));
+  $("#conta-oauth").innerHTML = contaOauthHtml(e); contaLigarOauth($("#conta-oauth"));
   abrirModal("#modal-conta");
 }
 window.abrirConta = abrirConta;
@@ -4199,11 +4265,6 @@ async function chatEnviar() {
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") chatDesenhar(); });
 })();
 
-// abas da tela de entrada: "Entrar" e "Criar conta" sempre visíveis (quem já tem conta não fica sem saída)
-document.querySelectorAll("[data-ctm]").forEach((b) => (b.onclick = () => {
-  if (b.dataset.ctm === "entrar" && !CONTA.existe) {
-    contaModo("entrar");
-    return contaMsg("Ainda não há conta salva neste computador. Se a sua conta foi criada no site ou em outro computador, ela passará a valer aqui com o login único (em ativação). Até lá, crie a conta deste computador em \"Criar conta\".", "erro");
-  }
-  contaModo(b.dataset.ctm);
-}));
+// abas da tela de entrada: "Entrar" e "Criar conta" sempre visíveis
+document.querySelectorAll("[data-ctm]").forEach((b) => (b.onclick = () => contaModo(b.dataset.ctm)));
+

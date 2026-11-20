@@ -1079,3 +1079,44 @@ body.ao-vivo::before { content: none; }
 .ct-abas { display: flex; gap: 4px; background: var(--painel2, #1c232c); border: 1px solid var(--borda); border-radius: 10px; padding: 3px; margin: 4px 0 12px; }
 .ct-abas button { flex: 1; border: 0; background: none; color: var(--suave); padding: 8px 10px; border-radius: 7px; cursor: pointer; font-weight: 600; }
 .ct-abas button.on { background: var(--verde); color: #04201a; }
+
+/* tela de entrada (conta DASSH): sociais, divisor, senha com olho, lembrar + esqueci */
+.ct-caixa { display: flex; flex-direction: column; gap: 12px; }
+.ct-caixa form { display: flex; flex-direction: column; gap: 10px; }
+.ct-caixa form > label { display: flex; flex-direction: column; gap: 5px; font-size: 12px; color: var(--suave); }
+.ct-oauth { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.ct-soc { display: flex; align-items: center; justify-content: center; gap: 8px; height: 38px; border-radius: 9px; cursor: pointer;
+  border: 1px solid var(--borda); background: var(--fundo, #0f1419); color: var(--texto, #e6edf3); font: 600 13px inherit; }
+.ct-soc svg { width: 17px; height: 17px; flex: none; }
+.ct-soc:hover:not(:disabled) { border-color: var(--verde); }
+.ct-soc.breve { opacity: .55; }
+.ct-soc:disabled { opacity: .5; cursor: wait; }
+.ct-ou { display: flex; align-items: center; gap: 10px; color: var(--suave); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; margin-top: 4px; }
+.ct-ou::before, .ct-ou::after { content: ""; flex: 1; height: 1px; background: var(--borda); }
+.ct-senha-caixa { position: relative; display: block; }
+.ct-senha-caixa input { width: 100%; padding-right: 40px; box-sizing: border-box; }
+.ct-olho { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); border: 0; background: none; cursor: pointer;
+  width: 32px; height: 30px; border-radius: 6px; color: var(--suave); font-size: 15px; }
+.ct-olho:hover { background: var(--painel2, #1c232c); }
+.ct-linha { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 12px; flex-wrap: wrap; }
+.ct-lembrar { display: flex; align-items: center; gap: 7px; color: var(--texto, #e6edf3); cursor: pointer; }
+.ct-lembrar input { width: 15px; height: 15px; accent-color: var(--verde); margin: 0; }
+.ct-linha a, .ct-links a { color: var(--verde-cl); text-decoration: none; }
+.ct-linha a:hover, .ct-links a:hover { text-decoration: underline; }
+.ct-caixa .btn.primario { height: 40px; font-size: 14px; }
+.ct-caixa .ajuda:empty { display: none; }
+.ct-links:has(a.oculto:only-child) { display: none; }
+#conta-tela .ct-linha label.ct-lembrar { flex-direction: row; align-items: center; display: flex; gap: 7px; margin: 0; }
+
+/* compartilhamento: destaque NA guia compartilhada (as outras guias não mudam) */
+.aba.aba-ao-vivo { border-color: #8a2f3a; box-shadow: inset 0 2px 0 #ff4d4d; background: linear-gradient(180deg, #2a1418 0, transparent 70%); }
+.aba.aba-ao-vivo.ativa { background: linear-gradient(180deg, #2a1418 0, var(--term) 70%); }
+.aba.aba-remota { border-color: #23466e; box-shadow: inset 0 2px 0 #4da3ff; }
+
+/* abas estreitas: nada estoura a caixinha — cada aba esconde o que sobra conforme o próprio tamanho */
+.aba { overflow: hidden; container-type: inline-size; }
+.aba > * { flex: none; }
+.aba > .nome { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@container (max-width: 190px) { .aba .tempo { display: none !important; } }
+@container (max-width: 160px) { .aba .ativa-tg { display: none !important; } .aba .rec.off { display: none !important; } }
+@container (max-width: 130px) { .aba .num { display: none !important; } }

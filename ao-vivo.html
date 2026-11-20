@@ -376,16 +376,16 @@
     <div class="bib-corpo">
       <nav class="bib-nav" id="bib-nav" aria-label="Seções da biblioteca">
         <span class="bib-nav-sec">Atendimento</span>
-        <button data-sec="sessoes">🕘 Sessões <span class="bib-n"></span></button>
-        <button data-sec="gravacoes">⏺ Gravações <span class="bib-n"></span></button>
         <button data-sec="evidencias">🖼 Evidências <span class="bib-n"></span></button>
+        <button data-sec="gravacoes">⏺ Gravações <span class="bib-n"></span></button>
         <button data-sec="logs">📜 Logs <span class="bib-n"></span></button>
         <button data-sec="relatorios">📄 Relatórios <span class="bib-n"></span></button>
+        <button data-sec="sessoes">🕘 Sessões <span class="bib-n"></span></button>
         <span class="bib-nav-sec">Cadastros</span>
-        <button data-sec="equipamentos">📚 Equipamentos <span class="bib-n"></span></button>
         <button data-sec="cofre">🔑 Cofre <span class="bib-n"></span></button>
-        <button data-sec="skills">⚡ Skills <span class="bib-n"></span></button>
+        <button data-sec="equipamentos">📚 Equipamentos <span class="bib-n"></span></button>
         <button data-sec="importar">⇅ Importar e exportar <span class="bib-n"></span></button>
+        <button data-sec="skills">⚡ Skills <span class="bib-n"></span></button>
       </nav>
       <section class="bib-conteudo">
         <!-- MESMO padrão em todas as seções: busca · filtros (tipo / cliente) · "Ordenar por" (lembrado por seção) · ações da seção -->
@@ -599,29 +599,38 @@
   </div>
 </div>
 
-<!-- 👤 Tela de entrada (conta LOCAL): nada da plataforma é liberado antes de entrar -->
+<!-- 👤 Tela de entrada: conta DASSH (nuvem — a mesma no site, no app e no portátil) ligada à proteção local deste computador -->
 <div id="conta-tela" class="oculto" role="dialog" aria-modal="true" aria-labelledby="ct-tit">
   <div class="ct-caixa">
     <div class="ct-marca"><img src="app/logo.svg" alt=""><div><b id="ct-tit">DASSH Console</b><small id="ct-sub">Entre na sua conta</small></div></div>
     <div class="ct-abas" role="tablist" aria-label="Entrar ou criar conta"><button type="button" role="tab" data-ctm="entrar">Entrar</button><button type="button" role="tab" data-ctm="criar">Criar conta</button></div>
+    <div id="ct-sociais">
+      <div class="ct-oauth" id="ct-oauth"></div>
+      <div class="ct-ou"><span>ou com e-mail</span></div>
+    </div>
     <form id="ct-form" autocomplete="on" novalidate>
-      <label>Usuário <input id="ct-usuario" name="username" autocomplete="username" spellcheck="false" maxlength="40" required></label>
-      <label>Senha <input id="ct-senha" name="password" type="password" autocomplete="current-password" maxlength="256" required></label>
+      <label><span id="ct-rot-usuario">E-mail</span> <input id="ct-usuario" name="username" autocomplete="username" spellcheck="false" maxlength="120" required inputmode="email"></label>
+      <label id="ct-l-senha"><span id="ct-rot-senha">Senha</span>
+        <span class="ct-senha-caixa"><input id="ct-senha" name="password" type="password" autocomplete="current-password" maxlength="256" required><button type="button" class="ct-olho" id="ct-olho" title="Mostrar a senha" aria-label="Mostrar a senha">👁</button></span></label>
       <label id="ct-l-senha2" class="oculto">Repita a senha <input id="ct-senha2" type="password" autocomplete="new-password" maxlength="256"></label>
       <label id="ct-l-rec" class="oculto">Chave de recuperação <input id="ct-rec" spellcheck="false" autocomplete="off" placeholder="XXXX-XXXX-XXXX-XXXX-XXXX-XXXX"></label>
+      <label id="ct-l-local" class="oculto"><span id="ct-rot-local">Senha da conta local deste computador</span> <input id="ct-senha-local" type="password" autocomplete="off" maxlength="256"></label>
+      <div class="ct-linha" id="ct-linha">
+        <label class="ct-lembrar"><input type="checkbox" id="ct-lembrar"> Lembrar de mim neste computador</label>
+        <a href="#" id="ct-esqueci">Esqueci a senha</a>
+      </div>
       <div id="ct-msg" class="ct-msg" role="status" aria-live="polite"></div>
       <button type="submit" class="btn primario" id="ct-ir">Entrar</button>
     </form>
     <div id="ct-rec-mostra" class="ct-rec oculto">
-      <p><b>Guarde sua chave de recuperação.</b> Ela é a ÚNICA forma de voltar a entrar se esquecer a senha (não há servidor nem
-        "senha mestra"). Anote em papel ou num gerenciador de senhas — ela não será mostrada de novo.</p>
+      <p><b>Guarde sua chave de recuperação.</b> Ela é a ÚNICA forma de voltar a entrar na conta LOCAL se esquecer a senha.
+        Anote em papel ou num gerenciador de senhas — ela não será mostrada de novo.</p>
       <code id="ct-rec-cod"></code>
       <label class="rot-opc"><input type="checkbox" id="ct-rec-ok"> Guardei a chave em lugar seguro</label>
       <button type="button" class="btn primario" id="ct-rec-seguir" disabled>Continuar</button>
     </div>
-    <div class="ct-links"><a href="#" id="ct-esqueci">Esqueci a senha</a><a href="#" id="ct-voltar" class="oculto">Voltar</a></div>
-    <details class="ct-social"><summary>Entrar com Google, Microsoft, Apple ou GitHub</summary><div id="ct-oauth"></div></details>
-    <p class="ajuda" id="ct-ajuda">A conta fica só neste computador. A senha não é guardada: dela sai a chave que protege seus segredos.</p>
+    <div class="ct-links"><a href="#" id="ct-voltar" class="oculto">← Voltar para Entrar</a></div>
+    <p class="ajuda" id="ct-ajuda"></p>
   </div>
 </div>
 
