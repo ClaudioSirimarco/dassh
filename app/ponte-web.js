@@ -104,11 +104,26 @@ function estadoSeguro(m) {
   };
 }
 const semZeros = (u) => u.some((x) => x !== 0);
+// 💬 chat por aba (t:"chat" / t:"chat_hist", mesmo canal cifrado e mesma janela anti-replay; ver compartilhar.py)
+const CHAT_MAX = 1000, CHAT_HIST = 100;
+const textoChat = (s) => {
+  if (typeof s !== "string" || s.length > CHAT_MAX * 2) return null;
+  const t = s.replace(/[\u0000-\u001f\u007f-\u009f]/g, " ").replace(/[‎‏‪-‮⁦-⁩]/g, "").replace(/\s+/g, " ").trim();
+  return t && t.length <= CHAT_MAX ? t : null;
+};
+function itemChat(m) {
+  if (!m || typeof m !== "object") return null;
+  const txt = textoChat(m.txt);
+  if (!txt || !idOk(m.mid) || !(m.quem === "host" || idOk(m.quem)) || typeof m.hora !== "number" || !Number.isFinite(m.hora)) return null;
+  const it = { mid: m.mid, quem: m.quem, nome: (textoChat(m.nome) || "Convidado").slice(0, 40), txt, hora: Math.trunc(m.hora) };
+  if (typeof m.cm === "string" && /^[A-Za-z0-9_-]{1,16}$/.test(m.cm)) it.cm = m.cm;
+  return it;
+}
 
 class Convidado {
   constructor(sid, codigo, nome) {
     Object.assign(this, { sid, codigo, nome, k: null, wrap: null, geracao: -1, ver: null, seq: 0, clientes: [], todos: [], vistos: new Set(),
-      rastro: new Rastreio(), vivo: true, controle: false, v1ativo: false });
+      rastro: new Rastreio(), vivo: true, controle: false, v1ativo: false, chat: [], mids: new Set(), cm: 0 });
   }
   async iniciar() {
     this.portaria = await scryptAsync(te.encode(this.codigo), te.encode("dassh-share-v1"), { N: 2 ** 15, r: 8, p: 1, dkLen: 32 });
@@ -199,6 +214,26 @@ class Convidado {
     else if (t === "snap") window.termWrite(this.sid, "\x1bc" + texto);
     else if (t === "estado") { const e = estadoSeguro(msg); this.controle = e.controle === this.id; window.onShare(this.sid, "estado", { ...e, eu: this.id }); }
     else if (t === "fim") this.fim("O dono encerrou o compartilhamento.");
+    else if (t === "chat") { const it = this.chatNovo(msg); if (it) window.onShare(this.sid, "chat", it); }
+    else if (t === "chat_hist" && msg.para === this.id && Array.isArray(msg.itens)) {
+      const itens = msg.itens.slice(0, CHAT_HIST).map((m) => this.chatNovo(m)).filter(Boolean);
+      if (itens.length) window.onShare(this.sid, "chat_hist", { itens });
+    }
+  }
+  chatNovo(m) {
+    const it = itemChat(m);
+    if (!it || this.mids.has(it.mid)) return null;              // malformada ou repetida (mesmo mid)
+    this.mids.add(it.mid); if (this.mids.size > 2000) this.mids.delete(this.mids.values().next().value);
+    it.eu = it.quem === this.id; this.chat.push(it); if (this.chat.length > 200) this.chat.shift();
+    return { ...it };
+  }
+  enviarChat(txt) {
+    const t = textoChat(txt);
+    if (!t) return { ok: false, erro: `Mensagem vazia ou longa demais (máx. ${CHAT_MAX} caracteres).` };
+    if (!this.k || !this.vivo) return { ok: false, erro: "Aguardando o dono aprovar a entrada." };
+    const cm = this.id.slice(0, 6) + (++this.cm);
+    this.enviar({ t: "chat", txt: t, cm });
+    return { ok: true, cm, txt: t };
   }
   fim(motivo) { if (!this.vivo) return; this.fechar(); window.onDesconectado(this.sid, motivo); }
   async fechar(avisar) {
@@ -234,6 +269,8 @@ const api = {
   escrever: async (sid, txt) => { const c = sessoes.get(sid); if (c && c.controle) c.enviar({ t: "in", d: txt }); return { ok: true }; },
   share_pedir: async (sid) => { sessoes.get(sid)?.enviar({ t: "pedir" }); return { ok: true }; },
   share_devolver: async (sid) => { sessoes.get(sid)?.enviar({ t: "devolver" }); return { ok: true }; },
+  share_chat_enviar: async (sid, txt) => sessoes.get(sid)?.enviarChat(txt) || { ok: false, erro: "Esta aba não está compartilhada." },
+  share_chat_hist: async (sid) => ({ ok: true, itens: (sessoes.get(sid)?.chat || []).map((x) => ({ ...x })) }),
   desconectar: async (sid) => { const c = sessoes.get(sid); if (c) { await c.fechar(true); sessoes.delete(sid); } return { ok: true }; },
 };
 window.pywebview = { api: new Proxy(api, { get: (t, k) => t[k] || (async () => SO_NO_APP) }) };

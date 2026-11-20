@@ -41,6 +41,7 @@
   .primario { background: var(--verde); color: #04140d; font-weight: 700; }
   .perigo { background: #3a1d22; color: var(--vermelho); }
   .largo { width: 100%; margin-top: 14px; padding: 14px; font-size: 16px; }
+  a.botao { display: block; text-align: center; text-decoration: none; border-radius: 12px; box-sizing: border-box; }
   .linha { display: flex; gap: 8px; align-items: center; }
   .linha > * { flex: 1; }
   .msg { min-height: 20px; font-size: 14px; } .msg.erro { color: var(--vermelho); } .msg.ok { color: var(--verde2); }
@@ -109,6 +110,8 @@
       </div>
       <div class="msg" id="con-msg"></div>
       <div id="sas-caixa" style="display:none"><p>Confira no PC (lista de aparelhos) este número:</p><div class="sas" id="sas"></div></div>
+      <a class="botao primario largo" id="btn-completa" href="../app/#celular">📱 Abrir o DASSH (interface completa)</a>
+      <p class="rodape" style="margin-top:8px">A plataforma inteira (abas, shell, serial, evidências, Biblioteca) operando o PC. Abaixo, o modo simples.</p>
     </div>
     <div class="cartao" id="cartao-abas" style="display:none">
       <h2>Sessões abertas no PC</h2>

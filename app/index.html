@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; manifest-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; media-src 'self' data: blob:; frame-src 'self' blob: data:; connect-src ws://127.0.0.1:* ws://localhost:*; object-src 'none'; base-uri 'self'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; manifest-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; media-src 'self' data: blob:; frame-src 'self' blob: data:; connect-src ws://127.0.0.1:* ws://localhost:* wss://broker.emqx.io:8084 wss://test.mosquitto.org:8081; object-src 'none'; base-uri 'self'; form-action 'none'">
 <link rel="manifest" href="../manifest.webmanifest"><link rel="apple-touch-icon" href="../img/apple-touch-icon.png">
 <meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="DASSH">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -131,6 +131,22 @@
       <div class="sug-itens" id="sug-itens"></div>
       <button class="sug-x" id="sug-fechar" title="Ignorar">✕</button>
     </div>
+    <!-- 💬 chat DESTA aba compartilhada: fica na faixa livre à direita do texto do terminal (fora da evidência, que é o texto do xterm) -->
+    <div class="chat oculto" id="chat" role="complementary" aria-label="Conversa desta sessão compartilhada">
+      <button class="chat-bolha" id="chat-bolha" title="💬 Conversa desta sessão (só quem está nela vê)" aria-expanded="false">
+        <span class="chat-bolha-ic" aria-hidden="true">💬</span><span class="chat-cont oculto" id="chat-cont" aria-label="mensagens novas">0</span></button>
+      <div class="chat-painel" id="chat-painel">
+        <div class="chat-topo">
+          <span class="chat-tit">Conversa <small id="chat-quem"></small></span>
+          <button class="chat-min" id="chat-min" title="Recolher (a conversa continua; avisamos quando chegar mensagem)" aria-label="Recolher">–</button>
+        </div>
+        <div class="chat-lista" id="chat-lista" aria-live="polite"></div>
+        <form class="chat-form" id="chat-form" autocomplete="off">
+          <input id="chat-txt" maxlength="1000" spellcheck="true" placeholder="Mensagem para a sessão…" aria-label="Mensagem" title="Enter envia · Esc volta ao terminal">
+          <button class="chat-env" id="chat-env" title="Enviar (Enter)" aria-label="Enviar">➤</button>
+        </form>
+      </div>
+    </div>
   </section>
 
   <aside class="lateral">
@@ -207,30 +223,15 @@
   </div>
 </div>
 
-<!-- Cofre -->
-<div class="modal oculto" id="modal-cofre">
-  <div class="janela">
-    <div class="jan-topo"><b>🔑 Cofre de credenciais <button class="info" data-info="cofre" title="Como funciona">i</button></b>
-      <button class="sug-x" data-fecha>✕</button></div>
-    <div class="jan-corpo cofre-corpo">
-      <div>
-        <table class="tabela"><thead><tr><th>Nome</th><th>Usuário</th><th>Vale para</th><th></th></tr></thead>
-        <tbody id="cofre-linhas"></tbody></table><div id="cofre-pag"></div>
-        <p class="ajuda">As senhas ficam cifradas pelo Windows (DPAPI): só o seu usuário, neste computador, consegue abrir.
-          Elas nunca aparecem na tela nem vão para logs ou evidências.</p>
-      </div>
-      <form id="cofre-form" class="form" autocomplete="off">
-        <div class="form-tit" id="cofre-form-tit">Nova credencial</div>
-        <input type="hidden" id="cf-id">
-        <label>Nome <input id="cf-nome" placeholder="ex.: Switch BB bancada" required></label>
-        <label>Usuário <input id="cf-usuario" placeholder="ex.: admin (vazio se só pede senha)"></label>
-        <label>Senha <input id="cf-senha" type="password" placeholder="•••••••• (vazio = manter)"></label>
-        <label>Vale para <input id="cf-alvo" placeholder="opcional: COM8, 10.0.0.1, switch…"></label>
-        <div class="linha-btn"><button type="button" class="btn" id="cf-limpar">Limpar</button>
-          <button type="submit" class="btn primario">Salvar</button></div>
-      </form>
-    </div>
-  </div>
+<!-- Cofre: a lista e o cadastro estão na seção 🔑 Cofre da 🗂 Biblioteca. Esta janelinha só pede o PIN do cofre
+     quando um fluxo interno precisa dele (ex.: preencher o login sugerido no terminal com o cofre trancado). -->
+<div class="modal oculto" id="modal-pin">
+  <form class="janela pequena" id="pin-form" autocomplete="off">
+    <div class="jan-topo"><b id="pin-tit">🔒 PIN do cofre</b><button type="button" class="sug-x" data-fecha>✕</button></div>
+    <div class="jan-corpo form sem-borda" id="pin-campos"></div>
+    <div class="jan-rodape"><button type="button" class="btn" data-fecha>Cancelar</button>
+      <button type="submit" class="btn primario" id="pin-ok">Destrancar</button></div>
+  </form>
 </div>
 
 <!-- Formulário rápido (novo cliente / nome da visita) -->
@@ -342,15 +343,85 @@
     <div class="jan-topo"><b>🗂 Biblioteca <small id="bib-sub" style="font-weight:400;color:var(--suave)"></small></b><button class="sug-x" data-fecha>✕</button></div>
     <div class="bib-corpo">
       <nav class="bib-nav" id="bib-nav" aria-label="Seções da biblioteca">
+        <span class="bib-nav-sec">Atendimento</span>
         <button data-sec="sessoes">🕘 Sessões <span class="bib-n"></span></button>
         <button data-sec="gravacoes">⏺ Gravações <span class="bib-n"></span></button>
         <button data-sec="evidencias">🖼 Evidências <span class="bib-n"></span></button>
         <button data-sec="logs">📜 Logs <span class="bib-n"></span></button>
         <button data-sec="relatorios">📄 Relatórios <span class="bib-n"></span></button>
+        <span class="bib-nav-sec">Cadastros</span>
+        <button data-sec="equipamentos">📚 Equipamentos <span class="bib-n"></span></button>
+        <button data-sec="cofre">🔑 Cofre <span class="bib-n"></span></button>
         <button data-sec="skills">⚡ Skills <span class="bib-n"></span></button>
+        <button data-sec="importar">⇅ Importar e exportar <span class="bib-n"></span></button>
       </nav>
       <section class="bib-conteudo">
-        <div class="bib-barra"><input id="bib-busca" placeholder="🔍 Pesquisar nesta seção…" spellcheck="false" aria-label="Pesquisar"><span id="bib-info" class="bib-info"></span></div>
+        <!-- MESMO padrão em todas as seções: busca · filtros (tipo / cliente) · "Ordenar por" (lembrado por seção) · ações da seção -->
+        <div class="bib-cab">
+          <div class="bib-cab-tit"><h2 id="bib-tit">Sessões</h2><span id="bib-info" class="bib-info"></span></div>
+          <div class="bib-ferr oculto" data-ferr="equipamentos">
+            <button class="btn mini primario" id="eq-novo">＋ Novo equipamento</button>
+            <button class="btn mini" id="eq-salvar-aba" title="Guarda a conexão da aba atual na lista">＋ Salvar a aba atual</button>
+            <button class="btn mini" id="importarUI-abrir" title="PuTTY, KiTTY, MobaXterm, SecureCRT, mRemoteNG, Termius, WinSCP, Windows Terminal, OpenSSH, Royal TS, RDM · CSV/JSON">⇅ Importar e exportar</button></div>
+          <div class="bib-ferr oculto" data-ferr="cofre">
+            <button class="btn mini primario" id="cf-nova">＋ Nova credencial</button>
+            <button class="btn mini" id="cf-trocar-pin" title="Trocar o PIN do cofre">🔢 Trocar PIN</button>
+            <button class="btn mini" id="cf-trancar" title="Tranca o cofre agora (pede o PIN de novo)">🔒 Trancar</button>
+            <button class="info" data-info="cofre" title="Como funciona">i</button></div>
+        </div>
+        <div class="bib-barra"><input id="bib-busca" placeholder="🔍 Pesquisar nesta seção…" spellcheck="false" aria-label="Pesquisar" autocomplete="off">
+          <div class="bib-ord" role="group" aria-label="Ordenar">
+            <button type="button" data-o="data" id="bib-o-data">🕘 Alterados por último</button><button type="button" data-o="nome" id="bib-o-nome">A→Z Ordem alfabética</button></div>
+          <select id="bib-grupo" class="bib-sel oculto" aria-label="Agrupar"></select>
+          <select id="bib-f-cli" class="bib-sel oculto" aria-label="Filtrar por cliente"></select></div>
+        <div class="bib-chips oculto" id="bib-chips"></div>
+        <small class="bib-dica-sec" id="bib-dica"></small>
+        <div class="bib-painel" id="bib-painel">
+          <div class="eq-form oculto" id="eq-form">
+            <input id="eq-f-nome" placeholder="Nome (ex.: SW Core andar 3)">
+            <select id="eq-f-tipo"><option value="ssh">SSH</option><option value="web">Web</option><option value="serial">Serial</option></select>
+            <input id="eq-f-destino" placeholder="admin@10.0.0.1 · https://10.0.0.20 · COM3:9600">
+            <input id="eq-f-grupo" placeholder="Grupo / cliente"><input id="eq-f-obs" placeholder="Observação">
+            <button class="btn primario" id="eq-f-ok">Salvar</button><button class="btn" id="eq-f-cancelar">Cancelar</button></div>
+          <div class="importarUI oculto" id="importarUI">
+            <div class="importarUI-topo"><b id="importarUI-titulo">📥 Importar de outra ferramenta</b>
+              <span id="importarUI-cont" class="importarUI-cont"></span>
+              <button class="btn mini" id="importarUI-voltar" title="Voltar à lista de ferramentas">← Ferramentas</button>
+              <button class="btn mini" id="importarUI-fechar" title="Voltar aos equipamentos">✕ Fechar</button></div>
+            <div class="importarUI-fase-ferr" id="importarUI-fase-ferr">
+              <div class="importarUI-sec">Arquivos do DASSH</div>
+              <div class="importarUI-dassh">
+                <div class="importarUI-card achou-dassh"><span class="importarUI-ic" style="--c:#00a884">⬇</span>
+                  <div class="importarUI-txt"><b>Planilha CSV ou backup JSON</b><small>Colunas nome, tipo, destino, grupo, obs (Excel, Google Planilhas…)</small></div>
+                  <span class="importarUI-botoes"><button class="btn mini primario" id="eq-importar">Escolher arquivo…</button></span></div>
+                <div class="importarUI-card achou-dassh"><span class="importarUI-ic" style="--c:#4f8cff">⬆</span>
+                  <div class="importarUI-txt"><b>Exportar equipamentos</b><small>Planilha CSV (abre no Excel) ou backup JSON — sem senhas</small></div>
+                  <span class="importarUI-botoes"><button class="btn mini primario" id="eq-exportar">Exportar…</button></span></div>
+              </div>
+              <div class="importarUI-sec">Outras ferramentas <small>sem senhas: só nome, tipo, host/porta, usuário, porta serial e pasta</small></div>
+              <div id="importarUI-ferr" class="importarUI-ferr"></div>
+            </div>
+            <div id="importarUI-previa" class="importarUI-previa oculto">
+              <div class="importarUI-sel"><label><input type="checkbox" id="importarUI-todos"> Todos</label>
+                <button class="btn mini" id="importarUI-so-novos">Só os novos</button>
+                <span id="importarUI-conta"></span><span id="importarUI-avisos" class="importarUI-avisos"></span></div>
+              <div class="importarUI-lista"><table class="tabela eq-tab"><thead><tr><th></th><th>Nome</th><th>Tipo</th><th>Destino</th>
+                <th>Grupo / pasta</th><th>Situação</th></tr></thead><tbody id="importarUI-linhas"></tbody></table></div>
+              <div class="importarUI-rodape"><small>Sem senhas: só nome, tipo, host/porta, usuário, porta serial e pasta. Itens que já
+                existem atualizam nome/grupo.</small>
+                <button class="btn primario" id="importarUI-ok">Importar selecionados</button></div>
+            </div>
+          </div>
+          <form id="cofre-form" class="cofre-form oculto" autocomplete="off">
+            <b class="form-tit" id="cofre-form-tit">Nova credencial</b>
+            <input type="hidden" id="cf-id">
+            <input id="cf-nome" placeholder="Nome (ex.: Switch BB bancada)" aria-label="Nome" required>
+            <input id="cf-usuario" placeholder="Usuário (vazio se só pede senha)" aria-label="Usuário">
+            <input id="cf-senha" type="password" placeholder="Senha (vazio = manter)" aria-label="Senha" autocomplete="new-password">
+            <input id="cf-alvo" placeholder="Vale para: COM8, 10.0.0.1, switch…" aria-label="Vale para">
+            <button type="submit" class="btn primario">Salvar</button><button type="button" class="btn" id="cf-limpar">Cancelar</button>
+          </form>
+        </div>
         <div id="bib-lista" class="bib-lista"></div>
       </section>
     </div>
@@ -415,53 +486,7 @@
   </div>
 </div>
 
-<!-- Equipamentos salvos -->
-<div class="modal oculto" id="modal-equip">
-  <div class="janela">
-    <div class="jan-topo"><b>📚 Equipamentos salvos</b>
-      <span><button class="btn" id="eq-salvar-aba" title="Guarda a conexão da aba atual na lista">＋ Salvar a aba atual</button>
-      <button class="btn" id="eq-novo">＋ Novo</button>
-      <button class="btn" id="eq-importar" title="CSV, JSON ou sessões do PuTTY">⬇ Importar</button>
-      <button class="btn" id="importarUI-abrir" title="PuTTY, KiTTY, MobaXterm, SecureCRT, mRemoteNG, Termius, WinSCP, Windows Terminal, OpenSSH, Royal TS, RDM">📥 Importar de…</button>
-      <button class="btn" id="eq-exportar" title="Planilha CSV (Excel) ou backup JSON">⬆ Exportar</button>
-      <button class="sug-x" data-fecha>✕</button></span></div>
-    <div class="jan-corpo">
-      <div class="eq-filtros"><input id="eq-busca" placeholder="🔎 Pesquisar por nome, IP, grupo…" autocomplete="off">
-        <select id="eq-tipo"><option value="">Todos os tipos</option><option value="serial">Serial</option><option value="ssh">SSH</option>
-          <option value="web">Web (iDRAC/iLO…)</option></select>
-        <select id="eq-ordem"><option value="nome">Ordenar: nome</option><option value="ultima">Usados por último</option>
-          <option value="grupo">Grupo</option></select></div>
-      <div class="eq-form oculto" id="eq-form">
-        <input id="eq-f-nome" placeholder="Nome (ex.: SW Core andar 3)">
-        <select id="eq-f-tipo"><option value="ssh">SSH</option><option value="web">Web</option><option value="serial">Serial</option></select>
-        <input id="eq-f-destino" placeholder="admin@10.0.0.1 · https://10.0.0.20 · COM3:9600">
-        <input id="eq-f-grupo" placeholder="Grupo / cliente"><input id="eq-f-obs" placeholder="Observação">
-        <button class="btn primario" id="eq-f-ok">Salvar</button><button class="btn" id="eq-f-cancelar">Cancelar</button></div>
-      <div class="importarUI oculto" id="importarUI">
-        <div class="importarUI-topo"><b id="importarUI-titulo">📥 Importar de outra ferramenta</b>
-          <button class="btn mini" id="importarUI-voltar" title="Voltar à lista de ferramentas">← Ferramentas</button>
-          <button class="sug-x" id="importarUI-fechar" title="Fechar">✕</button></div>
-        <div id="importarUI-ferr" class="importarUI-ferr"></div>
-        <div id="importarUI-previa" class="importarUI-previa oculto">
-          <div class="importarUI-sel"><label><input type="checkbox" id="importarUI-todos"> Todos</label>
-            <button class="btn mini" id="importarUI-so-novos">Só os novos</button>
-            <span id="importarUI-conta"></span><span id="importarUI-avisos" class="importarUI-avisos"></span></div>
-          <div class="importarUI-lista"><table class="tabela eq-tab"><thead><tr><th></th><th>Nome</th><th>Tipo</th><th>Destino</th>
-            <th>Grupo / pasta</th><th>Situação</th></tr></thead><tbody id="importarUI-linhas"></tbody></table></div>
-          <div class="importarUI-rodape"><small>Sem senhas: só nome, tipo, host/porta, usuário, porta serial e pasta. Itens que já
-            existem atualizam nome/grupo.</small>
-            <button class="btn primario" id="importarUI-ok">Importar selecionados</button></div>
-        </div>
-      </div>
-      <div class="eq-lista"><table class="tabela eq-tab"><thead><tr><th>Nome</th><th>Tipo</th><th>Destino</th><th>Grupo</th><th>Último uso</th><th></th></tr></thead>
-        <tbody id="eq-linhas"></tbody></table></div>
-      <div class="eq-pag" id="eq-pag"></div>
-      <p class="ajuda">Duplo clique ou ▶ conecta (na aba atual, se estiver livre; senão numa aba nova). Importa planilha CSV
-        (colunas <b>nome, tipo, destino, grupo, obs</b>), backup JSON ou as <b>sessões salvas do PuTTY</b>. Senhas não entram
-        na lista — ficam no cofre 🔑.</p>
-    </div>
-  </div>
-</div>
+<!-- Equipamentos salvos: agora é a seção 📚 Equipamentos da 🗂 Biblioteca (busca, filtros, ordenar, importar/exportar) -->
 
 <!-- Relatório PDF: visualizar e assinar dentro do app -->
 <div class="modal oculto" id="modal-pdf">
@@ -546,6 +571,7 @@
 <div id="conta-tela" class="oculto" role="dialog" aria-modal="true" aria-labelledby="ct-tit">
   <div class="ct-caixa">
     <div class="ct-marca"><img src="logo.svg" alt=""><div><b id="ct-tit">DASSH Console</b><small id="ct-sub">Entre na sua conta</small></div></div>
+    <div class="ct-abas" role="tablist" aria-label="Entrar ou criar conta"><button type="button" role="tab" data-ctm="entrar">Entrar</button><button type="button" role="tab" data-ctm="criar">Criar conta</button></div>
     <form id="ct-form" autocomplete="on" novalidate>
       <label>Usuário <input id="ct-usuario" name="username" autocomplete="username" spellcheck="false" maxlength="40" required></label>
       <label>Senha <input id="ct-senha" name="password" type="password" autocomplete="current-password" maxlength="256" required></label>

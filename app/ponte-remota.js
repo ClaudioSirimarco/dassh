@@ -1,6 +1,10 @@
-// 📱 DASSH Conectado — página do CELULAR (mobile-first). Pareia este aparelho com o PC do dono, conecta pelo relé (MQTT/WebSocket)
-// com criptografia de ponta a ponta e permite assistir/assumir as abas abertas no PC ou abrir uma nova. Protocolo: conectado.py e
-// docs/CONECTADO-CELULAR.md. Bibliotecas locais (sem CDN): vendor/noble (x25519, ed25519, scrypt, hkdf, sha256) e vendor/mqtt.min.js.
+// 📱 DASSH Conectado — canal do CELULAR com o PC do dono (pareamento, aperto de mão e sessão E2E pelo relé MQTT/WebSocket).
+// Protocolo: conectado.py e docs/CONECTADO-CELULAR.md. Bibliotecas locais (sem CDN): vendor/noble (x25519, ed25519, scrypt, hkdf,
+// sha256) e vendor/mqtt.min.js (carregado antes deste módulo).
+// Dois usos:
+//  1) MÓDULO do canal (exporta parear/conectar/pedir/rpc…): a plataforma web (index.html + ponte-agente.js) importa este arquivo
+//     e passa a operar o PC pareado com a interface COMPLETA — a mesma ponte RPC + eventos do Conector, só que pelo canal cifrado.
+//  2) Página conectar.html (passo de pareamento + modo simples: lista de abas, assistir/assumir, abrir aba).
 import { x25519, ed25519 } from "./vendor/noble/curves/ed25519.js";
 import { scryptAsync } from "./vendor/noble/hashes/scrypt.js";
 import { hkdf } from "./vendor/noble/hashes/hkdf.js";
@@ -88,8 +92,9 @@ async function sas(pcEd, ed, x) {
 }
 
 // ---------------- armazenamento local do aparelho ----------------
-const ler = () => { try { return JSON.parse(localStorage.getItem(CHAVE_LS) || "null"); } catch { return null; } };
-const gravar = (d) => { try { d ? localStorage.setItem(CHAVE_LS, JSON.stringify(d)) : localStorage.removeItem(CHAVE_LS); } catch {} };
+export const ler = () => { try { return JSON.parse(localStorage.getItem(CHAVE_LS) || "null"); } catch { return null; } };
+export const gravar = (d) => { try { d ? localStorage.setItem(CHAVE_LS, JSON.stringify(d)) : localStorage.removeItem(CHAVE_LS); } catch {} };
+export const pareado = () => { const d = ler(); return !!(d && d.pc && !d.revogado); };
 
 // ---------------- relé (MQTT) ----------------
 class Rele {
@@ -117,19 +122,24 @@ class Rele {
 }
 
 // ---------------- protocolo do aparelho ----------------
-const cel = {
-  rele: null, sess: null, seq: 0, rastro: null, vistos: new Set(), abas: [], portas: [], pc: "", rid: 0, espera: new Map(),
-  atual: null, meu: false, rx: [], estado: "desconectado", ultimoRx: 0,
+// Ganchos (quem usa o canal preenche): aoMsg(m) mensagens da sessão · aoEstado(cls, texto) · aoFim(motivo) · aoConectado(r)
+// (reconexão automática inclusa) · aviso(texto, erro).
+export const cel = {
+  rele: null, sess: null, seq: 0, rastro: null, vistos: new Set(), rid: 0, espera: new Map(), partes: new Map(),
+  rx: [], estado: "desconectado", ultimoRx: 0, filaTx: Promise.resolve(), filaRx: Promise.resolve(),
+  aoMsg: null, aoEstado: null, aoFim: null, aoConectado: null, aviso: null,
 };
 window.__cel = cel;   // (testes) estado visível — nenhuma chave fica aqui
+const setEstado = (cls, t) => { cel.estado = t; if (cel.aoEstado) cel.aoEstado(cls, t); };
 
 function novoRele(srv) {
   if (cel.rele) cel.rele.fechar();
-  cel.rele = new Rele(srv && srv.length ? srv : SERVIDORES, (t, m) => receber(t, m).catch(() => {}));
+  // recepção EM ORDEM (a decifragem é assíncrona: sem a fila, pedaços do terminal podiam chegar trocados)
+  cel.rele = new Rele(srv && srv.length ? srv : SERVIDORES, (t, m) => { cel.filaRx = cel.filaRx.then(() => receber(t, m)).catch(() => {}); });
   return cel.rele;
 }
 
-async function parear(codigo, nome) {
+export async function parear(codigo, nome) {
   const cod = normalizar(codigo);
   if (cod.length !== 12) throw new Error("O código tem 12 caracteres (ex.: ABCD-EFGH-JKLM).");
   const P = await scryptAsync(te.encode(cod), te.encode("dassh-parear-v1"), { N: 2 ** 15, r: 8, p: 1, dkLen: 32 });
@@ -167,7 +177,7 @@ async function parear(codigo, nome) {
   } finally { cel.aoParear = null; cel.topicoPar = null; rele.fechar(); }
 }
 
-async function conectar() {
+export async function conectar() {
   const d = ler(); if (!d) throw new Error("Aparelho não pareado.");
   desconectar(true);
   setEstado("meio", "Conectando…");
@@ -199,24 +209,43 @@ async function conectar() {
   const transcr = sha256(te.encode(`${topico}|${dev}|${e}|${r.e}|${r.s}|${n}`));
   const k = hkdf(sha256, juntar(x25519.getSharedSecret(eph, ePc), segEst), transcr, te.encode("dassh-conectado-sessao"), 64);
   cel.sess = { topico, dev, id: r.s, sidb: te.encode(r.s), kc: k.slice(0, 32), kh: k.slice(32) };
-  cel.seq = 0; cel.rastro = new Janela(); cel.pc = r.pc_nome || d.pc.nome; cel.ultimoRx = Date.now();
+  cel.seq = 0; cel.rastro = new Janela(); cel.pc = r.pc_nome || d.pc.nome; cel.ultimoRx = Date.now(); cel.partes.clear();
   setEstado("on", "Conectado · " + cel.pc);
   cel.ping = setInterval(() => {
     enviar({ t: "ping" });
-    if (Date.now() - cel.ultimoRx > 40000) { toast("Sem sinal do PC — reconectando…", "erro"); conectar().catch((e) => fimSessao(e.message)); }
+    if (Date.now() - cel.ultimoRx > 40000) {
+      if (cel.aviso) cel.aviso("Sem sinal do PC — reconectando…", true);
+      conectar().catch((e) => fimSessao(e.message));
+    }
   }, 10000);
-  enviar({ t: "listar" });
+  if (cel.aoConectado) { try { await cel.aoConectado(r); } catch {} }
   return r;
 }
 
-async function enviar(obj) {
-  const s = cel.sess; if (!s) return;
+export function enviar(obj) {   // em fila: a cifra é assíncrona e a ordem importa (digitação)
+  const s = cel.sess; if (!s) return Promise.resolve();
   const m = { ...obj, v: 2, de: s.dev, seq: ++cel.seq, ts: Date.now() };
-  cel.rele.publicar(s.topico + "/c", juntar([3], s.sidb, await cifrar(s.kc, m, aad(s.topico, s.id, "c"))));
+  cel.filaTx = cel.filaTx.then(async () => {
+    if (cel.sess !== s) return;
+    cel.rele.publicar(s.topico + "/c", juntar([3], s.sidb, await cifrar(s.kc, m, aad(s.topico, s.id, "c"))));
+  }).catch(() => {});
+  return cel.filaTx;
 }
-function pedir(obj) {   // ação com resposta (res)
+export function pedir(obj, ms = 20000) {   // ação com resposta (res)
   const rid = ++cel.rid;
-  return new Promise((ok) => { cel.espera.set(rid, ok); enviar({ ...obj, rid }); setTimeout(() => { if (cel.espera.delete(rid)) ok({ ok: false, erro: "O PC não respondeu." }); }, 20000); });
+  return new Promise((ok) => {
+    cel.espera.set(rid, ok); enviar({ ...obj, rid });
+    setTimeout(() => { if (cel.espera.delete(rid)) ok({ ok: false, erro: "O PC não respondeu.", e: "O PC não respondeu." }); }, ms);
+  });
+}
+// a MESMA chamada `api.<m>(...a)` da plataforma web, executada no Api real do PC
+export async function rpc(m, a) {
+  if (!cel.sess) throw new Error("Desconectado do PC");
+  const r = await pedir({ t: "rpc", m, a }, 180000);
+  // a sessão caiu com a chamada no ar: a tela de reconexão já está à frente; não vira erro solto na interface
+  if (!r.ok && r.desconectado) return new Promise(() => {});
+  if (!r.ok) throw new Error(r.e || r.erro || "falhou");
+  return r.r;
 }
 
 async function receber(topico, blob) {
@@ -234,172 +263,206 @@ async function receber(topico, blob) {
   tratar(msg);
 }
 
-const limpa = (s, n) => String(s ?? "").replace(/[\u0000-\u001f\u007f-\u009f‎‏‪-‮⁦-⁩]/g, "").slice(0, n);
 function tratar(m) {
-  if (m.t === "res") { const f = cel.espera.get(m.id); if (f) { cel.espera.delete(m.id); f(m); } return; }
-  if (m.t === "abas") {
-    cel.abas = (Array.isArray(m.lista) ? m.lista : []).slice(0, 16).filter((a) => a && /^[A-Za-z0-9_-]{1,32}$/.test(a.sid))
-      .map((a) => ({ sid: a.sid, nome: limpa(a.nome, 60), tipo: limpa(a.tipo, 20), alvo: limpa(a.alvo, 80), meu: a.meu === true, cel: a.cel ? limpa(a.cel, 40) : null, ao_vivo: !!a.ao_vivo }));
-    cel.portas = (Array.isArray(m.portas) ? m.portas : []).slice(0, 32).map((p) => ({ porta: limpa(p.porta, 20), descricao: limpa(p.descricao, 60) }));
-    desenharAbas();
-    if (cel.atual) { const a = cel.abas.find((x) => x.sid === cel.atual); if (a) { cel.meu = a.meu; desenharPapel(); } }
-    return;
+  if (m.t === "parte") {   // mensagem grande em partes (cada uma já autenticada): junta e trata como uma só
+    if (!Number.isSafeInteger(m.n) || m.n < 1 || m.n > 32 || !Number.isSafeInteger(m.i) || m.i < 0 || m.i >= m.n || typeof m.d !== "string") return;
+    const p = cel.partes.get(m.id) || { n: m.n, l: new Array(m.n), k: 0 };
+    if (p.n !== m.n || p.l[m.i] !== undefined) return;
+    p.l[m.i] = m.d; p.k++; cel.partes.set(m.id, p);
+    if (cel.partes.size > 8) cel.partes.delete(cel.partes.keys().next().value);
+    if (p.k < p.n) return;
+    cel.partes.delete(m.id);
+    let o; try { o = JSON.parse(p.l.join("")); } catch { return; }
+    return o && typeof o === "object" && o.t !== "parte" ? tratar(o) : undefined;
   }
-  const texto = typeof m.d === "string" ? m.d : "";
-  if (m.t === "tela" && m.sid === cel.atual) { term.reset(); escreverTerm(texto); cel.meu = m.meu === true; desenharPapel(); return; }
-  if (m.t === "out" && m.sid === cel.atual) return escreverTerm(texto);
-  if (m.t === "controle") { if (m.sid === cel.atual) { cel.meu = m.meu === true; desenharPapel(); } if (m.meu === false) toast("O controle voltou para o PC — você está assistindo"); return; }
-  if (m.t === "aviso") return toast(limpa(m.msg, 200), "erro");
+  if (m.t === "res") { const f = cel.espera.get(m.id); if (f) { cel.espera.delete(m.id); f(m); } return; }
   if (m.t === "fim") return fimSessao(limpa(m.motivo, 200));
+  if (cel.aoMsg) cel.aoMsg(m);
 }
 
-function desconectar(silencioso) {
+export function desconectar(silencioso) {
   clearInterval(cel.ping);
   if (cel.sess && !silencioso) enviar({ t: "sair" });
   const r = cel.rele;
   cel.sess = null;
+  falharPendentes("Desconectado do PC");
   if (r) setTimeout(() => r.fechar(), silencioso ? 0 : 300);
   if (!silencioso) setEstado("", "Desconectado");
 }
+function falharPendentes(motivo) {
+  cel.espera.forEach((f) => f({ ok: false, erro: motivo, e: motivo, desconectado: true })); cel.espera.clear();
+}
 function fimSessao(motivo) {
   clearInterval(cel.ping); cel.sess = null; if (cel.rele) cel.rele.fechar();
-  setEstado("", /revogado/i.test(motivo) ? "Revogado" : "Desconectado");
-  if (/revogado/i.test(motivo)) { const d = ler(); if (d) { d.revogado = true; gravar(d); } }
-  mostrar("sessoes"); desenharPc(); msg("#con-msg", motivo, true);
+  falharPendentes(motivo || "Desconectado do PC");
+  const revogado = /revogado/i.test(motivo || "");
+  setEstado("", revogado ? "Revogado" : "Desconectado");
+  if (revogado) { const d = ler(); if (d) { d.revogado = true; gravar(d); } }
+  if (cel.aoFim) cel.aoFim(motivo, revogado);
 }
+export const limpa = (s, n) => String(s ?? "").replace(/[\u0000-\u001f\u007f-\u009f‎‏‪-‮⁦-⁩]/g, "").slice(0, n);
 
-// ================= interface =================
-const $ = (s) => document.querySelector(s);
-const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-const msg = (sel, t, erro) => { const el = $(sel); el.textContent = t || ""; el.className = "msg" + (t ? (erro ? " erro" : " ok") : ""); };
-function toast(t, cls = "") { const el = $("#toast"); el.textContent = t; el.className = "toast on " + cls; clearTimeout(toast.t); toast.t = setTimeout(() => (el.className = "toast " + cls), 3200); }
-function setEstado(cls, t) { cel.estado = t; $("#estado").className = "pilula " + cls; $("#estado-txt").textContent = t; }
-function mostrar(nome) { document.querySelectorAll(".tela").forEach((t) => t.classList.toggle("ativa", t.id === "tela-" + nome)); if (nome !== "term") cel.atual = null; }
+// =====================================================================================================================
+// Página conectar.html (pareamento + modo simples). Só roda se a página tiver a tela de pareamento.
+// =====================================================================================================================
+if (document.getElementById("tela-parear")) paginaConectar();
 
-const ICONES = { serial: "🔌", powershell: "⚡", cmd: "⌨️", ssh: "🔐" };
-function desenharPc() {
-  const d = ler(), on = !!cel.sess;
-  $("#pc-nome").textContent = "🖥 " + (d ? d.pc.nome : "PC");
-  $("#pc-info").textContent = d ? (d.revogado ? "Este aparelho foi revogado no PC." : `Pareado como “${d.nome}”`) : "";
-  $("#btn-conectar").style.display = on ? "none" : "";
-  $("#btn-desconectar").style.display = on ? "" : "none";
-  $("#cartao-abas").style.display = on ? "" : "none";
-  $("#cartao-nova").style.display = on ? "" : "none";
-}
-function desenharAbas() {
-  const l = $("#lista-abas");
-  if (!cel.abas.length) { l.innerHTML = `<div class="vazio">Nenhuma aba de terminal aberta no PC.<br>Abra uma nova abaixo.</div>`; }
-  else l.innerHTML = cel.abas.map((a) => `<div class="aba-card" data-sid="${esc(a.sid)}"><span class="ic">${ICONES[a.tipo] || "▣"}</span>
-    <div class="txt"><b>${esc(a.nome)}${a.meu ? '<span class="selo">você controla</span>' : a.cel ? `<span class="selo pc">${esc(a.cel)}</span>` : ""}</b>
-    <small>${esc(a.tipo)}${a.alvo && a.alvo !== a.tipo ? " · " + esc(a.alvo) : ""}${a.ao_vivo ? " · 📡 ao vivo" : ""}</small></div>
-    <div class="acoes"><button data-acao="assistir">Assistir</button><button class="primario" data-acao="assumir">Assumir</button></div></div>`).join("");
-  l.querySelectorAll(".aba-card").forEach((c) => c.querySelectorAll("button").forEach((b) => (b.onclick = () => abrirAba(c.dataset.sid, b.dataset.acao === "assumir"))));
-  const sel = $("#nova-porta"), atual = sel.value;
-  sel.innerHTML = cel.portas.length ? cel.portas.map((p) => `<option value="${esc(p.porta)}">${esc(p.porta)} — ${esc(p.descricao)}</option>`).join("")
-    : `<option value="">nenhuma porta COM no PC</option>`;
-  if (atual && cel.portas.some((p) => p.porta === atual)) sel.value = atual;
-  desenharPc();
-}
-async function abrirAba(sid, assumir) {
-  const a = cel.abas.find((x) => x.sid === sid); if (!a) return;
-  cel.atual = sid; cel.meu = a.meu;
-  mostrar("term"); cel.atual = sid; $("#term-nome").textContent = a.nome; term.reset(); desenharPapel(); ajustarTerm();
-  const r = await pedir({ t: assumir ? "assumir" : "assistir", sid });
-  if (!r.ok) { toast(r.erro || "Falhou", "erro"); return mostrar("sessoes"); }
-  if (assumir) { cel.meu = true; desenharPapel(); toast("Você está com o controle desta aba"); }
-}
-function desenharPapel() {
-  const p = $("#term-papel"); p.textContent = cel.meu ? "você controla" : "assistindo"; p.classList.toggle("ativo", cel.meu);
-  const b = $("#btn-controle"); b.textContent = cel.meu ? "Devolver" : "Assumir"; b.classList.toggle("primario", !cel.meu);
-  $("#cmd-linha").placeholder = cel.meu ? "digite o comando…" : "toque em Assumir para digitar";
-}
+function paginaConectar() {
+  const $ = (s) => document.querySelector(s);
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const msg = (sel, t, erro) => { const el = $(sel); el.textContent = t || ""; el.className = "msg" + (t ? (erro ? " erro" : " ok") : ""); };
+  function toast(t, cls = "") { const el = $("#toast"); el.textContent = t; el.className = "toast on " + cls; clearTimeout(toast.t); toast.t = setTimeout(() => (el.className = "toast " + cls), 3200); }
+  const pag = { abas: [], portas: [], atual: null, meu: false };
+  cel.aoEstado = (cls, t) => { $("#estado").className = "pilula " + cls; $("#estado-txt").textContent = t; };
+  cel.aviso = (t, erro) => toast(t, erro ? "erro" : "");
+  cel.aoFim = (motivo) => { mostrar("sessoes"); desenharPc(); msg("#con-msg", motivo, true); };
+  cel.aoConectado = () => { enviar({ t: "listar" }); };
+  cel.aoMsg = tratarPagina;
+  // a interface completa (plataforma web) fica ao lado desta página: no site /dassh/app/, na pasta ui/ index.html
+  const URL_APP = /conectar\.html$/.test(location.pathname) ? "index.html" : "../app/";
+  $("#btn-completa").href = URL_APP + "#celular";
 
-// terminal (xterm): mesmo tamanho do PC (100x30); a fonte encolhe para caber na largura e "A±" alterna o zoom
-const term = new Terminal({ cols: 100, rows: 30, fontSize: 7, fontFamily: "Consolas, 'Courier New', monospace", scrollback: 3000, cursorBlink: true,
-  theme: { background: "#000000", foreground: "#d8dee9", cursor: "#00dc78" } });
-term.open($("#term"));
-let zoom = false;
-function ajustarTerm() {
-  const w = $("#term-caixa").clientWidth - 10;
-  term.options.fontSize = zoom ? 13 : Math.max(5, Math.min(14, Math.floor((w / 100 / 0.6) * 2) / 2));
-}
-addEventListener("resize", ajustarTerm);
-function escreverTerm(t) { if (!t) return; cel.rx.push(t); if (cel.rx.length > 2000) cel.rx.splice(0, 1000); term.write(t); }
-function digitar(d) {
-  if (!cel.sess || !cel.atual) return;
-  if (!cel.meu) return toast("Você está assistindo — toque em Assumir para digitar", "erro");
-  enviar({ t: "in", sid: cel.atual, d });
-}
-term.onData((d) => digitar(d));
-const TECLAS = { ctrlc: "\x03", tab: "\t", esc: "\x1b", cima: "\x1b[A", baixo: "\x1b[B", dir: "\x1b[C", esq: "\x1b[D", enter: "\r",
-                 ctrld: "\x04", ctrlz: "\x1a", ctrll: "\x0c", espaco: " ", q: "q" };
-document.querySelectorAll("[data-tecla]").forEach((b) => (b.onclick = () => {
-  if (b.dataset.tecla === "zoom") { zoom = !zoom; return ajustarTerm(); }
-  digitar(TECLAS[b.dataset.tecla]);
-}));
-const enviarLinha = () => { const i = $("#cmd-linha"); if (!cel.meu) return digitar(""); digitar(i.value + "\r"); i.value = ""; };
-$("#cmd-enviar").onclick = enviarLinha;
-$("#cmd-linha").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); enviarLinha(); } });
-$("#btn-voltar").onclick = () => { mostrar("sessoes"); enviar({ t: "listar" }); };
-$("#btn-controle").onclick = async () => {
-  if (!cel.atual) return;
-  if (cel.meu) { enviar({ t: "devolver", sid: cel.atual }); cel.meu = false; desenharPapel(); return; }
-  const r = await pedir({ t: "assumir", sid: cel.atual });
-  if (r.ok) { cel.meu = true; desenharPapel(); } else toast(r.erro || "Falhou", "erro");
-};
+  function mostrar(nome) { document.querySelectorAll(".tela").forEach((t) => t.classList.toggle("ativa", t.id === "tela-" + nome)); if (nome !== "term") pag.atual = null; }
+  function tratarPagina(m) {
+    if (m.t === "abas") {
+      pag.abas = (Array.isArray(m.lista) ? m.lista : []).slice(0, 16).filter((a) => a && /^[A-Za-z0-9_-]{1,32}$/.test(a.sid))
+        .map((a) => ({ sid: a.sid, nome: limpa(a.nome, 60), tipo: limpa(a.tipo, 20), alvo: limpa(a.alvo, 80), meu: a.meu === true, cel: a.cel ? limpa(a.cel, 40) : null, ao_vivo: !!a.ao_vivo }));
+      pag.portas = (Array.isArray(m.portas) ? m.portas : []).slice(0, 32).map((p) => ({ porta: limpa(p.porta, 20), descricao: limpa(p.descricao, 60) }));
+      desenharAbas();
+      if (pag.atual) { const a = pag.abas.find((x) => x.sid === pag.atual); if (a) { pag.meu = a.meu; desenharPapel(); } }
+      return;
+    }
+    const texto = typeof m.d === "string" ? m.d : "";
+    if (m.t === "tela" && m.sid === pag.atual) { term.reset(); escreverTerm(texto); pag.meu = m.meu === true; desenharPapel(); return; }
+    if (m.t === "out" && m.sid === pag.atual) return escreverTerm(texto);
+    if (m.t === "controle") { if (m.sid === pag.atual) { pag.meu = m.meu === true; desenharPapel(); } if (m.meu === false) toast("O controle voltou para o PC — você está assistindo"); return; }
+    if (m.t === "aviso") return toast(limpa(m.msg, 200), "erro");
+  }
 
-// abrir aba nova
-let tipoNovo = "serial";
-document.querySelectorAll("#nova-tipo button").forEach((b) => (b.onclick = () => {
-  tipoNovo = b.dataset.tipo;
-  document.querySelectorAll("#nova-tipo button").forEach((x) => x.classList.toggle("sel", x === b));
-  $("#nova-serial").style.display = tipoNovo === "serial" ? "" : "none";
-  $("#nova-ssh").style.display = tipoNovo === "ssh" ? "" : "none";
-}));
-$("#nova-btn").onclick = async () => {
-  const p = { t: "abrir", tipo: tipoNovo };
-  if (tipoNovo === "serial") { p.porta = $("#nova-porta").value; p.baud = +$("#nova-baud").value; if (!p.porta) return msg("#nova-msg", "Nenhuma porta COM no PC.", true); }
-  if (tipoNovo === "ssh") { p.destino = $("#nova-destino").value.trim(); if (!p.destino) return msg("#nova-msg", "Informe usuario@ip.", true); }
-  $("#nova-btn").disabled = true; msg("#nova-msg", "Abrindo no PC…");
-  const r = await pedir(p);
-  $("#nova-btn").disabled = false;
-  if (!r.ok) return msg("#nova-msg", r.erro || "Falhou", true);
-  msg("#nova-msg", "");
-  const sid = limpa(r.sid, 32);
-  cel.abas = cel.abas.filter((a) => a.sid !== sid).concat([{ sid, nome: limpa(r.nome, 60) || "Nova aba", tipo: tipoNovo, alvo: "", meu: true }]);
-  cel.atual = sid; cel.meu = true;
-  mostrar("term"); cel.atual = sid; $("#term-nome").textContent = limpa(r.nome, 60) || "Nova aba"; desenharPapel(); ajustarTerm();
-  toast("Aba aberta no PC — você está com o controle");
-};
+  const ICONES = { serial: "🔌", powershell: "⚡", cmd: "⌨️", ssh: "🔐" };
+  function desenharPc() {
+    const d = ler(), on = !!cel.sess;
+    $("#pc-nome").textContent = "🖥 " + (d ? d.pc.nome : "PC");
+    $("#pc-info").textContent = d ? (d.revogado ? "Este aparelho foi revogado no PC." : `Pareado como “${d.nome}”`) : "";
+    $("#btn-conectar").style.display = on ? "none" : "";
+    $("#btn-desconectar").style.display = on ? "" : "none";
+    $("#cartao-abas").style.display = on ? "" : "none";
+    $("#cartao-nova").style.display = on ? "" : "none";
+    $("#btn-completa").style.display = d && !d.revogado ? "" : "none";
+  }
+  function desenharAbas() {
+    const l = $("#lista-abas");
+    if (!pag.abas.length) { l.innerHTML = `<div class="vazio">Nenhuma aba de terminal aberta no PC.<br>Abra uma nova abaixo.</div>`; }
+    else l.innerHTML = pag.abas.map((a) => `<div class="aba-card" data-sid="${esc(a.sid)}"><span class="ic">${ICONES[a.tipo] || "▣"}</span>
+      <div class="txt"><b>${esc(a.nome)}${a.meu ? '<span class="selo">você controla</span>' : a.cel ? `<span class="selo pc">${esc(a.cel)}</span>` : ""}</b>
+      <small>${esc(a.tipo)}${a.alvo && a.alvo !== a.tipo ? " · " + esc(a.alvo) : ""}${a.ao_vivo ? " · 📡 ao vivo" : ""}</small></div>
+      <div class="acoes"><button data-acao="assistir">Assistir</button><button class="primario" data-acao="assumir">Assumir</button></div></div>`).join("");
+    l.querySelectorAll(".aba-card").forEach((c) => c.querySelectorAll("button").forEach((b) => (b.onclick = () => abrirAba(c.dataset.sid, b.dataset.acao === "assumir"))));
+    const sel = $("#nova-porta"), atual = sel.value;
+    sel.innerHTML = pag.portas.length ? pag.portas.map((p) => `<option value="${esc(p.porta)}">${esc(p.porta)} — ${esc(p.descricao)}</option>`).join("")
+      : `<option value="">nenhuma porta COM no PC</option>`;
+    if (atual && pag.portas.some((p) => p.porta === atual)) sel.value = atual;
+    desenharPc();
+  }
+  async function abrirAba(sid, assumir) {
+    const a = pag.abas.find((x) => x.sid === sid); if (!a) return;
+    pag.meu = a.meu;
+    mostrar("term"); pag.atual = sid; $("#term-nome").textContent = a.nome; term.reset(); desenharPapel(); ajustarTerm();
+    const r = await pedir({ t: assumir ? "assumir" : "assistir", sid });
+    if (!r.ok) { toast(r.erro || "Falhou", "erro"); return mostrar("sessoes"); }
+    if (assumir) { pag.meu = true; desenharPapel(); toast("Você está com o controle desta aba"); }
+  }
+  function desenharPapel() {
+    const p = $("#term-papel"); p.textContent = pag.meu ? "você controla" : "assistindo"; p.classList.toggle("ativo", pag.meu);
+    const b = $("#btn-controle"); b.textContent = pag.meu ? "Devolver" : "Assumir"; b.classList.toggle("primario", !pag.meu);
+    $("#cmd-linha").placeholder = pag.meu ? "digite o comando…" : "toque em Assumir para digitar";
+  }
 
-// pareamento / conexão
-$("#par-btn").onclick = async () => {
-  const nome = $("#par-nome").value.trim().slice(0, 40) || "Celular";
-  $("#par-btn").disabled = true; msg("#par-msg", "Pareando com segurança…");
-  try {
-    const d = await parear($("#par-codigo").value, nome);
-    msg("#par-msg", "");
-    mostrar("sessoes"); desenharPc();
-    $("#sas").textContent = d.sas; $("#sas-caixa").style.display = "";
-    msg("#con-msg", `Pareado com ${d.pc.nome}. Agora toque em Conectar (o PC precisa estar “disponível para meus aparelhos”).`);
-  } catch (e) { msg("#par-msg", e.message, true); }
-  $("#par-btn").disabled = false;
-};
-$("#btn-conectar").onclick = async () => {
-  $("#btn-conectar").disabled = true; msg("#con-msg", "");
-  try { await conectar(); desenharPc(); $("#sas-caixa").style.display = "none"; }
-  catch (e) { setEstado("", "Desconectado"); msg("#con-msg", e.message, true); }
-  $("#btn-conectar").disabled = false;
-};
-$("#btn-desconectar").onclick = () => { desconectar(); desenharPc(); mostrar("sessoes"); };
-$("#btn-esquecer").onclick = () => {
-  if (!confirm("Esquecer este PC? Para voltar a usar, será preciso parear de novo (e revogar o antigo no PC).")) return;
-  desconectar(true); gravar(null); setEstado("", "Desconectado"); mostrar("parear");
-};
-addEventListener("beforeunload", () => { if (cel.sess) enviar({ t: "sair" }); });
+  // terminal (xterm): mesmo tamanho do PC (100x30); a fonte encolhe para caber na largura e "A±" alterna o zoom
+  const term = new Terminal({ cols: 100, rows: 30, fontSize: 7, fontFamily: "Consolas, 'Courier New', monospace", scrollback: 3000, cursorBlink: true,
+    theme: { background: "#000000", foreground: "#d8dee9", cursor: "#00dc78" } });
+  term.open($("#term"));
+  let zoom = false;
+  function ajustarTerm() {
+    const w = $("#term-caixa").clientWidth - 10;
+    term.options.fontSize = zoom ? 13 : Math.max(5, Math.min(14, Math.floor((w / 100 / 0.6) * 2) / 2));
+  }
+  addEventListener("resize", ajustarTerm);
+  function escreverTerm(t) { if (!t) return; cel.rx.push(t); if (cel.rx.length > 2000) cel.rx.splice(0, 1000); term.write(t); }
+  function digitar(d) {
+    if (!cel.sess || !pag.atual) return;
+    if (!pag.meu) return toast("Você está assistindo — toque em Assumir para digitar", "erro");
+    enviar({ t: "in", sid: pag.atual, d });
+  }
+  term.onData((d) => digitar(d));
+  const TECLAS = { ctrlc: "\x03", tab: "\t", esc: "\x1b", cima: "\x1b[A", baixo: "\x1b[B", dir: "\x1b[C", esq: "\x1b[D", enter: "\r",
+                   ctrld: "\x04", ctrlz: "\x1a", ctrll: "\x0c", espaco: " ", q: "q" };
+  document.querySelectorAll("[data-tecla]").forEach((b) => (b.onclick = () => {
+    if (b.dataset.tecla === "zoom") { zoom = !zoom; return ajustarTerm(); }
+    digitar(TECLAS[b.dataset.tecla]);
+  }));
+  const enviarLinha = () => { const i = $("#cmd-linha"); if (!pag.meu) return digitar(""); digitar(i.value + "\r"); i.value = ""; };
+  $("#cmd-enviar").onclick = enviarLinha;
+  $("#cmd-linha").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); enviarLinha(); } });
+  $("#btn-voltar").onclick = () => { mostrar("sessoes"); enviar({ t: "listar" }); };
+  $("#btn-controle").onclick = async () => {
+    if (!pag.atual) return;
+    if (pag.meu) { enviar({ t: "devolver", sid: pag.atual }); pag.meu = false; desenharPapel(); return; }
+    const r = await pedir({ t: "assumir", sid: pag.atual });
+    if (r.ok) { pag.meu = true; desenharPapel(); } else toast(r.erro || "Falhou", "erro");
+  };
 
-// início: código do #fragmento (nunca vai a servidor) é lido e apagado da barra de endereços e do histórico
-(function iniciar() {
+  // abrir aba nova
+  let tipoNovo = "serial";
+  document.querySelectorAll("#nova-tipo button").forEach((b) => (b.onclick = () => {
+    tipoNovo = b.dataset.tipo;
+    document.querySelectorAll("#nova-tipo button").forEach((x) => x.classList.toggle("sel", x === b));
+    $("#nova-serial").style.display = tipoNovo === "serial" ? "" : "none";
+    $("#nova-ssh").style.display = tipoNovo === "ssh" ? "" : "none";
+  }));
+  $("#nova-btn").onclick = async () => {
+    const p = { t: "abrir", tipo: tipoNovo };
+    if (tipoNovo === "serial") { p.porta = $("#nova-porta").value; p.baud = +$("#nova-baud").value; if (!p.porta) return msg("#nova-msg", "Nenhuma porta COM no PC.", true); }
+    if (tipoNovo === "ssh") { p.destino = $("#nova-destino").value.trim(); if (!p.destino) return msg("#nova-msg", "Informe usuario@ip.", true); }
+    $("#nova-btn").disabled = true; msg("#nova-msg", "Abrindo no PC…");
+    const r = await pedir(p);
+    $("#nova-btn").disabled = false;
+    if (!r.ok) return msg("#nova-msg", r.erro || "Falhou", true);
+    msg("#nova-msg", "");
+    const sid = limpa(r.sid, 32);
+    pag.abas = pag.abas.filter((a) => a.sid !== sid).concat([{ sid, nome: limpa(r.nome, 60) || "Nova aba", tipo: tipoNovo, alvo: "", meu: true }]);
+    pag.meu = true;
+    mostrar("term"); pag.atual = sid; $("#term-nome").textContent = limpa(r.nome, 60) || "Nova aba"; desenharPapel(); ajustarTerm();
+    toast("Aba aberta no PC — você está com o controle");
+  };
+
+  // pareamento / conexão
+  $("#par-btn").onclick = async () => {
+    const nome = $("#par-nome").value.trim().slice(0, 40) || "Celular";
+    $("#par-btn").disabled = true; msg("#par-msg", "Pareando com segurança…");
+    try {
+      const d = await parear($("#par-codigo").value, nome);
+      msg("#par-msg", "");
+      mostrar("sessoes"); desenharPc();
+      $("#sas").textContent = d.sas; $("#sas-caixa").style.display = "";
+      msg("#con-msg", `Pareado com ${d.pc.nome}. Toque em “Abrir o DASSH” para usar a interface completa operando o PC.`);
+    } catch (e) { msg("#par-msg", e.message, true); }
+    $("#par-btn").disabled = false;
+  };
+  $("#btn-conectar").onclick = async () => {
+    $("#btn-conectar").disabled = true; msg("#con-msg", "");
+    try { await conectar(); desenharPc(); $("#sas-caixa").style.display = "none"; }
+    catch (e) { setEstado("", "Desconectado"); msg("#con-msg", e.message, true); }
+    $("#btn-conectar").disabled = false;
+  };
+  $("#btn-desconectar").onclick = () => { desconectar(); desenharPc(); mostrar("sessoes"); };
+  $("#btn-esquecer").onclick = () => {
+    if (!confirm("Esquecer este PC? Para voltar a usar, será preciso parear de novo (e revogar o antigo no PC).")) return;
+    desconectar(true); gravar(null); setEstado("", "Desconectado"); mostrar("parear");
+  };
+  addEventListener("beforeunload", () => { if (cel.sess) enviar({ t: "sair" }); });
+
+  // início: código do #fragmento (nunca vai a servidor) é lido e apagado da barra de endereços e do histórico
   let cod = "";
   const m = /(?:^|[#&])par=([A-Za-z0-9-]{1,20})/.exec(location.hash);
   if (m) cod = m[1];
@@ -408,4 +471,4 @@ addEventListener("beforeunload", () => { if (cel.sess) enviar({ t: "sair" }); })
   $("#par-nome").value = /iPhone/.test(navigator.userAgent) ? "iPhone" : /Android/.test(navigator.userAgent) ? "Android" : "Celular";
   if (ler() && !cod) { mostrar("sessoes"); desenharPc(); } else mostrar("parear");
   cel.pronto = true;
-})();
+}

@@ -786,7 +786,7 @@ function verificarLogin(a) {
   a.ultimoPrompt = chave;
   if (pass && a.loginPend && Date.now() - a.loginPend.t < 30000) {  // usuário veio do cofre: completa a senha
     const id = a.loginPend.id; a.loginPend = null;
-    api.cofre_preencher(a.id, id, "senha").then((r) => r.ok ? toast("Senha preenchida pelo cofre") : toast(r.erro, "erro"));
+    preencherDoCofre(a, id, "senha").then((r) => r.ok ? toast("Senha preenchida pelo cofre") : toast(r.erro, "erro"));
     esconderSugestao(a); return;
   }
   mostrarSugestao(a, user ? "usuario" : "senha");
@@ -802,11 +802,17 @@ function mostrarSugestao(a, modo) {
   if (a.id !== ativa) { a.btn.classList.add("alerta"); return; }
   $("#sug-tit").textContent = modo === "usuario" ? "🔑 Pediu usuário" : "🔑 Pediu senha";
   const box = $("#sug-itens"); box.innerHTML = "";
+  if (!COFRE.token) {   // cofre trancado: as credenciais (nem os nomes) não vêm sem o PIN
+    const d = document.createElement("button");
+    d.innerHTML = `🔒 Destrancar o cofre<small>pede o PIN do cofre</small>`;
+    d.onclick = async () => { if (await garantirCofre("O equipamento pediu " + (modo === "usuario" ? "o usuário" : "a senha") + ".")) mostrarSugestao(a, modo); a.term.focus(); };
+    box.appendChild(d);
+  }
   ordenarCofre(a, modo).slice(0, 6).forEach((c) => {
     const bt = document.createElement("button");
     bt.innerHTML = `${esc(c.nome)}<small>${esc(modo === "usuario" ? c.usuario : c.usuario ? c.usuario : "senha")}</small>`;
     bt.onclick = async () => {
-      const r = await api.cofre_preencher(a.id, c.id, modo);
+      const r = await preencherDoCofre(a, c.id, modo);
       if (!r.ok) return toast(r.erro, "erro");
       if (modo === "usuario") a.loginPend = { id: c.id, t: Date.now() }; else toast("Senha preenchida pelo cofre");
       esconderSugestao(a); a.term.focus();
@@ -814,44 +820,111 @@ function mostrarSugestao(a, modo) {
     box.appendChild(bt);
   });
   const g = document.createElement("button"); g.className = "gerenciar";
-  g.textContent = cofre.length ? "Gerenciar cofre" : "Adicionar ao cofre"; g.onclick = abrirCofre; box.appendChild(g);
+  g.textContent = !COFRE.token || cofre.length ? "Gerenciar cofre" : "Adicionar ao cofre"; g.onclick = abrirCofre; box.appendChild(g);
   $("#sugestao").classList.remove("oculto");
+}
+async function preencherDoCofre(a, id, campo) {   // trancado (venceu)? pede o PIN e tenta de novo uma vez
+  let r = await cofreChamar("cofre_preencher", a.id, id, campo);
+  if (r && r.trancado && await garantirCofre("O equipamento pediu " + (campo === "usuario" ? "o usuário" : "a senha") + "."))
+    r = await cofreChamar("cofre_preencher", a.id, id, campo);
+  return r || { ok: false, erro: "Cofre indisponível" };
 }
 function esconderSugestao(a) {
   a.sugestao = null; a.btn && a.btn.classList.remove("alerta");
   if (a.id === ativa) $("#sugestao").classList.add("oculto");
 }
 
-// ================= cofre: tela de gerenciamento =================
-function desenharCofre() {
-  const tb = $("#cofre-linhas"); tb.innerHTML = "";
-  const [ini, fim, p] = paginador($("#cofre-pag"), cofre.length, desenharCofre.pag || 0, (n) => { desenharCofre.pag = n; desenharCofre(); }, "credencial(is)");
-  desenharCofre.pag = p;
-  if (!cofre.length) { tb.innerHTML = `<tr class="vazio"><td colspan="4">Nenhuma credencial ainda.</td></tr>`; return; }
-  cofre.slice(ini, fim).forEach((c) => {
-    const tr = document.createElement("tr");
-    tr.innerHTML = `<td>${esc(c.nome)}</td><td>${esc(c.usuario) || "<i>—</i>"}</td><td>${esc(c.alvo) || "<i>qualquer</i>"}</td>
-      <td style="text-align:right"><button class="btn" data-ed>Editar</button><button class="btn" data-rm>Excluir</button></td>`;
-    tr.querySelector("[data-ed]").onclick = () => {
-      $("#cf-id").value = c.id; $("#cf-nome").value = c.nome; $("#cf-usuario").value = c.usuario;
-      $("#cf-senha").value = ""; $("#cf-alvo").value = c.alvo; $("#cofre-form-tit").textContent = "Editar credencial";
+// ================= 🔢 cofre: PIN próprio (token do cofre) =================
+// O backend só entrega/usa o cofre com o token devolvido pelo PIN (cofre_pin_abrir/definir); o token fica SÓ em memória
+// desta janela, vence após X min sem uso e cai ao sair da seção 🔑 Cofre ou fechar a Biblioteca.
+const COFRE = { token: null, min: 5, timer: null, ate: 0 };
+function cofreEsquecer() { COFRE.token = null; cofre = []; clearTimeout(COFRE.timer); COFRE.ate = 0; }
+async function cofreTrancar() {
+  const t = COFRE.token; cofreEsquecer();
+  if (t && api) try { await api.cofre_pin_trancar(t); } catch (e) { /* já vencido */ }
+}
+function cofreArmarTimer() {
+  clearTimeout(COFRE.timer); COFRE.ate = Date.now() + COFRE.min * 60000;
+  COFRE.timer = setTimeout(() => {
+    cofreEsquecer(); toast("🔒 Cofre trancado por inatividade");
+    if (BIB.sec === "cofre" && !$("#modal-bib").classList.contains("oculto")) desenharBib();
+  }, COFRE.min * 60000 + 300);
+}
+function cofreAberto(r) { COFRE.token = r.token; COFRE.min = r.ocioso_min || COFRE.min; cofre = r.itens || []; cofreArmarTimer(); }
+async function cofreChamar(metodo, ...args) {   // chamada do cofre COM o token; trancado no backend -> esquece aqui também
+  const r = await api[metodo](...args, COFRE.token);
+  if (r && r.trancado) cofreEsquecer();
+  else if (COFRE.token) { cofreArmarTimer(); if (r && Array.isArray(r.itens)) cofre = r.itens; }
+  return r;
+}
+const PIN_TXT = {
+  definir: ["🔢 Criar o PIN do cofre", "Criar e abrir"], abrir: ["🔒 Cofre trancado", "Destrancar"],
+  trocar: ["🔢 Trocar o PIN do cofre", "Trocar PIN"], esqueci: ["🔑 Esqueci o PIN do cofre", "Redefinir PIN"],
+};
+function pinCamposHtml(est, modo, motivo) {
+  const min = (est && est.pin_min) || 6, campo = (k, rot, ph = "") =>
+    `<label>${rot} <input type="password" data-p="${k}" autocomplete="new-password" spellcheck="false" placeholder="${ph}"></label>`;
+  const trava = est && est.travado_s ? `<p class="pin-msg erro">Muitas tentativas erradas: aguarde ${est.travado_s} s.</p>` : `<p class="pin-msg"></p>`;
+  const topo = motivo ? `<p class="ajuda">${esc(motivo)}</p>` : "";
+  if (modo === "definir") return topo + `<p class="ajuda"><b>Primeiro acesso:</b> crie um PIN só do cofre (mín. ${min} caracteres, números ou letras).
+      Ele é pedido ao abrir o cofre, <b>além</b> da senha da conta, e o cofre tranca sozinho após ${est && est.ocioso_min || 5} min sem uso.</p>
+      ${campo("novo", "Novo PIN")}${campo("conf", "Repita o PIN")}` + trava;
+  if (modo === "trocar") return `${campo("atual", "PIN atual")}${campo("novo", "Novo PIN", `mín. ${min} caracteres`)}${campo("conf", "Repita o novo PIN")}` + trava;
+  if (modo === "esqueci") return `<p class="ajuda">Com a <b>senha da sua conta</b> o PIN é redefinido e as credenciais ficam. Sem ela, só apagando
+      todas as credenciais do cofre (não há como recuperá-las).</p>${campo("conta", "Senha da conta")}
+      ${campo("novo", "Novo PIN", `mín. ${min} caracteres`)}${campo("conf", "Repita o novo PIN")}
+      <label class="pin-apagar"><input type="checkbox" data-p="apagar"> Não sei a senha da conta: <b>apagar as credenciais</b> e recomeçar</label>` + trava;
+  return topo + `${campo("atual", "PIN do cofre")}` + trava + `<a href="#" class="pin-esqueci" data-esqueci>Esqueci o PIN</a>`;
+}
+async function pinEnviar(box, modo) {
+  const v = (k) => { const i = box.querySelector(`[data-p="${k}"]`); return i ? (i.type === "checkbox" ? i.checked : i.value) : ""; };
+  const msg = box.querySelector(".pin-msg");
+  const falha = (t) => { msg.textContent = "✖ " + t; msg.className = "pin-msg erro"; const i = box.querySelector("input[type=password]"); if (i) i.select(); return false; };
+  if (modo !== "abrir" && v("novo") !== v("conf")) return falha("Os dois PINs não conferem.");
+  msg.textContent = "Conferindo…"; msg.className = "pin-msg";
+  const r = modo === "abrir" ? await api.cofre_pin_abrir(v("atual")) : modo === "definir" ? await api.cofre_pin_definir(v("novo"))
+    : modo === "trocar" ? await api.cofre_pin_definir(v("novo"), v("atual")) : await api.cofre_pin_redefinir(v("conta"), v("novo"), !!v("apagar"));
+  if (!r || !r.ok) return falha((r && r.erro) || "não foi possível");
+  cofreAberto(r);
+  if (modo !== "abrir") toast(modo === "definir" ? "🔢 PIN do cofre criado" : "🔢 PIN do cofre atualizado");
+  return true;
+}
+function pinLigar(box, est, modo, aoTrocarModo) {
+  const e = box.querySelector("[data-esqueci]"); if (e) e.onclick = (ev) => { ev.preventDefault(); aoTrocarModo("esqueci"); };
+  const i = box.querySelector("input[type=password]"); if (i) setTimeout(() => i.focus(), 30);
+}
+// Fluxos internos (preencher login no terminal, Skill com senha do cofre): pede o PIN numa janelinha e segue.
+async function garantirCofre(motivo, modoForcado) {
+  if (!api) return false;
+  if (COFRE.token && !modoForcado) { const r = await cofreChamar("cofre_listar"); if (r && r.ok) return true; }
+  const est = await api.cofre_pin_estado(null);
+  let modo = modoForcado || (est.definido ? "abrir" : "definir");
+  const m = $("#modal-pin"), box = $("#pin-campos");
+  return new Promise((res) => {
+    let feito = false;
+    const desenhar = () => {
+      $("#pin-tit").textContent = PIN_TXT[modo][0]; $("#pin-ok").textContent = PIN_TXT[modo][1];
+      box.innerHTML = pinCamposHtml(est, modo, modo === "abrir" || modo === "definir" ? motivo : "");
+      pinLigar(box, est, modo, (n) => { modo = n; desenhar(); });
     };
-    tr.querySelector("[data-rm]").onclick = async () => {
-      if (tr.dataset.conf !== "1") { tr.dataset.conf = "1"; tr.querySelector("[data-rm]").textContent = "Confirmar?"; return; }
-      cofre = await api.cofre_remover(c.id); desenharCofre();
-    };
-    tb.appendChild(tr);
+    const obs = new MutationObserver(() => { if (m.classList.contains("oculto")) fim(false); });
+    const fim = (v) => { if (feito) return; feito = true; obs.disconnect(); m.classList.add("oculto"); res(v); };
+    $("#pin-form").onsubmit = async (ev) => { ev.preventDefault(); if (await pinEnviar(box, modo)) fim(true); };
+    desenhar(); abrirModal("#modal-pin"); obs.observe(m, { attributes: true, attributeFilter: ["class"] });
   });
 }
 function limparFormCofre() {
   ["#cf-id", "#cf-nome", "#cf-usuario", "#cf-senha", "#cf-alvo"].forEach((s) => ($(s).value = ""));
-  $("#cofre-form-tit").textContent = "Nova credencial";
+  $("#cofre-form-tit").textContent = "Nova credencial"; $("#cofre-form").classList.add("oculto");
 }
-async function abrirCofre() {
-  cofre = await api.cofre_listar(); desenharCofre(); limparFormCofre();
-  const a = A(); if (a && a.alvo) $("#cf-alvo").value = a.alvo;
-  abrirModal("#modal-cofre"); $("#cf-nome").focus();
+function formCofre(c) {
+  $("#cofre-form").classList.remove("oculto");
+  $("#cf-id").value = c ? c.id : ""; $("#cf-nome").value = c ? c.nome : ""; $("#cf-usuario").value = c ? c.usuario : "";
+  $("#cf-senha").value = ""; $("#cf-senha").placeholder = c ? "Senha (vazio = manter a atual)" : "Senha";
+  const a = A(); $("#cf-alvo").value = c ? c.alvo : (a && a.alvo) || "";
+  $("#cofre-form-tit").textContent = c ? "Editar credencial" : "Nova credencial"; $("#cf-nome").focus();
 }
+const abrirCofre = () => abrirBiblioteca("cofre");   // 🔑 da tela principal, "Gerenciar cofre" da sugestão…
 
 // ================= histórico de sessões =================
 function duracao(ini, fim) {
@@ -1710,7 +1783,9 @@ async function executarRoteiro(rot, enviar) {
   const digitar = async (c, texto) => {
     if (!config) { api.escrever(a.id, texto + "\r"); return true; }
     if (api.skill_escrever) {
-      const r = await api.skill_escrever(a.id, texto, c.cofre || {}, c.segredos || []);
+      let r = await cofreChamar("skill_escrever", a.id, texto, c.cofre || {}, c.segredos || []);
+      if (r && r.trancado && await garantirCofre("A Skill usa uma senha do cofre."))
+        r = await cofreChamar("skill_escrever", a.id, texto, c.cofre || {}, c.segredos || []);
       if (r && r.ok === false) { toast(r.erro || "Falha ao digitar o comando", "erro"); return false; }
       return true;
     }
@@ -1803,10 +1878,16 @@ function desenharRoteiros() {
   const lista = ROTEIROS.filter((r) => (!fab || r.fabricante === fab) &&
     (!cat || (cat === "@coleta" ? !ehConfig(r) : cat === "@configuracao" ? ehConfig(r) : (r.finalidade || []).includes(cat))) &&
     (!q || [r.nome, r.fabricante, r.descricao, ...(r.finalidade || []), ...r.comandos.map((c) => c.cmd)].join(" ").toLowerCase().includes(q)));
-  if (!lista.length) ul.innerHTML = `<li style="cursor:default;color:var(--suave)">Nenhuma Skill encontrada.</li>`;
-  lista.sort((x, y) => (x.tipo === tipo ? 0 : 1) - (y.tipo === tipo ? 0 : 1) || x.nome.localeCompare(y.nome)).forEach((r, i) => {
-    const li = document.createElement("li");
-    li.innerHTML = `${ehConfig(r) ? '<span class="tag tag-config">⚙ configuração</span> ' : ""}${esc(r.nome)}<small>${esc(r.fabricante || "")} · ${r.comandos.length} comandos${(r.finalidade || []).length ? " · " + esc(r.finalidade.join(", ")) : ""}${r.tipo === tipo ? '<span class="tag">combina com esta aba</span>' : ""}</small>`;
+  if (!lista.length) ul.innerHTML = `<li class="rot-vazio">Nenhuma Skill encontrada com essa busca / filtro.</li>`;
+  // agrupado por fabricante/plataforma (as que combinam com a aba atual primeiro), cartões uniformes
+  const fabDe = (r) => r.fabricante || "Outros", comb = (r) => (r.tipo === tipo ? 0 : 1);
+  let grupo = null;
+  lista.sort((x, y) => comb(x) - comb(y) || fabDe(x).localeCompare(fabDe(y), "pt-BR") || x.nome.localeCompare(y.nome, "pt-BR")).forEach((r, i) => {
+    const g = comb(r) === 0 ? "Combinam com esta aba" : fabDe(r);
+    if (g !== grupo) { const h = document.createElement("li"); h.className = "rot-grupo"; h.textContent = g; ul.appendChild(h); grupo = g; }
+    const li = document.createElement("li"); li.className = "rot-item";
+    li.innerHTML = `<div class="rot-item-l1"><b>${esc(r.nome)}</b>${ehConfig(r) ? '<span class="tag tag-config">⚙ configuração</span>' : '<span class="tag tag-coleta">🔎 coleta</span>'}</div>
+      <small>${esc(fabDe(r))} · ${r.comandos.length} comando(s)${(r.finalidade || []).length ? " · " + esc(r.finalidade.join(", ")) : ""}</small>`;
     li.onclick = () => {
       rotSel = r; ul.querySelectorAll("li").forEach((x) => x.classList.remove("sel")); li.classList.add("sel");
       $("#rot-tit").textContent = r.nome; $("#rot-desc").textContent = (r.descricao || "") + (r.somente_leitura ? " · somente leitura" : "");
@@ -1847,7 +1928,8 @@ function desenharFormSkill(r) {
     let campo;
     if (v.tipo === "lista") campo = `<select data-var="${esc(v.id)}">${SKL.opcoes(v).map((o) => `<option value="${esc(o.valor)}"${o.valor === val ? " selected" : ""}>${esc(o.rotulo)}</option>`).join("")}</select>`;
     else if (v.tipo === "senha") campo = `<input type="password" data-var="${esc(v.id)}" value="${esc(val)}" autocomplete="new-password" spellcheck="false"${skillCfg.cofre[v.id] ? " disabled" : ""}>` +
-      (credenciais.length ? `<select data-cofre="${esc(v.id)}" title="Usar a senha de uma credencial do cofre (não passa pela interface)"><option value="">digitar</option>${credenciais.map((c) => `<option value="${esc(c.id)}"${skillCfg.cofre[v.id] === c.id ? " selected" : ""}>🔐 ${esc(c.nome)}</option>`).join("")}</select>` : "");
+      (credenciais.length ? `<select data-cofre="${esc(v.id)}" title="Usar a senha de uma credencial do cofre (não passa pela interface)"><option value="">digitar</option>${credenciais.map((c) => `<option value="${esc(c.id)}"${skillCfg.cofre[v.id] === c.id ? " selected" : ""}>🔐 ${esc(c.nome)}</option>`).join("")}</select>`
+        : !COFRE.token ? `<button type="button" class="btn mini" data-destrancar title="Destranca o cofre com o PIN para escolher uma credencial">🔒 Usar do cofre</button>` : "");
     else campo = `<input type="text" data-var="${esc(v.id)}" value="${esc(val)}" spellcheck="false" placeholder="${esc(v.tipo === "ip" ? "ex.: 192.168.10.2" : v.tipo === "mascara" ? "ex.: 255.255.255.0" : v.tipo === "vlan" ? "1 a 4094" : v.tipo === "wwn" ? "10:00:00:90:fa:12:34:56" : "")}">`;
     return `<label class="rot-campo"><span>${esc(v.rotulo || v.id)}${obr}</span><div class="rot-campo-in">${campo}</div>
       ${v.ajuda ? `<small>${esc(v.ajuda)}</small>` : ""}<em class="rot-erro" data-erro="${esc(v.id)}"></em></label>`;
@@ -1859,6 +1941,7 @@ function desenharFormSkill(r) {
     const id = s.dataset.cofre; if (s.value) skillCfg.cofre[id] = s.value; else delete skillCfg.cofre[id];
     const inp = f.querySelector(`[data-var="${CSS.escape(id)}"]`); inp.disabled = !!s.value; if (s.value) inp.value = skillCfg.valores[id] = "";
   }));
+  f.querySelectorAll("[data-destrancar]").forEach((b) => (b.onclick = async () => { if (await garantirCofre("A Skill pode usar uma senha do cofre.")) desenharFormSkill(r); }));
 }
 function gerarPreviaSkill(r) {
   const f = $("#rot-form");
@@ -1908,32 +1991,30 @@ async function gerarRelatorio() {
 }
 
 // ---------- equipamentos salvos ----------
-let EQ = [], eqEdit = null, eqPag = 0;
-const EQ_POR_PAG = 20;
+// A lista mora na seção 📚 Equipamentos da 🗂 Biblioteca (busca, filtros, "Ordenar por", cartões iguais às outras seções).
+let EQ = [], eqEdit = null;
 const TIPO_NOME = { serial: "Serial", ssh: "SSH", web: "Web", powershell: "PowerShell", cmd: "CMD" };
-async function abrirEquip() {
-  EQ = await api.equip_listar(); desenharEquip(); abrirModal("#modal-equip"); setTimeout(() => $("#eq-busca").focus(), 50);
+async function abrirEquip() { await abrirBiblioteca("equipamentos"); setTimeout(() => $("#bib-busca").focus(), 50); }
+function desenharEquip() {   // lista mudou (salvar/importar/remover): redesenha a seção, se for a atual
+  const n = $('#bib-nav [data-sec="equipamentos"] .bib-n'); if (n) n.textContent = EQ.length;
+  if (BIB.sec === "equipamentos" && !$("#modal-bib").classList.contains("oculto")) desenharBib();
 }
-function desenharEquip() {
-  const q = $("#eq-busca").value.trim().toLowerCase(), t = $("#eq-tipo").value, o = $("#eq-ordem").value;
-  let l = EQ.filter((e) => (!t || e.tipo === t) && (!q || `${e.nome} ${e.destino} ${e.grupo} ${e.obs}`.toLowerCase().includes(q)));
-  l.sort((a, b) => o === "ultima" ? (b.ultima || "").localeCompare(a.ultima || "")
-    : o === "grupo" ? (a.grupo || "~").localeCompare(b.grupo || "~") || a.nome.localeCompare(b.nome) : a.nome.localeCompare(b.nome));
-  const [ini, fim, p] = paginador($("#eq-pag"), l.length, eqPag, (n) => { eqPag = n; desenharEquip(); }, "equipamento(s)");
-  eqPag = p; l = l.slice(ini, fim);
-  $("#eq-linhas").innerHTML = l.length ? l.map((e) => `<tr data-id="${e.id}"><td><b>${esc(e.nome)}</b>${e.obs ? `<br><small>${esc(e.obs)}</small>` : ""}</td>
-      <td><span class="eq-tipo t-${e.tipo}">${TIPO_NOME[e.tipo] || e.tipo}</span></td><td class="mono">${esc(e.destino)}</td>
-      <td>${esc(e.grupo || "")}</td><td><small>${esc(e.ultima || "—")}</small></td>
-      <td class="eq-acoes"><button class="btn mini primario" data-c>▶ Conectar</button><button class="btn mini" data-e title="Editar">✎</button>
-      <button class="btn mini" data-r title="Remover">🗑</button></td></tr>`).join("")
-    : `<tr><td colspan="6" class="vazio">${EQ.length ? "Nada encontrado com esse filtro." : "Nenhum equipamento salvo ainda — conecte e use “＋ Salvar a aba atual”, ou ⬇ Importar."}</td></tr>`;
-  $("#eq-linhas").querySelectorAll("tr[data-id]").forEach((tr) => {
-    const e = EQ.find((x) => x.id === tr.dataset.id);
-    tr.ondblclick = () => conectarEquip(e);
-    tr.querySelector("[data-c]").onclick = () => conectarEquip(e);
-    tr.querySelector("[data-e]").onclick = () => formEquip(e);
-    tr.querySelector("[data-r]").onclick = async () => { await api.equip_remover(e.id); EQ = await api.equip_listar(); desenharEquip(); toast(`Removido: ${e.nome}`); };
-  });
+function cartaoEquip(e) {
+  const c = document.createElement("div"); c.className = "bib-item"; c.dataset.id = e.id;
+  c.innerHTML = `<div class="bib-l1"><span class="eq-tipo t-${esc(e.tipo)}">${TIPO_NOME[e.tipo] || esc(e.tipo)}</span> <b>${esc(e.nome)}</b>
+      <span class="bib-meta mono">${esc(e.destino)}</span>
+      <span class="bib-meta">${e.grupo ? esc(e.grupo) + " · " : ""}último uso: ${esc(e.ultima || "—")}</span></div>
+    ${e.obs ? `<div class="bib-l2 bib-meta">${esc(e.obs)}</div>` : ""}
+    <div class="bib-acoes"><button class="btn mini primario" data-c>▶ Conectar</button><button class="btn mini" data-e>✎ Editar</button>
+      <button class="btn mini" data-r>🗑 Remover</button></div>`;
+  c.ondblclick = (ev) => { if (!ev.target.closest("button")) conectarEquip(e); };
+  c.querySelector("[data-c]").onclick = () => conectarEquip(e);
+  c.querySelector("[data-e]").onclick = () => formEquip(e);
+  c.querySelector("[data-r]").onclick = async (ev) => {
+    const b = ev.currentTarget; if (b.dataset.conf !== "1") { b.dataset.conf = "1"; b.textContent = "Confirmar?"; return; }
+    await api.equip_remover(e.id); EQ = await api.equip_listar(); desenharEquip(); toast(`Removido: ${e.nome}`);
+  };
+  return c;
 }
 function formEquip(e) {
   eqEdit = e || {}; $("#eq-form").classList.remove("oculto");
@@ -1941,7 +2022,7 @@ function formEquip(e) {
   $("#eq-f-grupo").value = eqEdit.grupo || ""; $("#eq-f-obs").value = eqEdit.obs || ""; $("#eq-f-nome").focus();
 }
 async function conectarEquip(e) {
-  $("#modal-equip").classList.add("oculto");
+  $("#modal-bib").classList.add("oculto");
   let a = A(); if (a.conectado) a = novaAba(e.tipo);
   a.tipo = e.tipo; selecionarTipo(e.tipo);
   if (e.tipo === "serial") {
@@ -1955,8 +2036,7 @@ async function conectarEquip(e) {
 }
 function iniciarEquip() {
   $("#btn-equip").onclick = abrirEquip;
-  ["#eq-busca", "#eq-tipo", "#eq-ordem"].forEach((s) => $(s).addEventListener("input", () => { eqPag = 0; desenharEquip(); }));
-  $("#eq-novo").onclick = () => formEquip(null);
+  $("#eq-novo").onclick = () => { importarUIModo(null); formEquip(null); };
   $("#eq-f-cancelar").onclick = () => $("#eq-form").classList.add("oculto");
   $("#eq-f-ok").onclick = async () => {
     const it = { ...eqEdit, nome: $("#eq-f-nome").value, tipo: $("#eq-f-tipo").value, destino: $("#eq-f-destino").value.trim(),
@@ -1970,13 +2050,12 @@ function iniciarEquip() {
     if (!destino) return toast("Conecte a aba primeiro (Serial, SSH ou Web) para salvar", "aviso");
     formEquip({ tipo: a.tipo, destino, nome: a.equip ? `${a.equip}` : a.nome.replace(/^(SSH|Web|Serial)\s*/, "") });
   };
-  $("#eq-importar").onclick = () => pedido("⬇ <b>Importar equipamentos</b><br><small>Planilha CSV / backup JSON, ou as sessões salvas no PuTTY deste computador.</small>",
-    "Arquivo CSV/JSON", "Sessões do PuTTY", async (arq) => {
-      const r = await api.equip_importar(arq ? "arquivo" : "putty");
-      if (r.cancelado) return; if (!r.ok) return toast(r.erro, "erro");
-      toast(`Importado: ${r.novos} novo(s), ${r.atualizados} atualizado(s) — total ${r.total}`);
-      EQ = await api.equip_listar(); desenharEquip();
-    });
+  $("#eq-importar").onclick = async () => {   // planilha CSV / backup JSON (as outras ferramentas têm cartão próprio)
+    const r = await api.equip_importar("arquivo");
+    if (!r || r.cancelado) return; if (!r.ok) return toast(r.erro, "erro");
+    toast(`Importado: ${r.novos} novo(s), ${r.atualizados} atualizado(s) — total ${r.total}`);
+    EQ = await api.equip_listar(); irBib("equipamentos");
+  };
   $("#eq-exportar").onclick = async () => {
     const r = await api.equip_exportar(); if (r.cancelado) return;
     toast(r.ok ? `Exportado: ${r.total} equipamento(s) → ${r.caminho.split("\\").pop()}` : r.erro, r.ok ? "" : "erro");
@@ -2155,8 +2234,10 @@ const INFO = {
     <ul><li>Cadastre <b>nome</b>, <b>usuário</b>, <b>senha</b> e <b>vale para</b> (ex.: COM8, 10.0.0.1).</li>
     <li>Quando o terminal pedir <b>Username/login</b>, aparece a barra <b>“Pediu usuário”</b>: escolha a credencial — o usuário
       é digitado e a senha é completada sozinha no <b>Password</b>.</li>
-    <li>Se pedir só senha, a barra oferece a senha.</li></ul>
-    <p class="nota">Senhas cifradas pelo Windows (DPAPI): só o seu usuário, neste PC, abre. Nunca aparecem na tela,
+    <li>Se pedir só senha, a barra oferece a senha.</li>
+    <li><b>PIN do cofre</b> (criado no 1º acesso), além da senha da conta: pedido ao abrir o cofre. Ele tranca sozinho após alguns
+      minutos sem uso, ao trocar de seção ou fechar a Biblioteca. 5 erros seguidos bloqueiam por 30 s (o tempo dobra a cada novo erro).</li></ul>
+    <p class="nota">Senhas cifradas pelo Windows (DPAPI) e, com a conta aberta, também pela chave da conta. Nunca aparecem na tela,
     em logs ou evidências.</p>`],
   historico: ["Sessões gravadas", `<p>Toda conexão é <b>gravada automaticamente</b> (selo <b style="color:#ff6b6b">REC</b> na aba).</p>
     <ul><li><b>▶ Assistir a última sessão</b>: reproduz a mais recente.</li>
@@ -2272,7 +2353,7 @@ window.addEventListener("pywebviewready", async () => {
   api = comAba(window.pywebview.api);   // chamadas do atendimento/destino levam o sid da aba ativa
   const ini = await api.inicial();
   NOME = ini.cfg.nome || ""; MODO_TESTE = ini.teste || "";
-  cofre = ini.cofre || [];
+  cofre = [];   // a lista do cofre só vem com o PIN do cofre (cofre_pin_abrir)
   await carregarPortas(ini.portas);
   $("#baud").value = String(ini.cfg.baud || 9600);
   $("#ssh-destino").value = ini.cfg.ssh || "";
@@ -2385,12 +2466,15 @@ window.addEventListener("pywebviewready", async () => {
   document.querySelectorAll("[data-fecha]").forEach((b) => (b.onclick = () => fecharModal(b)));
   document.querySelectorAll(".modal").forEach((m) => m.addEventListener("mousedown", (e) => { if (e.target === m) m.classList.add("oculto"); }));
   $("#cf-limpar").onclick = limparFormCofre;
+  $("#cf-nova").onclick = () => formCofre(null);
+  $("#cf-trancar").onclick = async () => { await cofreTrancar(); toast("🔒 Cofre trancado"); desenharBib(); };
+  $("#cf-trocar-pin").onclick = async () => { BIB.pinEst = await api.cofre_pin_estado(COFRE.token); BIB.pinModo = "trocar"; limparFormCofre(); desenharBib(); };
   $("#cofre-form").onsubmit = async (e) => {
     e.preventDefault();
-    const r = await api.cofre_salvar({ id: $("#cf-id").value || null, nome: $("#cf-nome").value, usuario: $("#cf-usuario").value,
-                                       senha: $("#cf-senha").value, alvo: $("#cf-alvo").value });
-    if (!r.ok) return toast(r.erro, "erro");
-    cofre = r.itens; desenharCofre(); limparFormCofre(); toast("Credencial salva no cofre");
+    const r = await cofreChamar("cofre_salvar", { id: $("#cf-id").value || null, nome: $("#cf-nome").value, usuario: $("#cf-usuario").value,
+                                                  senha: $("#cf-senha").value, alvo: $("#cf-alvo").value });
+    if (!r.ok) { toast(r.erro, "erro"); if (r.trancado) desenharBib(); return; }
+    limparFormCofre(); desenharBib(); toast("Credencial salva no cofre");
     const a = A(); if (a && a.sugestao) mostrarSugestao(a, a.sugestao);
   };
   $("#wa-abrir").onclick = async () => {
@@ -2560,7 +2644,7 @@ async function testeLayout() {
       destino: i % 3 === 1 ? `https://10.0.${i}.20` : i % 3 === 2 ? `COM${i % 9 + 1}:9600` : `admin@10.0.${i}.1`, grupo: `Site ${i % 5}` });
   await abrirEquip(); await espera(1200);
   api.teste_fim("EQUIP"); await espera(2000);
-  $("#modal-equip").classList.add("oculto"); abrirModal("#modal-hist"); await espera(1200);
+  $("#modal-bib").classList.add("oculto"); abrirModal("#modal-hist"); await espera(1200);
   api.teste_fim("HIST"); await espera(1500); api.teste_fim("TEMAS");
 }
 
@@ -2742,8 +2826,12 @@ async function autoteste() {
   api.escrever(b.id, "ver\r"); await espera(2000);
   await evidencia(false); await espera(1000);
   // cofre: credencial de teste -> prompt Username -> clica na sugestão -> Password é completado sozinho
-  await api.cofre_salvar({ nome: "TESTE", usuario: "usuario_teste", senha: "senha_teste_123", alvo: "" });
-  cofre = await api.cofre_listar();
+  {   // autoteste (dados de teste): abre o cofre com o PIN de teste (cria no 1º uso)
+    let p = await api.cofre_pin_abrir("Teste-Pin-cofre-9");
+    if (!p.ok) p = await api.cofre_pin_definir("Teste-Pin-cofre-9");
+    if (p.ok) cofreAberto(p);
+  }
+  await cofreChamar("cofre_salvar", { nome: "TESTE", usuario: "usuario_teste", senha: "senha_teste_123", alvo: "" });
   api.escrever(b.id, "set /p U=Username: \r"); await espera(2000);
   const sug = !$("#sugestao").classList.contains("oculto");
   const bt = $("#sug-itens button"); if (bt) bt.click(); await espera(1500);
@@ -2751,7 +2839,7 @@ async function autoteste() {
   const sumiu = $("#sugestao").classList.contains("oculto");
   api.escrever(b.id, "echo RESULTADO=[%U%][%P%]\r"); await espera(1500);
   const t = snapshot(b.term).texto, ms = [...t.matchAll(/^RESULTADO=\[([^\]]*)\]\[([^\]]*)\]/gm)], m = ms.pop();
-  for (const c of cofre) if (c.nome === "TESTE") await api.cofre_remover(c.id);
+  for (const c of [...cofre]) if (c.nome === "TESTE") await cofreChamar("cofre_remover", c.id);
   api.teste_fim(JSON.stringify({ abas: abas.size, sugestao: sug, sugestao_sumiu: sumiu,
     usuario_ok: !!m && m[1] === "usuario_teste", senha_ok: !!m && m[2] === "senha_teste_123" }));
 }
@@ -2820,106 +2908,307 @@ function desenharSelecaoSkill() {
   $("#rot-executar").classList.toggle("perigo", !!cfgS);
 }
 
-// ================= 🗂 BIBLIOTECA: sessões, gravações, evidências, logs, relatórios e Skills num só lugar =================
-const BIB = { sec: "sessoes", hist: [], evs: [], rels: [], skills: [], log: null, filtroEv: null };
+// ================= 🗂 BIBLIOTECA: o lugar único — sessões, gravações, evidências, logs, relatórios, equipamentos, cofre e Skills =================
+// TODAS as seções seguem o MESMO padrão: busca · filtros por tipo / cliente (quando fizer sentido) · "Ordenar por" (padrão: mais
+// recente primeiro; a escolha fica lembrada por seção) · cartões iguais com as ações embaixo. Os botões da tela principal
+// (Equipamentos, Cofre, Gravações, 🖼 Todas, Biblioteca) abrem direto a seção certa.
+const BIB = { sec: "sessoes", hist: [], evs: [], rels: [], skills: [], log: null, filtroEv: null, ft: "", fc: "", tag: "", sel: null,
+              limite: 150, pinModo: null, pinEst: null };
+const _dt = (iso) => { const [d, t] = String(iso || "").replace("T", " ").split(" "); const [y, m, dd] = (d || "").split("-"); return dd ? `${dd}/${m}/${y} ${String(t || "").slice(0, 5)}` : "—"; };
+const _hist = (r) => ({ data: r.inicio, nome: r.nome, tipo: NOMES_TIPO[r.tipo] || r.tipo, cliente: r.cliente || "",
+                        busca: `${r.nome} ${r.tipo} ${r.inicio} ${r.alvo || ""} ${r.cliente || ""}` });
+const BIB_SEC = {
+  sessoes: { lista: () => BIB.hist, campos: _hist, unid: "sessão(ões)", vazio: "Nenhuma sessão registrada ainda.", cartao: (r) => cartaoSessao(r) },
+  gravacoes: { lista: () => BIB.hist.filter((r) => r.grav_existe), campos: _hist, unid: "gravação(ões)",
+               vazio: "Nenhuma gravação ainda (ligue ⏺ gravar no cartão Evidência).", cartao: (r) => cartaoSessao(r) },
+  evidencias: { lista: () => (BIB.filtroEv ? BIB.evs.filter((e) => BIB.filtroEv.includes(Number(e.num))) : BIB.evs),
+                campos: (e) => ({ data: e.data_hora, nome: e.comando || e.host || e.arquivo, tipo: e.modelo || "", cliente: e.host || "",
+                                  busca: `${e.num} ${e.id} ${e.comando} ${e.host} ${e.serial || ""} ${e.modelo || ""}` }),
+                rot: { tipo: "Equipamento", cliente: "Host" }, unid: "evidência(s)", vazio: "Nenhuma evidência neste atendimento ainda.",
+                cartao: (e) => cartaoEvidencia(e), grade: true },
+  logs: { lista: () => BIB.hist.filter((r) => r.log_existe), campos: _hist, unid: "log(s) — clique para ler aqui, com busca",
+          vazio: "Nenhum log ainda.", cartao: (r) => cartaoLog(r) },
+  relatorios: { lista: () => BIB.rels, campos: (r) => ({ data: r.data, nome: r.arquivo, tipo: r.assinado ? "Assinado" : "Sem assinatura",
+                                                         cliente: r.visita || "", busca: `${r.arquivo} ${r.visita}` }),
+                rot: { tipo: "Assinatura", cliente: "Visita" }, unid: "relatório(s) do cliente",
+                vazio: "Nenhum relatório gerado ainda (botão 📄 Relatório no cartão Evidência).", cartao: (r) => cartaoRelatorio(r) },
+  equipamentos: { lista: () => EQ, campos: (e) => ({ data: e.ultima, nome: e.nome, tipo: TIPO_NOME[e.tipo] || e.tipo, cliente: e.grupo || "",
+                                                     busca: `${e.nome} ${e.destino} ${e.grupo} ${e.obs}` }),
+                  rot: { cliente: "Grupo / cliente" }, novosNoFim: true, unid: "equipamento(s)", id: "eq-linhas",
+                  vazio: "Nenhum equipamento salvo ainda — conecte e use “＋ Salvar a aba atual”, ou ⬇ Importar / 📥 Importar de…",
+                  cartao: (e) => cartaoEquip(e) },
+  cofre: { lista: () => cofre, campos: (c) => ({ data: c.atualizado || c.criado || "", nome: c.nome, tipo: "", cliente: c.alvo || "",
+                                                 busca: `${c.nome} ${c.usuario} ${c.alvo} ${c.obs || ""}` }),
+           rot: { cliente: "Vale para" }, novosNoFim: true, unid: "credencial(is)", vazio: "Nenhuma credencial ainda — ＋ Nova credencial.",
+           cartao: (c) => cartaoCofre(c) },
+  skills: { lista: () => BIB.skills, campos: (r) => ({ data: "", nome: r.nome, tipo: ehConfig(r) ? "⚙ Configuração" : "🔎 Coleta",
+                                                       cliente: r.fabricante || "Outros", tags: r.finalidade || [],
+                                                       busca: `${r.nome} ${r.fabricante} ${r.descricao} ${(r.finalidade || []).join(" ")} ${(r.comandos || []).map((c) => c.cmd).join(" ")}` }),
+            rot: { tipo: "Tipo", cliente: "Fabricante", tags: "Finalidade" }, semData: true, padrao: { o: "nome", g: "cliente" },
+            unid: "Skill(s)", vazio: "Nenhuma Skill encontrada.", cartao: (r) => cartaoSkill(r), detalhe: (r) => detalheSkill(r) },
+  importar: { especial: true },
+};
+const BIB_TIT = { sessoes: "🕘 Sessões", gravacoes: "⏺ Gravações", evidencias: "🖼 Evidências", logs: "📜 Logs", relatorios: "📄 Relatórios",
+                  equipamentos: "📚 Equipamentos", cofre: "🔑 Cofre de credenciais", skills: "⚡ Skills", importar: "⇅ Importar e exportar" };
+const BIB_DICA = { equipamentos: "Duplo clique ou ▶ conecta (na aba atual, se estiver livre). Senhas não ficam aqui — ficam no 🔑 Cofre.",
+                   cofre: "As senhas nunca aparecem na tela: são digitadas direto na conexão quando o equipamento pede.",
+                   logs: "Clique num log para ler aqui mesmo, com busca e destaque." };
+const BIB_ORD = "dassh.bib.ordem.v2";   // { seção: {o: "data"|"nome", inv, g} } — conveniência deste navegador
+function bibOrdemLer(sec) {
+  const S = BIB_SEC[sec] || {}, p = { o: S.semData ? "nome" : "data", inv: false, g: "", ...(S.padrao || {}) };
+  try { return { ...p, ...((JSON.parse(localStorage.getItem(BIB_ORD) || "{}") || {})[sec] || {}) }; } catch (e) { return p; }
+}
+function bibOrdemGravar(sec, v) {
+  try { const o = JSON.parse(localStorage.getItem(BIB_ORD) || "{}") || {}; o[sec] = v; localStorage.setItem(BIB_ORD, JSON.stringify(o)); } catch (e) { /* sem armazenamento */ }
+}
 async function abrirBiblioteca(sec = "sessoes", filtroEv = null) {
   BIB.filtroEv = filtroEv; BIB.log = null; $("#bib-busca").value = "";
   abrirModal("#modal-bib"); $("#bib-lista").innerHTML = `<p class="vazio">Carregando…</p>`;
-  const [h, e, r, s] = await Promise.all([api.historico(), api.evid_lista(), api.biblioteca_relatorios(), api.roteiros()]);
-  BIB.hist = h || []; BIB.evs = (e && e.itens) || []; BIB.rels = (r && r.itens) || []; BIB.skills = s || [];
+  const arr = (x) => (Array.isArray(x) ? x : []);
+  const [h, e, r, s, q] = await Promise.all([api.historico(), api.evid_lista(), api.biblioteca_relatorios(), api.roteiros(), api.equip_listar()]);
+  BIB.hist = arr(h); BIB.evs = arr(e && e.itens); BIB.rels = arr(r && r.itens); BIB.skills = arr(s); EQ = arr(q);
   $("#bib-sub").textContent = r && r.cliente ? "· " + r.cliente : "";
-  const n = { sessoes: BIB.hist.length, gravacoes: BIB.hist.filter((x) => x.grav_existe).length, evidencias: BIB.evs.length,
-              logs: BIB.hist.filter((x) => x.log_existe).length, relatorios: BIB.rels.length, skills: BIB.skills.length };
-  $("#bib-nav").querySelectorAll("[data-sec]").forEach((b) => (b.querySelector(".bib-n").textContent = n[b.dataset.sec]));
-  irBib(sec);
+  irBib(sec, true);
 }
-function irBib(sec) {
-  BIB.sec = sec; BIB.log = null;
+function bibContagens() {
+  const n = { sessoes: BIB.hist.length, gravacoes: BIB.hist.filter((x) => x.grav_existe).length, evidencias: BIB.evs.length,
+              logs: BIB.hist.filter((x) => x.log_existe).length, relatorios: BIB.rels.length, equipamentos: EQ.length,
+              cofre: COFRE.token ? cofre.length : "🔒", skills: BIB.skills.length, importar: "" };
+  $("#bib-nav").querySelectorAll("[data-sec]").forEach((b) => (b.querySelector(".bib-n").textContent = n[b.dataset.sec]));
+}
+function irBib(sec, abrindo) {
+  if (!abrindo && BIB.sec === "cofre" && sec !== "cofre" && COFRE.token) cofreTrancar();   // saiu da seção Cofre: tranca
+  if (sec !== BIB.sec || abrindo) { BIB.ft = ""; BIB.fc = ""; BIB.tag = ""; BIB.sel = null; }
+  BIB.sec = sec; BIB.log = null; BIB.limite = 150; BIB.pinModo = null;
   $("#bib-nav").querySelectorAll("[data-sec]").forEach((b) => b.classList.toggle("ativa", b.dataset.sec === sec));
+  document.querySelectorAll(".bib-ferr[data-ferr]").forEach((f) => f.classList.toggle("oculto", f.dataset.ferr !== sec));
+  $("#bib-tit").textContent = BIB_TIT[sec] || ""; $("#bib-dica").textContent = BIB_DICA[sec] || "";
+  $("#bib-dica").classList.toggle("oculto", !BIB_DICA[sec]);
+  importarUIModo(null); $("#eq-form").classList.add("oculto"); limparFormCofre();
+  bibContagens();
+  if (sec === "importar") { $("#bib-info").textContent = ""; return importarUIAbrir(); }
+  if (sec === "cofre") return bibCofreEntrar();
   desenharBib();
 }
-const _dt = (iso) => { const [d, t] = String(iso || "").replace("T", " ").split(" "); const [y, m, dd] = (d || "").split("-"); return dd ? `${dd}/${m}/${y} ${String(t || "").slice(0, 5)}` : "—"; };
-function desenharBib() {
-  const q = $("#bib-busca").value.trim().toLowerCase(), L = $("#bib-lista"), info = $("#bib-info"), tem = (t) => !q || String(t).toLowerCase().includes(q);
-  L.className = "bib-lista"; L.innerHTML = "";
-  const vazio = (t) => { L.innerHTML = `<p class="vazio">${t}</p>`; };
-  if (BIB.sec === "sessoes" || BIB.sec === "gravacoes") {
-    const lista = BIB.hist.filter((r) => (BIB.sec === "sessoes" || r.grav_existe) && tem(`${r.nome} ${r.tipo} ${r.inicio} ${r.alvo || ""}`));
-    info.textContent = `${lista.length} ${BIB.sec === "sessoes" ? "sessão(ões)" : "gravação(ões)"}`;
-    if (!lista.length) return vazio(BIB.sec === "sessoes" ? "Nenhuma sessão registrada ainda." : "Nenhuma gravação ainda (ligue ⏺ gravar no cartão Evidência).");
-    lista.forEach((r) => {
-      const c = document.createElement("div"); c.className = "bib-item";
-      const evs = (r.evidencias || []).map((n) => `<button class="bib-chip" data-ev="${n}" title="Ver a evidência Nº ${pad2(n)}">Nº ${pad2(n)}</button>`).join("");
-      c.innerHTML = `<div class="bib-l1"><span class="tipo">${NOMES_TIPO[r.tipo] || esc(r.tipo)}</span> <b>${esc(r.nome)}</b>
-          <span class="bib-meta">${_dt(r.inicio)} · ${duracao(r.inicio, r.fim)}${r.ativa ? " · <b style='color:var(--verde)'>aberta agora</b>" : ""}</span></div>
-        <div class="bib-l2">${evs || `<span class="bib-meta">sem evidências</span>`}</div>
-        <div class="bib-acoes"><button class="btn mini" data-grav ${r.grav_existe ? "" : "disabled"}>▶ Assistir</button>
-          <button class="btn mini" data-log ${r.log_existe ? "" : "disabled"}>📜 Ler o log</button>
-          <button class="btn mini" data-rc>↻ Reconectar</button></div>`;
-      c.querySelector("[data-grav]").onclick = () => tocarGravacao(r.gravacao, `${r.nome} — ${_dt(r.inicio)}`);
-      c.querySelector("[data-log]").onclick = () => verLogBib(r);
-      c.querySelector("[data-rc]").onclick = () => { $("#modal-bib").classList.add("oculto"); reconectar(r); };
-      c.querySelectorAll("[data-ev]").forEach((b) => (b.onclick = () => { BIB.filtroEv = (r.evidencias || []).map(Number); irBib("evidencias"); }));
-      L.appendChild(c);
-    });
-  } else if (BIB.sec === "evidencias") {
-    let lista = BIB.evs.filter((e) => tem(`${e.num} ${e.id} ${e.comando} ${e.host} ${e.serial || ""}`));
-    if (BIB.filtroEv) lista = lista.filter((e) => BIB.filtroEv.includes(Number(e.num)));
-    info.innerHTML = `${lista.length} evidência(s)` + (BIB.filtroEv ? ` da sessão · <a href="#" id="bib-tudo">ver todas</a>` : "");
-    const t = $("#bib-tudo"); if (t) t.onclick = (ev) => { ev.preventDefault(); BIB.filtroEv = null; desenharBib(); };
-    if (!lista.length) return vazio("Nenhuma evidência neste atendimento ainda.");
-    L.className = "bib-lista bib-grade";
-    lista.forEach((e) => {
-      const c = document.createElement("button"); c.className = "bib-ev";
-      c.innerHTML = `<div class="bib-mini"><img alt=""></div><b>Nº ${pad2(e.num || 0)}</b><span>${esc(e.comando || e.host || e.arquivo)}</span><small>${_dt(e.data_hora)}</small>`;
-      api.miniatura(e.caminho).then((m) => { if (m) c.querySelector("img").src = m; });
-      c.onclick = () => verEvidencia({ ...e, cmd: e.comando, mini: "" }, null);
-      L.appendChild(c);
-    });
-  } else if (BIB.sec === "logs") {
-    if (BIB.log) return desenharLogBib(q);
-    const lista = BIB.hist.filter((r) => r.log_existe && tem(`${r.nome} ${r.tipo} ${r.inicio}`));
-    info.textContent = `${lista.length} log(s) — clique para ler aqui, com busca`;
-    if (!lista.length) return vazio("Nenhum log ainda.");
-    lista.forEach((r) => {
-      const c = document.createElement("button"); c.className = "bib-item bib-clic";
-      c.innerHTML = `<div class="bib-l1"><span class="tipo">${NOMES_TIPO[r.tipo] || esc(r.tipo)}</span> <b>${esc(r.nome)}</b> <span class="bib-meta">${_dt(r.inicio)} · ${duracao(r.inicio, r.fim)}</span></div>`;
-      c.onclick = () => verLogBib(r); L.appendChild(c);
-    });
-  } else if (BIB.sec === "relatorios") {
-    const lista = BIB.rels.filter((r) => tem(`${r.arquivo} ${r.visita}`));
-    info.textContent = `${lista.length} relatório(s) do cliente`;
-    if (!lista.length) return vazio("Nenhum relatório gerado ainda (botão 📄 Relatório no cartão Evidência).");
-    lista.forEach((r) => {
-      const c = document.createElement("div"); c.className = "bib-item";
-      c.innerHTML = `<div class="bib-l1"><b>📄 ${esc(r.arquivo)}</b>${r.assinado ? ` <span class="bib-chip ok">✍ assinado</span>` : ""}
-          <span class="bib-meta">${esc(r.visita)} · ${_dt(r.data)} · ${Math.max(1, Math.round(r.tamanho / 1024))} KB</span></div>
-        <div class="bib-acoes"><button class="btn mini" data-ver>Abrir aqui</button><button class="btn mini" data-ext>Abrir no leitor de PDF</button></div>`;
-      c.querySelector("[data-ver]").onclick = () => { $("#modal-bib").classList.add("oculto"); abrirPdf(r.caminho); };
-      c.querySelector("[data-ext]").onclick = () => api.abrir_arquivo(r.caminho);
-      L.appendChild(c);
-    });
-  } else if (BIB.sec === "skills") {
-    const lista = BIB.skills.filter((r) => tem(`${r.nome} ${r.fabricante} ${r.descricao} ${(r.finalidade || []).join(" ")} ${(r.comandos || []).map((c) => c.cmd).join(" ")}`));
-    info.textContent = `${lista.length} Skill(s)`;
-    const grupos = {}; lista.forEach((r) => (grupos[r.fabricante || "Outros"] = grupos[r.fabricante || "Outros"] || []).push(r));
-    Object.keys(grupos).sort().forEach((fab) => {
-      const h = document.createElement("div"); h.className = "bib-grupo"; h.textContent = fab; L.appendChild(h);
-      grupos[fab].forEach((r) => {
-        const c = document.createElement("div"); c.className = "bib-item";
-        c.innerHTML = `<div class="bib-l1"><b>${r.tipo_skill === "configuracao" ? "⚙" : "⚡"} ${esc(r.nome)}</b> <span class="bib-meta">${(r.comandos || []).length} comando(s)${r.somente_leitura ? " · somente leitura" : ""}${r.tipo_skill === "configuracao" ? " · ALTERA a configuração" : ""}${(r.finalidade || []).length ? " · " + esc(r.finalidade.join(", ")) : ""}</span></div>
-          <div class="bib-l2 bib-meta">${esc(r.descricao || "")}</div>
-          <div class="bib-acoes"><button class="btn mini" data-usar>Abrir para executar</button></div>`;
-        c.querySelector("[data-usar]").onclick = async () => {
-          $("#modal-bib").classList.add("oculto"); await abrirRoteiros();
-          const li = [...$("#rot-lista").querySelectorAll("li")].find((x) => x.textContent.includes(r.nome)); if (li) li.click();
-        };
-        L.appendChild(c);
-      });
-    });
-    if (!lista.length) vazio("Nenhuma Skill encontrada.");
-  }
+async function bibCofreEntrar() {
+  if (COFRE.token) { const r = await cofreChamar("cofre_listar"); if (r && r.ok) { bibContagens(); return desenharBib(); } }
+  $("#bib-lista").innerHTML = `<p class="vazio">Conferindo o cofre…</p>`;
+  BIB.pinEst = await api.cofre_pin_estado(null); BIB.pinModo = null; desenharBib();
 }
+function bibFiltro(sel, todos, campo, rotulo, atual) {
+  const vals = [...new Set(todos.map((x) => x.f[campo]).filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b), "pt-BR"));
+  sel.classList.toggle("oculto", vals.length < 2);
+  sel.innerHTML = `<option value="">${esc(rotulo)}: todos</option>` + vals.map((v) => `<option value="${esc(v)}">${esc(v)}</option>`).join("");
+  sel.value = vals.includes(atual) ? atual : "";
+  return sel.value;
+}
+const _pt = (a, b) => String(a || "").localeCompare(String(b || ""), "pt-BR", { sensitivity: "base", numeric: true });
+function bibComparador(ord, S) {   // ord = { o: "data"|"nome", inv, g: ""|"cliente"|"tipo" }
+  const dir = ord.inv ? -1 : 1;
+  const seq = (a, b) => (S.novosNoFim ? b.i - a.i : a.i - b.i);   // sem data: a ordem natural da lista (mais novo primeiro)
+  const base = ord.o === "nome" ? (a, b) => dir * _pt(a.f.nome, b.f.nome) || seq(a, b) : (a, b) => {
+    const da = String(a.f.data || ""), db = String(b.f.data || "");
+    if (da === db) return dir * seq(a, b) || _pt(a.f.nome, b.f.nome);
+    if (!da) return 1; if (!db) return -1;   // sem data vai para o fim, nos dois sentidos
+    return dir * db.localeCompare(da);
+  };
+  if (!ord.g) return base;
+  const k = ord.g;
+  return (a, b) => { const va = a.f[k] || "", vb = b.f[k] || ""; if (va !== vb) { if (!va) return 1; if (!vb) return -1; return _pt(va, vb); } return base(a, b); };
+}
+function bibChips(todos, rot) {   // filtros em chips: tipo (um por vez) e marcadores (ex.: finalidade das Skills)
+  const uniq = (l) => [...new Set(l.filter(Boolean))].sort(_pt);
+  const tipos = uniq(todos.map((x) => x.f.tipo)), tags = uniq(todos.flatMap((x) => x.f.tags || []));
+  const mostraT = tipos.length >= 2 && tipos.length <= 12, mostraG = tags.length >= 2;
+  if (!mostraT || !tipos.includes(BIB.ft)) BIB.ft = "";
+  if (!mostraG || !tags.includes(BIB.tag)) BIB.tag = "";
+  const box = $("#bib-chips"), chip = (k, v, t, on) => `<button type="button" class="bib-fchip${on ? " ativo" : ""}" data-k="${k}" data-v="${esc(v)}">${esc(t)}</button>`;
+  box.classList.toggle("oculto", !mostraT && !mostraG);
+  box.innerHTML = (mostraT ? `<div class="bib-fgrupo"><em>${esc(rot.tipo || "Tipo")}</em>${chip("ft", "", "Todos", !BIB.ft)}${tipos.map((v) => chip("ft", v, v, BIB.ft === v)).join("")}</div>` : "") +
+    (mostraG ? `<div class="bib-fgrupo"><em>${esc(rot.tags || "Marcadores")}</em>${chip("tag", "", "Todas", !BIB.tag)}${tags.map((v) => chip("tag", v, v, BIB.tag === v)).join("")}</div>` : "");
+  box.querySelectorAll("[data-k]").forEach((b) => (b.onclick = () => { BIB[b.dataset.k] = b.dataset.v; BIB.limite = 150; BIB.sel = null; desenharBib(); }));
+}
+function bibBarraOrdem(ord, S, rot, tem) {
+  const bd = $("#bib-o-data"), bn = $("#bib-o-nome");
+  bd.classList.toggle("oculto", !!S.semData);
+  bd.classList.toggle("ativo", ord.o === "data"); bn.classList.toggle("ativo", ord.o === "nome");
+  bd.setAttribute("aria-pressed", ord.o === "data"); bn.setAttribute("aria-pressed", ord.o === "nome");
+  bd.textContent = ord.o === "data" && ord.inv ? "🕘 Mais antigos primeiro" : "🕘 Alterados por último";
+  bn.textContent = ord.o === "nome" && ord.inv ? "Z→A Ordem alfabética" : "A→Z Ordem alfabética";
+  bd.title = bn.title = "Clique de novo para inverter a ordem";
+  const g = $("#bib-grupo"), ops = [["", "Sem agrupar"]];
+  if (tem("cliente")) ops.push(["cliente", `Agrupar por ${(rot.cliente || "cliente").toLowerCase()}`]);
+  if (tem("tipo")) ops.push(["tipo", `Agrupar por ${(rot.tipo || "tipo").toLowerCase()}`]);
+  g.innerHTML = ops.map(([v, t]) => `<option value="${v}">${esc(t)}</option>`).join("");
+  g.classList.toggle("oculto", ops.length < 2);
+  if (!ops.some(([v]) => v === ord.g)) ord.g = "";
+  g.value = ord.g;
+}
+function desenharBib() {
+  const S = BIB_SEC[BIB.sec], L = $("#bib-lista"), info = $("#bib-info"), rot = S.rot || {};
+  if (S.especial) return;
+  const trancado = BIB.sec === "cofre" && (!COFRE.token || BIB.pinModo);
+  $("#modal-bib").classList.toggle("bib-trancado", !!trancado);
+  document.querySelector('.bib-ferr[data-ferr="cofre"]').classList.toggle("oculto", BIB.sec !== "cofre" || !!trancado);
+  if (BIB.sec === "cofre") $("#bib-dica").textContent = COFRE.token ? `${BIB_DICA.cofre} Tranca sozinho após ${COFRE.min} min sem uso, ao trocar de seção ou fechar.` : BIB_DICA.cofre;
+  L.className = "bib-lista"; L.innerHTML = "";
+  if (trancado) return desenharPinBib();
+  const q = $("#bib-busca").value.trim().toLowerCase();
+  if (BIB.sec === "logs" && BIB.log) return desenharLogBib(q);
+  const todos = S.lista().map((raw, i) => ({ raw, i, f: S.campos(raw) }));
+  const tem = (k) => todos.some((x) => x.f[k]);
+  bibChips(todos, rot);
+  BIB.fc = bibFiltro($("#bib-f-cli"), todos, "cliente", rot.cliente || "Cliente", BIB.fc);
+  const ord = bibOrdemLer(BIB.sec); bibBarraOrdem(ord, S, rot, tem);
+  const lista = todos.filter((x) => (!q || String(x.f.busca).toLowerCase().includes(q)) && (!BIB.ft || x.f.tipo === BIB.ft) &&
+                                    (!BIB.fc || x.f.cliente === BIB.fc) && (!BIB.tag || (x.f.tags || []).includes(BIB.tag)));
+  lista.sort(bibComparador(ord, S));
+  info.innerHTML = `<b>${lista.length}</b> ${S.unid}` + (lista.length !== todos.length ? ` de ${todos.length}` : "") +
+    (BIB.sec === "evidencias" && BIB.filtroEv ? ` da sessão · <a href="#" id="bib-tudo">ver todas</a>` : "");
+  const t = $("#bib-tudo"); if (t) t.onclick = (ev) => { ev.preventDefault(); BIB.filtroEv = null; desenharBib(); };
+  let alvo = L, det = null;
+  if (S.detalhe) {   // lista à esquerda, detalhe à direita
+    L.className = "bib-lista bib-split";
+    alvo = document.createElement("div"); alvo.className = "bib-col"; det = document.createElement("aside"); det.className = "bib-det";
+    L.append(alvo, det);
+  }
+  if (S.id) { const w = document.createElement("div"); w.id = S.id; w.className = "bib-sub"; alvo.appendChild(w); alvo = w; }
+  if (!lista.length) {
+    const filtrado = todos.length > 0;
+    alvo.innerHTML = `<div class="bib-vazio"><span>${filtrado ? "🔍" : "📭"}</span><b>${filtrado ? "Nada encontrado com essa busca / filtro" : esc(S.vazio)}</b>
+      ${filtrado ? `<button class="btn mini" data-limpar>Limpar busca e filtros</button>` : ""}</div>`;
+    const lb = alvo.querySelector("[data-limpar]");
+    if (lb) lb.onclick = () => { $("#bib-busca").value = ""; BIB.ft = BIB.fc = BIB.tag = ""; desenharBib(); };
+    if (det) det.remove();
+    return;
+  }
+  if (S.grade) L.className = "bib-lista bib-grade";
+  if (det && !lista.slice(0, BIB.limite).some((x) => x.f.nome === BIB.sel)) BIB.sel = lista[0].f.nome;
+  let grupo = null;
+  lista.slice(0, BIB.limite).forEach((x) => {
+    if (ord.g) {
+      const g = x.f[ord.g] || (ord.g === "cliente" ? `Sem ${(rot.cliente || "cliente").toLowerCase()}` : "Outros");
+      if (g !== grupo) { const h = document.createElement("div"); h.className = "bib-grupo"; h.textContent = g; alvo.appendChild(h); grupo = g; }
+    }
+    const c = S.cartao(x.raw);
+    if (det) {
+      c.classList.add("bib-clic"); if (BIB.sel === x.f.nome) c.classList.add("sel");
+      c.addEventListener("click", (ev) => { if (ev.target.closest("button")) return; BIB.sel = x.f.nome; L.querySelectorAll(".bib-item.sel").forEach((y) => y.classList.remove("sel")); c.classList.add("sel"); det.innerHTML = ""; det.appendChild(S.detalhe(x.raw)); });
+    }
+    alvo.appendChild(c);
+  });
+  if (lista.length > BIB.limite) {
+    const b = document.createElement("button"); b.className = "btn bib-mais"; b.textContent = `Mostrar mais ${Math.min(150, lista.length - BIB.limite)} de ${lista.length - BIB.limite}`;
+    b.onclick = () => { BIB.limite += 150; desenharBib(); }; alvo.appendChild(b);
+  }
+  if (det) det.appendChild(S.detalhe(lista.find((x) => x.f.nome === BIB.sel).raw));
+}
+// ---- cartões (mesmo estilo; ações sempre embaixo, a principal primeiro) ----
+function cartaoSessao(r) {
+  const c = document.createElement("div"); c.className = "bib-item";
+  const evs = (r.evidencias || []).map((n) => `<button class="bib-chip" data-ev="${n}" title="Ver a evidência Nº ${pad2(n)}">Nº ${pad2(n)}</button>`).join("");
+  c.innerHTML = `<div class="bib-l1"><span class="tipo">${NOMES_TIPO[r.tipo] || esc(r.tipo)}</span> <b>${esc(r.nome)}</b>
+      <span class="bib-meta">${_dt(r.inicio)} · ${duracao(r.inicio, r.fim)}${r.cliente ? " · " + esc(r.cliente) : ""}${r.ativa ? " · <b style='color:var(--verde)'>aberta agora</b>" : ""}</span></div>
+    <div class="bib-l2">${evs || `<span class="bib-meta">sem evidências</span>`}</div>
+    <div class="bib-acoes"><button class="btn mini" data-grav ${r.grav_existe ? "" : "disabled"}>▶ Assistir</button>
+      <button class="btn mini" data-log ${r.log_existe ? "" : "disabled"}>📜 Ler o log</button>
+      <button class="btn mini" data-rc>↻ Reconectar</button></div>`;
+  c.querySelector("[data-grav]").onclick = () => tocarGravacao(r.gravacao, `${r.nome} — ${_dt(r.inicio)}`);
+  c.querySelector("[data-log]").onclick = () => verLogBib(r);
+  c.querySelector("[data-rc]").onclick = () => { $("#modal-bib").classList.add("oculto"); reconectar(r); };
+  c.querySelectorAll("[data-ev]").forEach((b) => (b.onclick = () => { BIB.filtroEv = (r.evidencias || []).map(Number); irBib("evidencias"); }));
+  return c;
+}
+function cartaoEvidencia(e) {
+  const c = document.createElement("button"); c.className = "bib-ev";
+  c.innerHTML = `<div class="bib-mini"><img alt=""></div><b>Nº ${pad2(e.num || 0)}</b><span>${esc(e.comando || e.host || e.arquivo)}</span><small>${_dt(e.data_hora)}${e.host ? " · " + esc(e.host) : ""}</small>`;
+  api.miniatura(e.caminho).then((m) => { if (m) c.querySelector("img").src = m; });
+  c.onclick = () => verEvidencia({ ...e, cmd: e.comando, mini: "" }, null);
+  return c;
+}
+function cartaoLog(r) {
+  const c = document.createElement("div"); c.className = "bib-item bib-clic";
+  c.innerHTML = `<div class="bib-l1"><span class="tipo">${NOMES_TIPO[r.tipo] || esc(r.tipo)}</span> <b>${esc(r.nome)}</b>
+      <span class="bib-meta">${_dt(r.inicio)} · ${duracao(r.inicio, r.fim)}${r.cliente ? " · " + esc(r.cliente) : ""}</span></div>
+    <div class="bib-acoes"><button class="btn mini" data-ler>📜 Ler aqui</button></div>`;
+  c.onclick = () => verLogBib(r);
+  return c;
+}
+function cartaoRelatorio(r) {
+  const c = document.createElement("div"); c.className = "bib-item";
+  c.innerHTML = `<div class="bib-l1"><b>📄 ${esc(r.arquivo)}</b>${r.assinado ? ` <span class="bib-chip ok">✍ assinado</span>` : ""}
+      <span class="bib-meta">${esc(r.visita)} · ${_dt(r.data)} · ${Math.max(1, Math.round(r.tamanho / 1024))} KB</span></div>
+    <div class="bib-acoes"><button class="btn mini" data-ver>Abrir aqui</button><button class="btn mini" data-ext>Abrir no leitor de PDF</button></div>`;
+  c.querySelector("[data-ver]").onclick = () => { $("#modal-bib").classList.add("oculto"); abrirPdf(r.caminho); };
+  c.querySelector("[data-ext]").onclick = () => api.abrir_arquivo(r.caminho);
+  return c;
+}
+const _selo = (r) => ehConfig(r) ? `<span class="bib-selo cfg">⚙ configuração</span>` : `<span class="bib-selo col">🔎 coleta</span>`;
+function cartaoSkill(r) {
+  const c = document.createElement("div"); c.className = "bib-item bib-skill";
+  c.innerHTML = `<div class="bib-l1 bib-l1-sp"><b>${esc(r.nome)}</b>${_selo(r)}</div>
+    <div class="bib-meta">${esc(r.fabricante || "Outros")} · ${(r.comandos || []).length} comando(s)</div>`;
+  return c;
+}
+function detalheSkill(r) {
+  const d = document.createElement("div"); d.className = "bib-det-in";
+  const cmds = (r.comandos || []).slice(0, 40);
+  d.innerHTML = `<div class="bib-det-cab">${_selo(r)}<h3>${esc(r.nome)}</h3>
+      <div class="bib-meta">${esc(r.fabricante || "Outros")} · ${(r.comandos || []).length} comando(s)${r.somente_leitura ? " · somente leitura" : ""}</div></div>
+    ${ehConfig(r) ? `<div class="bib-det-aviso">⚠ Altera a configuração do equipamento: o app mostra a prévia e pede autorização antes de aplicar.</div>` : ""}
+    ${r.descricao ? `<p class="bib-det-desc">${esc(r.descricao)}</p>` : ""}
+    ${(r.finalidade || []).length ? `<div class="bib-det-sec">Finalidade</div><div class="bib-l2">${r.finalidade.map((f) => `<span class="bib-chip">${esc(f)}</span>`).join("")}</div>` : ""}
+    <div class="bib-det-sec">Comandos</div>
+    <ol class="bib-det-cmds">${cmds.map((x) => `<li><code>${esc(x.cmd || "")}</code></li>`).join("")}${(r.comandos || []).length > cmds.length ? `<li class="bib-meta">… e mais ${(r.comandos || []).length - cmds.length}</li>` : ""}</ol>
+    <div class="bib-acoes"><button class="btn primario" data-usar>▶ Abrir para executar na aba ativa</button></div>`;
+  d.querySelector("[data-usar]").onclick = async () => {
+    $("#modal-bib").classList.add("oculto"); await abrirRoteiros();
+    const li = [...$("#rot-lista").querySelectorAll("li.rot-item")].find((x) => x.querySelector("b").textContent === r.nome); if (li) li.click();
+  };
+  return d;
+}
+function cartaoCofre(c) {
+  const d = document.createElement("div"); d.className = "bib-item";
+  d.innerHTML = `<div class="bib-l1"><span class="tipo">🔑</span> <b>${esc(c.nome)}</b>
+      <span class="bib-meta">usuário: ${esc(c.usuario) || "—"} · vale para: ${esc(c.alvo) || "qualquer"}${c.atualizado ? " · alterada " + _dt(c.atualizado) : ""}</span></div>
+    <div class="bib-l2 bib-meta">senha: •••••••• (nunca aparece na tela; é digitada direto na conexão)</div>
+    <div class="bib-acoes"><button class="btn mini" data-e>✎ Editar</button><button class="btn mini" data-r>🗑 Excluir</button></div>`;
+  d.querySelector("[data-e]").onclick = () => formCofre(c);
+  d.querySelector("[data-r]").onclick = async (ev) => {
+    const b = ev.currentTarget; if (b.dataset.conf !== "1") { b.dataset.conf = "1"; b.textContent = "Confirmar?"; return; }
+    const r = await cofreChamar("cofre_remover", c.id);
+    if (!r.ok) toast(r.erro, "erro"); else toast(`Removida do cofre: ${c.nome}`);
+    bibContagens(); desenharBib();
+  };
+  return d;
+}
+// ---- seção 🔑 Cofre trancada: pede o PIN aqui mesmo (ou cria no 1º acesso) ----
+function desenharPinBib() {
+  const L = $("#bib-lista"), est = BIB.pinEst || {}, modo = BIB.pinModo || (est.definido ? "abrir" : "definir");
+  $("#bib-info").textContent = modo === "trocar" ? "" : "🔒 trancado";
+  const voltar = modo === "trocar" || modo === "esqueci";
+  L.innerHTML = `<form class="bib-pin" autocomplete="off"><b class="bib-pin-tit">${PIN_TXT[modo][0]}</b>
+      <div class="form sem-borda">${pinCamposHtml(est, modo, modo === "abrir" ? "As credenciais (até os nomes) só aparecem depois do PIN do cofre." : "")}</div>
+      <div class="linha-btn">${voltar ? `<button type="button" class="btn" data-voltar>Voltar</button>` : ""}<button type="submit" class="btn primario">${PIN_TXT[modo][1]}</button></div></form>`;
+  const f = L.querySelector("form");
+  pinLigar(f, est, modo, (n) => { BIB.pinModo = n; desenharBib(); });
+  const v = f.querySelector("[data-voltar]");
+  if (v) v.onclick = () => { BIB.pinModo = null; desenharBib(); };
+  f.onsubmit = async (ev) => {
+    ev.preventDefault();
+    if (await pinEnviar(f, modo)) { BIB.pinModo = null; bibContagens(); desenharBib(); }
+    else BIB.pinEst = await api.cofre_pin_estado(null);
+  };
+}
+new MutationObserver(() => {   // fechou a Biblioteca (✕, clique fora, conectar…): o cofre tranca
+  if ($("#modal-bib").classList.contains("oculto") && BIB.sec === "cofre" && COFRE.token) { cofreTrancar(); limparFormCofre(); }
+}).observe($("#modal-bib"), { attributes: true, attributeFilter: ["class"] });
+$("#bib-f-cli").addEventListener("change", (e) => { BIB.fc = e.target.value; BIB.limite = 150; BIB.sel = null; desenharBib(); });
+document.querySelectorAll(".bib-ord [data-o]").forEach((b) => b.addEventListener("click", () => {
+  const o = bibOrdemLer(BIB.sec), novo = b.dataset.o;
+  bibOrdemGravar(BIB.sec, { ...o, o: novo, inv: o.o === novo ? !o.inv : false }); desenharBib();
+}));
+$("#bib-grupo").addEventListener("change", (e) => { bibOrdemGravar(BIB.sec, { ...bibOrdemLer(BIB.sec), g: e.target.value }); desenharBib(); });
 async function verLogBib(r) {
   if (BIB.sec !== "logs") { BIB.sec = "logs"; $("#bib-nav").querySelectorAll("[data-sec]").forEach((b) => b.classList.toggle("ativa", b.dataset.sec === "logs")); }
   $("#bib-lista").innerHTML = `<p class="vazio">Abrindo o log…</p>`;
@@ -3056,24 +3345,32 @@ async function canaisSalvar() {
 const importarUI = { itens: [], ferr: null, ocupado: false };
 const importarUISit = { novo: "Novo", existe: "Já existe (atualiza)", repetido: "Repetido" };
 function importarUIModo(fase) {
-  $("#modal-equip").classList.toggle("importarUI-ativo", !!fase);
+  $("#modal-bib").classList.toggle("importarUI-ativo", !!fase);
   $("#importarUI").classList.toggle("oculto", !fase);
-  $("#importarUI-ferr").classList.toggle("oculto", fase !== "ferr");
+  $("#importarUI-fase-ferr").classList.toggle("oculto", fase !== "ferr");
   $("#importarUI-previa").classList.toggle("oculto", fase !== "previa");
   $("#importarUI-voltar").classList.toggle("oculto", fase !== "previa");
 }
 async function importarUIAbrir() {
   if (!api) return toast("Disponível no aplicativo", "aviso");
   $("#eq-form").classList.add("oculto");
-  $("#importarUI-titulo").textContent = "📥 Importar de outra ferramenta";
+  if (BIB.sec !== "importar") return irBib("importar");   // a área própria da Biblioteca
+  $("#importarUI-titulo").textContent = "Importar e exportar equipamentos";
+  $("#importarUI-cont").textContent = "";
   $("#importarUI-ferr").innerHTML = `<p class="importarUI-msg">Procurando as ferramentas neste computador…</p>`;
   importarUIModo("ferr");
   const r = await api.equip_importadores();
   if (!r || !r.ok) { $("#importarUI-ferr").innerHTML = `<p class="importarUI-msg">${esc((r && r.erro) || "Falha ao procurar")}</p>`; return; }
-  const l = [...r.ferramentas].sort((a, b) => (b.encontrado - a.encontrado));
+  const l = [...r.ferramentas].sort((a, b) => (b.encontrado - a.encontrado) || _pt(a.nome, b.nome));
+  const achadas = l.filter((f) => f.encontrado).length;
+  $("#importarUI-cont").innerHTML = `<b>${l.length}</b> ferramentas · <b>${achadas}</b> encontrada(s) neste computador · <b>${EQ.length}</b> equipamento(s) salvos`;
+  const cor = (s) => { let h = 0; for (const ch of s) h = (h * 31 + ch.charCodeAt(0)) % 360; return `hsl(${h} 55% 42%)`; };
+  const sigla = (n) => n.replace(/[^A-Za-z0-9 ]/g, "").split(/\s+/).filter(Boolean).map((p) => p[0]).join("").slice(0, 2).toUpperCase() || n.slice(0, 2).toUpperCase();
   $("#importarUI-ferr").innerHTML = l.map((f) => `<div class="importarUI-card${f.encontrado ? " achou" : ""}" data-f="${esc(f.id)}">
-      <div><b>${esc(f.nome)}</b> ${f.encontrado ? `<span class="importarUI-tag">encontrado</span>` : `<span class="importarUI-tag nao">não encontrado</span>`}
-      <br><small title="${esc(f.fontes.map((x) => x.caminho).join("\n"))}">${esc(f.encontrado ? f.fontes.map((x) => x.caminho).join(" · ") : f.dica)}</small></div>
+      <span class="importarUI-ic" style="--c:${cor(f.id)}">${esc(f.nome.length <= 6 ? f.nome.slice(0, 2) : sigla(f.nome))}</span>
+      <div class="importarUI-txt"><b>${esc(f.nome)}</b>
+        <span class="importarUI-tag${f.encontrado ? "" : " nao"}">${f.encontrado ? `● encontrado neste computador${f.fontes.length > 1 ? ` · ${f.fontes.length} fontes` : ""}` : "não encontrado — escolha o arquivo"}</span>
+        <small title="${esc(f.fontes.map((x) => x.caminho).join("\n"))}">${esc(f.encontrado ? f.fontes.map((x) => x.caminho).join(" · ") : f.dica)}</small></div>
       <span class="importarUI-botoes">${f.encontrado ? `<button class="btn mini primario" data-auto>Ler daqui</button>` : ""}
       <button class="btn mini" data-arq>Escolher arquivo…</button></span></div>`).join("");
   $("#importarUI-ferr").querySelectorAll("[data-f]").forEach((c) => {
@@ -3122,12 +3419,12 @@ async function importarUIConfirmar() {
   if (!r || !r.ok) return toast((r && r.erro) || "Falha ao importar", "erro");
   toast(`Importado de ${importarUI.ferr ? importarUI.ferr.nome : "outra ferramenta"}: ${r.novos} novo(s), ${r.atualizados} atualizado(s) — total ${r.total}`);
   importarUIModo(null);
-  EQ = await api.equip_listar(); desenharEquip();
+  EQ = await api.equip_listar(); irBib("equipamentos");   // volta à lista, já com os importados
 }
 (function importarUIIniciar() {
   if (!$("#importarUI")) return;
   $("#importarUI-abrir").onclick = importarUIAbrir;
-  $("#importarUI-fechar").onclick = () => importarUIModo(null);
+  $("#importarUI-fechar").onclick = () => irBib("equipamentos");
   $("#importarUI-voltar").onclick = importarUIAbrir;
   $("#importarUI-ok").onclick = importarUIConfirmar;
   $("#importarUI-todos").onchange = (ev) => { importarUI.itens.forEach((e) => (e._sel = ev.target.checked)); importarUIDesenhar(); };
@@ -3524,8 +3821,9 @@ function contaMsg(t, tipo) { const m = $("#ct-msg"); m.textContent = t || ""; m.
 
 function contaModo(modo) {
   CONTA.modo = modo;
+  document.querySelectorAll("[data-ctm]").forEach((b) => { b.classList.toggle("on", b.dataset.ctm === (modo === "recuperar" ? "entrar" : modo)); b.setAttribute("aria-selected", b.classList.contains("on")); });
   const criar = modo === "criar", rec = modo === "recuperar";
-  $("#ct-sub").textContent = criar ? "Primeiro uso: crie a conta deste computador" : rec ? "Recuperar o acesso com a chave de recuperação" : "Entre na sua conta";
+  $("#ct-sub").textContent = criar ? "Criar a sua conta DASSH" : rec ? "Recuperar o acesso com a chave de recuperação" : "Entre na sua conta";
   $("#ct-l-senha2").classList.toggle("oculto", !(criar || rec));
   $("#ct-l-rec").classList.toggle("oculto", !rec);
   $("#ct-senha").setAttribute("autocomplete", criar || rec ? "new-password" : "current-password");
@@ -3740,3 +4038,172 @@ async function armazAcao(a, s) {
   toast(a === "desc" ? "Armazenamento desconectado: volta a salvar na pasta de antes." : "☁ Conectado: os atendimentos passam a ser salvos na pasta sincronizada.");
   desenharArmaz(r);
 }
+
+// ================= 💬 chat POR ABA compartilhada =================
+// Cada aba ao vivo (dono) ou sessão remota (convidado) tem a sua conversa, com os participantes DAQUELA sessão. O painel fica na
+// faixa livre à direita do texto do terminal (centralizado nela), nunca por cima do texto; recolhido vira uma bolha com contador.
+// Não entra na evidência: a evidência é desenhada do BUFFER do xterm (snapshot), não da tela. Digitar aqui não vai ao shell;
+// Esc volta ao terminal; os atalhos Ctrl+Alt (evidência etc.) continuam valendo.
+const CHAT_MAX = 1000, CHAT_GUARDA = 300;
+const CHAT_CORES = ["#7cc4ff", "#ffb86b", "#c3a6ff", "#ff8fb1", "#ffd866", "#6ee7f0", "#a3e635", "#f0abfc"];
+function chatCor(quem) {
+  if (quem === "host") return "#5ee0b5";
+  let h = 0; for (const ch of String(quem)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return CHAT_CORES[h % CHAT_CORES.length];
+}
+function chatEstado(a) {
+  const cod = (a.share && a.share.codigo) || "";
+  if (!a.chat || (cod && a.chat.codigo && a.chat.codigo !== cod))   // outra sessão na mesma aba = conversa nova
+    a.chat = { codigo: cod, itens: [], mids: new Set(), pend: [], novas: 0, aberto: null };
+  if (cod && !a.chat.codigo) a.chat.codigo = cod;
+  return a.chat;
+}
+const chatEu = (a) => (a.share && a.share.papel === "dono" ? "host" : a.share && a.share.eu) || "";
+const chatVisivel = (a) => !!(a && a.share && a.conectado && !a.share.aguardando && a.tipo !== "web" && !a.demo);
+function chatHora(ms) { const d = new Date(ms || Date.now()); return pad2(d.getHours()) + ":" + pad2(d.getMinutes()); }
+
+function chatReceber(sid, itens, doHistorico) {
+  const a = abas.get(sid); if (!a) return;
+  const c = chatEstado(a), eu = chatEu(a);
+  let novas = 0;
+  for (const m of itens || []) {
+    if (!m || typeof m.txt !== "string" || typeof m.mid !== "string" || c.mids.has(m.mid)) continue;
+    c.mids.add(m.mid);
+    if (m.cm) c.pend = c.pend.filter((p) => p.cm !== m.cm);   // minha mensagem confirmada pelo dono: sai de "enviando…"
+    c.itens.push({ mid: m.mid, quem: String(m.quem || ""), nome: String(m.nome || "Convidado").slice(0, 40),
+                   txt: m.txt.slice(0, CHAT_MAX), hora: +m.hora || Date.now() });
+    if (m.quem !== eu && !doHistorico) novas++;
+  }
+  c.itens.sort((x, y) => x.hora - y.hora);
+  while (c.itens.length > CHAT_GUARDA) c.itens.shift();
+  const lendo = a.id === ativa && c.aberto && document.visibilityState !== "hidden";
+  if (novas && !lendo) c.novas += novas;
+  if (a.id === ativa) chatDesenhar(); else chatMarcaAba(a);
+}
+function chatMarcaAba(a) { if (a.btn) a.btn.classList.toggle("chat-novo", !!(a.chat && a.chat.novas)); }
+
+function chatDesenhar() {
+  const el = $("#chat"), a = A();
+  if (!el) return;
+  abas.forEach((x) => chatMarcaAba(x));
+  if (!chatVisivel(a)) { el.classList.add("oculto"); return; }
+  const c = chatEstado(a);
+  if (c.aberto === null) c.aberto = chatLivre(a) >= 190;   // começa aberto só se houver faixa livre para ele
+  el.classList.remove("oculto"); el.classList.toggle("aberto", c.aberto);
+  $("#chat-bolha").setAttribute("aria-expanded", String(c.aberto));
+  if (c.aberto) c.novas = 0;
+  chatMarcaAba(a);
+  const cont = $("#chat-cont");
+  cont.textContent = c.novas > 99 ? "99+" : String(c.novas); cont.classList.toggle("oculto", !c.novas);
+  $("#chat-bolha").title = c.novas ? `💬 ${c.novas} mensagem(ns) nova(s) nesta sessão` : "💬 Conversa desta sessão (só quem está nela vê)";
+  const ps = (a.share.participantes || []);
+  $("#chat-quem").innerHTML = ps.map((p) => `<i style="--cor:${chatCor(p.id)}" title="${esc(p.nome)}${p.id === chatEu(a) ? " (você)" : ""}${p.id === "host" ? " · dono" : ""}"></i>`).join("")
+    + `<span>${ps.length} ${ps.length === 1 ? "pessoa" : "pessoas"}</span>`;
+  const eu = chatEu(a), lista = $("#chat-lista");
+  const noFim = lista.scrollHeight - lista.scrollTop - lista.clientHeight < 40;
+  let ant = null;
+  const html = c.itens.map((m) => {
+    const meu = m.quem === eu, junta = ant && ant.quem === m.quem && m.hora - ant.hora < 120000; ant = m;
+    return `<div class="chat-msg${meu ? " eu" : ""}${junta ? " junta" : ""}" style="--cor:${chatCor(m.quem)}">
+      ${junta ? "" : `<div class="chat-cab"><b>${esc(meu ? "Você" : m.nome)}</b>${m.quem === "host" && !meu ? "<em>dono</em>" : ""}<time>${chatHora(m.hora)}</time></div>`}
+      <div class="chat-corpo">${esc(m.txt)}</div></div>`;
+  }).join("") + c.pend.map((p) => `<div class="chat-msg eu pend${p.falhou ? " falhou" : ""}" style="--cor:${chatCor(eu)}">
+      <div class="chat-corpo">${esc(p.txt)}</div><div class="chat-st">${p.falhou ? "não entregue — o dono usa uma versão sem chat" : "enviando…"}</div></div>`).join("");
+  if (html !== lista._html || !html) lista.innerHTML = (lista._html = html) || `<div class="chat-vazio">Converse aqui com quem está nesta sessão.<br><small>Fica no histórico da sessão e nunca entra na evidência.</small></div>`;
+  if (noFim || c.rolar) lista.scrollTop = lista.scrollHeight;
+  c.rolar = false;
+  chatPosicionar();
+  chatObservar(a);
+}
+
+// largura livre entre o fim do texto do terminal e a borda direita da área do terminal
+function chatLivre(a) {
+  const box = $("#terminal").getBoundingClientRect(), scr = a && a.pane && a.pane.querySelector(".xterm-screen");
+  const fim = scr && scr.getBoundingClientRect().width ? scr.getBoundingClientRect().right : box.left;
+  return Math.floor(box.right - fim - 20);
+}
+function chatPosicionar() {
+  const el = $("#chat"), a = A();
+  if (!el || el.classList.contains("oculto") || !a) return;
+  const card = document.querySelector(".terminal-card").getBoundingClientRect(), box = $("#terminal").getBoundingClientRect();
+  const livre = chatLivre(a), aberto = el.classList.contains("aberto"), estreito = livre < 190;
+  el.classList.toggle("estreito", estreito);
+  const fim = box.right - 20 - livre, vao = livre + 20;   // fim do texto e o vão inteiro até a borda
+  const scr = a.pane && a.pane.querySelector(".xterm-screen"), baixo = scr ? box.bottom - scr.getBoundingClientRect().bottom - 4 : 0;
+  let w, h, x, y;
+  if (aberto) {
+    w = estreito ? Math.min(300, box.width - 16) : Math.min(330, livre);
+    h = Math.max(160, Math.min(460, box.height - 24));
+    x = estreito ? box.right - 8 - w : fim + 10 + (livre - w) / 2;   // sem faixa: encosta na borda (abrir foi escolha de quem clicou)
+    y = box.top + (box.height - h) / 2;
+  } else {   // bolha: no vão à direita (encolhe até 30 px para caber); sem vão, embaixo do texto; em último caso, na borda
+    w = h = vao >= 40 ? Math.min(46, vao - 10) : 46;
+    x = vao >= 40 ? fim + (vao - w) / 2 : box.right - 8 - w;
+    y = vao < 40 && baixo >= w + 4 ? box.bottom - baixo + (baixo - w) / 2 : box.top + (box.height - h) / 2;
+  }
+  el.style.setProperty("--chat-b", (aberto ? 46 : w) + "px");
+  el.style.width = w + "px"; el.style.height = h + "px";
+  el.style.left = Math.round(x - card.left) + "px";
+  el.style.top = Math.round(y - card.top) + "px";
+}
+let chatRO = null, chatObs = null;
+function chatObservar(a) {
+  if (!window.ResizeObserver) return;
+  if (!chatRO) { chatRO = new ResizeObserver(() => requestAnimationFrame(chatPosicionar)); chatRO.observe($("#terminal")); }
+  const scr = a.pane && a.pane.querySelector(".xterm-screen");
+  if (scr && scr !== chatObs) { if (chatObs) chatRO.unobserve(chatObs); chatRO.observe(scr); chatObs = scr; }
+}
+function chatAlternar(abrir) {
+  const a = A(); if (!chatVisivel(a)) return;
+  const c = chatEstado(a); c.aberto = abrir === undefined ? !c.aberto : abrir; c.rolar = c.aberto;
+  chatDesenhar();
+  if (c.aberto) setTimeout(() => $("#chat-txt").focus(), 0); else a.term.focus();
+}
+async function chatEnviar() {
+  const a = A(), inp = $("#chat-txt"); if (!chatVisivel(a)) return;
+  const txt = inp.value.replace(/\s+/g, " ").trim();
+  if (!txt) return;
+  if (txt.length > CHAT_MAX) return toast(`Mensagem longa demais (máx. ${CHAT_MAX} caracteres)`, "aviso");
+  inp.value = "";
+  let r;
+  try { r = await api.share_chat_enviar(a.id, txt); } catch (e) { r = { ok: false, erro: String(e.message || e) }; }
+  if (!r || !r.ok) { if (!inp.value) inp.value = txt; return toast((r && r.erro) || "Mensagem não enviada", "aviso"); }
+  const c = chatEstado(a);
+  if (r.mid) chatReceber(a.id, [r]);                   // dono: já é a mensagem final (o evento que chega depois é ignorado pelo mid)
+  else if (r.cm) {                                     // convidado: aparece "enviando…" até o dono redistribuir (eco com o mesmo cm)
+    const p = { cm: r.cm, txt: r.txt || txt };
+    c.pend.push(p); c.rolar = true;
+    setTimeout(() => { if (c.pend.includes(p)) { p.falhou = true; if (A() === a) chatDesenhar(); } }, 12000);
+    chatDesenhar();
+  }
+}
+// liga o painel (uma vez) e entra no fluxo do compartilhamento sem mexer nele: eventos "chat"/"chat_hist" e redesenho por aba
+(function chatIniciar() {
+  const el = $("#chat"); if (!el) return;
+  $("#chat-bolha").onclick = () => chatAlternar(true);
+  $("#chat-min").onclick = () => chatAlternar(false);
+  $("#chat-form").onsubmit = (e) => { e.preventDefault(); chatEnviar(); };
+  $("#chat-txt").addEventListener("keydown", (e) => {
+    if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); const a = A(); if (a) a.term.focus(); }
+  });
+  el.addEventListener("mousedown", (e) => e.stopPropagation());   // clique no chat não fecha/abre nada do resto da tela
+  const onShareAnt = window.onShare;
+  window.onShare = (sid, tipo, d) => {
+    if (tipo === "chat") return chatReceber(sid, [d]);
+    if (tipo === "chat_hist") return chatReceber(sid, (d && d.itens) || [], true);
+    return onShareAnt(sid, tipo, d);
+  };
+  const desenharShareAnt = desenharShare;
+  desenharShare = function (a) { desenharShareAnt(a); chatDesenhar(); };   // ativar(), estado, encerrar, sair: tudo passa por aqui
+  addEventListener("resize", () => requestAnimationFrame(chatPosicionar));
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") chatDesenhar(); });
+})();
+
+// abas da tela de entrada: "Entrar" e "Criar conta" sempre visíveis (quem já tem conta não fica sem saída)
+document.querySelectorAll("[data-ctm]").forEach((b) => (b.onclick = () => {
+  if (b.dataset.ctm === "entrar" && !CONTA.existe) {
+    contaModo("entrar");
+    return contaMsg("Ainda não há conta salva neste computador. Se a sua conta foi criada no site ou em outro computador, ela passará a valer aqui com o login único (em ativação). Até lá, crie a conta deste computador em \"Criar conta\".", "erro");
+  }
+  contaModo(b.dataset.ctm);
+}));
