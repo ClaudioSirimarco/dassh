@@ -4192,14 +4192,15 @@ function chatPosicionar() {
   const el = $("#chat"), a = A();
   if (!el || el.classList.contains("oculto") || !a) return;
   const card = document.querySelector(".terminal-card").getBoundingClientRect(), box = $("#terminal").getBoundingClientRect();
-  const livre = chatLivre(a), aberto = el.classList.contains("aberto"), estreito = livre < 190;
+  const livre = chatLivre(a), aberto = el.classList.contains("aberto"), estreito = livre < 170;
   el.classList.toggle("estreito", estreito);
   const fim = box.right - 20 - livre, vao = livre + 20;   // fim do texto e o vão inteiro até a borda
   const scr = a.pane && a.pane.querySelector(".xterm-screen"), baixo = scr ? box.bottom - scr.getBoundingClientRect().bottom - 4 : 0;
   let w, h, x, y;
   if (aberto) {
-    w = estreito ? Math.min(300, box.width - 16) : Math.min(330, livre);
-    h = Math.max(160, Math.min(460, box.height - 24));
+    // painel SLIM e alto (vertical): cabe na faixa livre; sem faixa, fica estreito na borda para cobrir o mínimo do texto
+    w = estreito ? Math.min(210, box.width - 16) : Math.min(240, livre);
+    h = Math.max(200, Math.min(640, box.height - 24));
     x = estreito ? box.right - 8 - w : fim + 10 + (livre - w) / 2;   // sem faixa: encosta na borda (abrir foi escolha de quem clicou)
     y = box.top + (box.height - h) / 2;
   } else {   // bolha: no vão à direita (encolhe até 30 px para caber); sem vão, embaixo do texto; em último caso, na borda

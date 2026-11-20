@@ -1124,3 +1124,7 @@ body.ao-vivo::before { content: none; }
 #volta-site { align-self: center; margin: 0 6px 0 2px; padding: 3px 9px; border: 1px solid var(--borda); border-radius: 6px; font-size: 11.5px;
   color: var(--suave); text-decoration: none; white-space: nowrap; }
 #volta-site:hover { color: var(--texto); border-color: var(--verde); }
+
+/* avisos do rodapé sempre acima do chat */
+#toast { z-index: 400; }
+.chat-painel { font-size: 12px; }
