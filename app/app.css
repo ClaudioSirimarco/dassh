@@ -1128,3 +1128,10 @@ body.ao-vivo::before { content: none; }
 /* avisos do rodapé sempre acima do chat */
 #toast { z-index: 400; }
 .chat-painel { font-size: 12px; }
+
+/* chat aberto: coluna própria à direita do shell (nunca cobre o texto) */
+#terminal.com-chat { padding-right: 282px !important; }
+.chat-topo { flex-wrap: nowrap; }
+.chat-tit { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chat-tit small { white-space: nowrap; }
+#toast { z-index: 1000 !important; }

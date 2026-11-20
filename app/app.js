@@ -4197,12 +4197,10 @@ function chatPosicionar() {
   const fim = box.right - 20 - livre, vao = livre + 20;   // fim do texto e o vão inteiro até a borda
   const scr = a.pane && a.pane.querySelector(".xterm-screen"), baixo = scr ? box.bottom - scr.getBoundingClientRect().bottom - 4 : 0;
   let w, h, x, y;
+  $("#terminal").classList.toggle("com-chat", aberto);   // aberto: o terminal cede uma coluna própria (a fonte se ajusta sozinha)
   if (aberto) {
-    // painel SLIM e alto (vertical): cabe na faixa livre; sem faixa, fica estreito na borda para cobrir o mínimo do texto
-    w = estreito ? Math.min(210, box.width - 16) : Math.min(240, livre);
-    h = Math.max(200, Math.min(640, box.height - 24));
-    x = estreito ? box.right - 8 - w : fim + 10 + (livre - w) / 2;   // sem faixa: encosta na borda (abrir foi escolha de quem clicou)
-    y = box.top + (box.height - h) / 2;
+    w = 262; h = box.height - 16;
+    x = box.right - 8 - w; y = box.top + 8;
   } else {   // bolha: no vão à direita (encolhe até 30 px para caber); sem vão, embaixo do texto; em último caso, na borda
     w = h = vao >= 40 ? Math.min(46, vao - 10) : 46;
     x = vao >= 40 ? fim + (vao - w) / 2 : box.right - 8 - w;
