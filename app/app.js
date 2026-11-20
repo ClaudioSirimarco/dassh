@@ -1388,7 +1388,7 @@ function desenharShare(a) {
       ${s.souAtivo ? "" : `<button class="btn primario" id="sh-retomar">Retomar controle</button>`}
       <button class="btn" id="sh-encerrar">Encerrar</button></div>`;
   } else {
-    bar.innerHTML = `<span class="ao-vivo">SESSÃO REMOTA</span>${s.aguardando ? `<small>aguardando o dono aprovar a entrada…</small>` : chips}
+    bar.innerHTML = `<span class="ao-vivo">SESSÃO REMOTA</span>${s.aguardando ? `<small>aguardando o dono aprovar a entrada…</small>` : chips + shareAbaInfo(s)}
       <div class="dir">${s.aguardando ? "" : s.souAtivo ? `<button class="btn" id="sh-devolver">Devolver controle</button>`
         : `<button class="btn primario" id="sh-pedir">Pedir controle</button>`}<button class="btn" id="sh-sair">Sair</button></div>`;
   }
@@ -1413,7 +1413,7 @@ async function compartilhar() {
   toast("Abrindo sessão ao vivo…");
   const r = await api.share_iniciar(a.id);
   if (!r.ok) return toast(r.erro, "erro");
-  a.share = { ...r, papel: "dono", souAtivo: true }; desenharShare(a);
+  a.share = { ...r, papel: "dono", souAtivo: true }; desenharShare(a); shareAbaPublicar(a);
   navigator.clipboard.writeText(r.codigo).catch(() => {});
   toast(`Ao vivo! Código ${r.codigo} copiado — use ✉ Convidar para mandar pelo WhatsApp`);
   return r.codigo;
@@ -4114,6 +4114,9 @@ const CHAT_MAX = 1000, CHAT_GUARDA = 300;
 const CHAT_CORES = ["#7cc4ff", "#ffb86b", "#c3a6ff", "#ff8fb1", "#ffd866", "#6ee7f0", "#a3e635", "#f0abfc"];
 function chatCor(quem) {
   if (quem === "host") return "#5ee0b5";
+  // cor pela ORDEM de entrada na sessão (nunca repete entre as primeiras 8 pessoas); fora da lista, pelo hash
+  const ps = ((A() || {}).share || {}).participantes || [], i = ps.filter((p) => p.id !== "host").findIndex((p) => p.id === quem);
+  if (i >= 0) return CHAT_CORES[i % CHAT_CORES.length];
   let h = 0; for (const ch of String(quem)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
   return CHAT_CORES[h % CHAT_CORES.length];
 }
@@ -4200,15 +4203,11 @@ function chatPosicionar() {
   const fim = box.right - 20 - livre, vao = livre + 20;   // fim do texto e o vão inteiro até a borda
   const scr = a.pane && a.pane.querySelector(".xterm-screen"), baixo = scr ? box.bottom - scr.getBoundingClientRect().bottom - 4 : 0;
   let w, h, x, y;
-  // aberto: ocupa a coluna da LATERAL (o shell e a fonte não mudam); deixa o rodapé livre para os avisos
-  const lat = document.querySelector(".lateral"), lr = lat && lat.getBoundingClientRect();
-  document.body.classList.toggle("chat-na-lateral", aberto && !!lr && lr.width > 200);
-  if (aberto && lr && lr.width > 200) {
-    w = lr.width; x = lr.left; y = lr.top;
-    h = Math.max(260, lr.height - 64);
-  } else if (aberto) {   // tela estreita (sem lateral ao lado): painel na borda, sem encolher o terminal
-    w = Math.min(300, box.width - 16); h = Math.max(220, box.height - 80);
-    x = box.right - 8 - w; y = box.top + 8;
+  if (aberto) {   // proporções originais; transparente (ajustável) para não esconder o shell
+    w = estreito ? Math.min(300, box.width - 16) : Math.min(330, livre);
+    h = Math.max(160, Math.min(460, box.height - 24));
+    x = estreito ? box.right - 8 - w : fim + 10 + (livre - w) / 2;
+    y = box.top + (box.height - h) / 2 - 20;
   } else {   // bolha: no vão à direita (encolhe até 30 px para caber); sem vão, embaixo do texto; em último caso, na borda
     w = h = vao >= 40 ? Math.min(46, vao - 10) : 46;
     x = vao >= 40 ? fim + (vao - w) / 2 : box.right - 8 - w;
@@ -4216,10 +4215,8 @@ function chatPosicionar() {
   }
   el.style.setProperty("--chat-b", (aberto ? 46 : w) + "px");
   el.style.width = w + "px"; el.style.height = h + "px";
-  const fixo = document.body.classList.contains("chat-na-lateral");   // na lateral: posição na janela (fora do quadro do terminal)
-  el.style.position = fixo ? "fixed" : "";
-  el.style.left = Math.round(fixo ? x : x - card.left) + "px";
-  el.style.top = Math.round(fixo ? y : y - card.top) + "px";
+  el.style.left = Math.round(x - card.left) + "px";
+  el.style.top = Math.round(y - card.top) + "px";
 }
 let chatRO = null, chatObs = null;
 function chatObservar(a) {
@@ -4326,8 +4323,45 @@ function chatEfeitoDigitar(el) {
   bar.innerHTML = ["👍", "✅", "👀", "🙏", "😂", "🔥", "⚠️", "❌"].map((e) => `<button type="button" tabindex="-1">${e}</button>`).join("");
   bar.onclick = (e) => { const b = e.target.closest("button"); if (!b) return; const i = $("#chat-txt"); i.value += b.textContent; i.focus(); };
   f.before(bar);
+  const bt = document.createElement("button"); bt.type = "button"; bt.className = "chat-emo-btn"; bt.textContent = "😊"; bt.title = "Emojis";
+  bt.onclick = () => { bar.classList.toggle("aberto"); $("#chat-txt").focus(); };
+  f.insertBefore(bt, f.firstChild);
+  bar.addEventListener("click", () => bar.classList.remove("aberto"));
 })();
 (function chatBolhaLogo() {
   const ic = document.querySelector(".chat-bolha-ic"), lg = document.getElementById("logo");   // logo embutido (vale em qualquer página)
   if (ic && lg) { const c = lg.cloneNode(true); c.removeAttribute("id"); c.setAttribute("class", "chat-logo"); ic.textContent = ""; ic.appendChild(c); }
 })();
+
+// ---------- transparência do chat (ajustável, lembrada) ----------
+(function chatAlfa() {
+  const topo = document.querySelector(".chat-topo"); if (!topo || $("#chat-alfa")) return;
+  const r = document.createElement("input");
+  r.type = "range"; r.id = "chat-alfa"; r.min = "25"; r.max = "100"; r.title = "Transparência do chat"; r.className = "chat-alfa";
+  let v = 70; try { v = +localStorage.getItem("dassh.chatAlfa") || 70; } catch (_) {}
+  const aplicar = (x) => document.documentElement.style.setProperty("--chat-alfa", (x / 100).toFixed(2));
+  r.value = v; aplicar(v);
+  r.oninput = () => { aplicar(+r.value); try { localStorage.setItem("dassh.chatAlfa", r.value); } catch (_) {} };
+  r.onpointerdown = (e) => e.stopPropagation();
+  topo.insertBefore(r, topo.lastElementChild);
+})();
+
+// ---------- opções da aba compartilhada: o dono publica, quem observa vê (só leitura) ----------
+function shareAbaPublicar(a) {
+  if (!a || !a.share || a.share.papel !== "dono" || !api || !api.share_aba) return;
+  api.share_aba(a.id, { inicio: a.inicio || null, gravando: !!a.gravando, ativa: !!a.manterAtiva, tipo: a.tipo || "",
+    alvo: (a.alvo && (a.alvo.nome || a.alvo.destino || a.alvo)) ? String(a.alvo.nome || a.alvo.destino || a.alvo).slice(0, 60) : "",
+    limpar: !!limparDaAba(a) }).catch(() => {});
+}
+setInterval(() => abas.forEach((a) => { if (a.share && a.share.papel === "dono") shareAbaPublicar(a); }), 5000);
+function shareAbaInfo(s) {
+  const o = s && s.aba; if (!o) return "";
+  const min = o.inicio ? Math.max(0, Math.floor((Date.now() - o.inicio) / 60000)) : null;
+  const tempo = min === null ? "" : min >= 60 ? `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, "0")} min` : `${min} min`;
+  const chip = (on, ic, t, tit) => `<span class="sh-opc${on ? " on" : ""}" title="${tit}">${ic} ${t}</span>`;
+  return `<span class="sh-opcs" title="Opções definidas por quem compartilha (só leitura)">
+    ${tempo ? chip(true, "⏱", tempo, "Tempo de sessão de quem compartilha") : ""}
+    ${chip(o.gravando, "⏺", o.gravando ? "gravando" : "sem gravação", "Gravação da sessão")}
+    ${chip(o.ativa, "⏳", o.ativa ? "mantém ativa" : "pode expirar", "Manter a sessão ativa")}
+    ${o.tipo ? chip(true, "🔌", esc(nomeTipo(o.tipo)) + (o.alvo ? " · " + esc(o.alvo) : ""), "Conexão") : ""}</span>`;
+}
