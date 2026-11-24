@@ -77,10 +77,10 @@
           <button data-tipo="gcp" data-ic="☁" data-direto="1" title="Google Cloud CLI, gcloud (instala sozinho se faltar)"><b>Google Cloud</b></button>
           <button data-tipo="aws" data-ic="☁" data-direto="1" title="AWS CLI (instala sozinho se faltar)"><b>AWS</b></button></div>
         <div class="tipos-grupo oculto" data-cat="ia">
-          <button data-tipo="claude" data-ic="🤖" data-direto="1" title="Claude Code (Anthropic)"><b>Claude</b></button>
-          <button data-tipo="codex" data-ic="🤖" data-direto="1" title="Codex (OpenAI / ChatGPT)"><b>Codex</b></button>
-          <button data-tipo="gemini" data-ic="🤖" data-direto="1" title="Gemini CLI (Google)"><b>Gemini</b></button>
-          <button data-tipo="copilot" data-ic="🤖" data-direto="1" title="Copilot CLI (GitHub)"><b>Copilot</b></button></div>
+          <button data-tipo="claude" data-ic="🤖" data-direto="1" title="Claude Code (Anthropic)"><b>Claude</b><span class="cota-ia">—</span></button>
+          <button data-tipo="codex" data-ic="🤖" data-direto="1" title="Codex (OpenAI / ChatGPT)"><b>Codex</b><span class="cota-ia">—</span></button>
+          <button data-tipo="gemini" data-ic="🤖" data-direto="1" title="Gemini CLI (Google)"><b>Gemini</b><span class="cota-ia">—</span></button>
+          <button data-tipo="copilot" data-ic="🤖" data-direto="1" title="Copilot CLI (GitHub)"><b>Copilot</b><span class="cota-ia">—</span></button></div>
       </div>
     </div>
     <div class="slot-con" id="slot-con" title="Destino da conexão: fica sempre neste mesmo lugar, qualquer que seja o tipo">
@@ -113,12 +113,12 @@
       <div class="abas-sessao" id="abas-sessao"></div>
       <button class="nova-aba" id="nova-aba" title="Nova aba (Ctrl+Alt+T)">＋</button>
       <button class="lista-abas oculto" id="lista-abas" title="Todas as abas abertas">▾</button>
+      <button class="nova-aba" id="dividir-guias" title="Dividir guias lado a lado" aria-label="Dividir guias lado a lado" aria-pressed="false">◫</button>
       <!-- opções DESTA guia (a ativa): cada guia tem as suas -->
       <div class="guia-barra" id="guia-barra" role="toolbar" aria-label="Opções desta guia">
         <span class="gb-rot" id="gb-rot" title="Os botões ao lado valem só para a guia ativa — cada guia tem os seus">guia</span>
         <button class="gb-btn destaque" id="btn-compartilhar" aria-label="Compartilhar guia" title="Compartilhar esta guia"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m8 11 8-5m-8 7 8 5"/><circle cx="5" cy="12" r="3"/><circle cx="19" cy="4" r="3"/><circle cx="19" cy="20" r="3"/></svg><span class="rot"> Compartilhar</span></button>
         <button class="gb-btn tg" id="tg-gravar" title="Gravação desta guia"><span class="selo-rec">REC</span></button>
-        <span id="saldo-sessao" class="oculto" tabindex="0"></span>
         <button class="gb-btn tg" id="tg-ativa" title="⏱ Manter ESTA guia ativa (evita desconexão por inatividade)">⏱</button>
         <button class="gb-btn tg" id="tg-limpar" title="🧹 Limpar a tela desta guia depois de cada evidência (Salvar/Enviar)">🧹</button>
         <button class="gb-btn" id="btn-tema" title="🎨 Tema desta guia (cores e fonte do terminal)">🎨</button>

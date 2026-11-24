@@ -113,8 +113,11 @@ const fecharModal = (el) => el.closest(".modal").classList.add("oculto");
 function ajustarFonte() {
   const box = $("#terminal"); if (!box || !box.clientWidth) return;
   const cs = getComputedStyle(box);
-  const W = box.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) - 6;
-  const H = box.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom) - 3;   // a conta é exata: 3 px de folga bastam
+  const larguraTotal = box.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) - 6;
+  const alturaTotal = box.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom) - 3;   // a conta é exata: 3 px de folga bastam
+  if (paineis.length && !cabeDivisao()) mostrarPaineis([]);
+  const W = paineis.length ? (larguraTotal - 12) / 2 : larguraTotal;
+  const H = alturaTotal - (paineis.length ? 24 : 0);
   // celular em pé: fonte legível fixa e o terminal (100 colunas) vira uma faixa larga que se arrasta para os lados
   const retrato = matchMedia("(max-width: 600px) and (orientation: portrait)").matches;
   abas.forEach((a) => {
@@ -123,7 +126,7 @@ function ajustarFonte() {
     // DETERMINÍSTICO: o tamanho depende só do espaço (W x H), das colunas/linhas e da fonte — nunca do tamanho atual.
     // Antes a conta partia da célula medida no tamanho atual; no navegador (zoom/escala 125-150%) a célula não cresce de forma
     // linear com a fonte e o resultado alternava entre dois valores (a fonte "pulsava"). Aqui: do maior ao menor, o 1º que cabe.
-    const minimo = innerWidth < 700 ? 5 : 9;   // celular: a evidência continua 100x30, então a fonte encolhe para caber inteira
+    const minimo = paineis.length || innerWidth < 700 ? 5 : 9;   // celular: a evidência continua 100x30, então a fonte encolhe para caber inteira
     let alvo = minimo;
     const espaco = Math.round(W) + "x" + Math.round(H), teto = (a._teto && a._teto[espaco]) || 17;
     for (let f = teto; f >= minimo; f -= 0.25) {   // passo fino: a altura da linha do xterm "pula" em px do aparelho
@@ -217,7 +220,14 @@ window.termWrite = (sid, d) => {
   const a = abas.get(sid);
   if (!a) return;
   a.ultimaEscrita = Date.now();
-  a.term.write(d, () => observarSessao(a));
+  a.term.write(d, () => {
+    if (!TIPOS_IA.includes(a.tipo)) return observarSessao(a);
+    if (a.timerCota) return;
+    a.timerCota = setTimeout(() => {
+      a.timerCota = null;
+      if (abas.has(a.id)) observarSessao(a);
+    }, 180);
+  });
 };
 window.onAviso = (sid, msg) => { const a = abas.get(sid); if (a) a.term.write(`\r\n\x1b[33m[${msg}]\x1b[0m\r\n`); toast(msg, "aviso"); };
 window.onDesconectado = (sid, motivo) => {
@@ -318,6 +328,9 @@ function novaAba(tipo, idFixo) {
   });
   term.onSelectionChange(() => { const s = term.getSelection(); if (s) navigator.clipboard.writeText(s).catch(() => {}); });
   term.onWriteParsed(() => verificarLogin(a));
+  const focarPainel = () => { if (paineis.includes(id) && ativa !== id) ativar(id); };
+  pane.addEventListener("pointerdown", focarPainel, true);
+  pane.addEventListener("focusin", focarPainel);
   pane.addEventListener("contextmenu", async (e) => {
     e.preventDefault();
     // colar pelo Python (área de transferência do Windows): o navegador interno não pede mais permissão
@@ -361,10 +374,42 @@ async function boasVindas(a) {
   a.term.write("\r\n");
 }
 
+let paineis = [];
+function cabeDivisao() {
+  return innerWidth >= 800 && $("#terminal").clientWidth >= 700;
+}
+function mostrarPaineis(ids) {
+  paineis = ids;
+  $("#terminal").classList.toggle("dividido", !!ids.length);
+  const botao = $("#dividir-guias");
+  botao.setAttribute("aria-pressed", String(!!ids.length));
+  botao.title = ids.length ? "Desfazer divisão" : "Dividir guias lado a lado";
+  botao.setAttribute("aria-label", botao.title);
+  for (const a of abas.values()) {
+    const i = ids.indexOf(a.id);
+    a.pane.classList.toggle("em-painel", i >= 0);
+    a.pane.dataset.titulo = a.nome + " · guia " + (ordemAbas().indexOf(a.id) + 1);
+    a.pane.style.order = i >= 0 ? i : "";
+  }
+  ajustarDepois();
+}
+function dividirGuias(a, outra) {
+  if (paineis.length) return mostrarPaineis([]);
+  if (!cabeDivisao()) return toast("Amplie a janela para ver duas guias lado a lado.", "aviso");
+  if (a.tipo === "web") return toast("Escolha uma guia de terminal para dividir.", "aviso");
+  outra = outra || [...abas.values()].find(b => b !== a && b.tipo !== "web");
+  if (!outra) outra = novaAba("powershell");
+  if (outra) { mostrarPaineis([a.id, outra.id]); ativar(a.id); }
+}
+$("#dividir-guias").onclick = () => { if (A()) dividirGuias(A()); };
+
 function ativar(id) {
   const ant = abas.get(ativa);
   if (ant && ant.id !== id) guardarHistorico(ant);   // "Últimas evidências" da aba que sai ficam guardadas nela
   const trocou = !ant || ant.id !== id;
+  if (paineis.length && !paineis.includes(id)) {
+    mostrarPaineis(abas.get(id).tipo === "web" ? [] : paineis.map(p => p === ativa ? id : p));
+  }
   ativa = id;
   abas.forEach((a) => { a.pane.classList.toggle("ativa", a.id === id); a.btn.classList.toggle("ativa", a.id === id); });
   const a = A();
@@ -383,7 +428,7 @@ function ativar(id) {
   desenharAtiva(a);
   if (a.equip && a.conectado) $("#aba-alvo").textContent = `${a.nome} · ${a.equip}`;
   desenharShare(a); desenharGuia(a);
-  setTimeout(() => { a.term.focus(); ajustarFonte(); arrumarAbas(); }, 0);
+  setTimeout(() => { if (ativa === id) a.term.focus(); ajustarFonte(); arrumarAbas(); }, 0);
 }
 
 // ---------- lateral direita POR ABA ----------
@@ -453,7 +498,7 @@ function desenharGuia(a = A()) {
   if (l) { const on = limparDaAba(a); l.classList.toggle("on", on);
     l.title = on ? "🧹 Limpar a tela desta guia depois de cada evidência: LIGADO — clique para desligar"
                  : "🧹 Limpar a tela desta guia depois de cada evidência: DESLIGADO — clique para ligar"; }
-  desenharSaldo(a);
+  desenharSaldo();
   const s = $("#btn-compartilhar");
   if (s) { const vivo = a.share && a.share.papel === "dono"; s.classList.toggle("on", !!vivo);
     s.title = vivo ? `📡 Esta guia está AO VIVO (código ${a.share.codigo}) — clique para ver o código` : "📡 Compartilhar ESTA guia ao vivo (convite pelo WhatsApp)"; }
@@ -567,6 +612,9 @@ function menuAba(a, x, y) {
     if (a.tipo !== "web") item(limparDaAba(a) ? "Desligar limpeza após evidência" : "Limpar após evidência", alternarLimpar);
     item(a.fixada ? "Desafixar guia" : "Fixar guia", () => fixarGuia(a));
   }
+  const antes = A();
+  if (paineis.length) item("Desfazer divisão", () => mostrarPaineis([]));
+  else if (a.tipo !== "web") item("Dividir lado a lado", () => dividirGuias(a, antes !== a && antes?.tipo !== "web" ? antes : null));
   if (a.demo) item("Parar demonstração", () => demoParar(a));
   const cor = document.createElement("select"); cor.setAttribute("aria-label", "Etiqueta da guia");
   cor.append(new Option("Sem etiqueta", ""), ...Object.keys(CORES_GUIA).map(c => new Option(c, c)));
@@ -583,13 +631,15 @@ async function fecharAba(id) {
   const a = abas.get(id); if (!a) return;
   if (a.fixada && !(await perguntarGuia("Fechar esta guia fixada?", "Fechar guia"))) return;
   if (a.conectado) { await api.desconectar(id); if (["web", "ssh"].includes(a.tipo)) oferecerRemoverRede(); }
+  const vizinha = paineis.includes(id) && paineis.find(p => p !== id);
+  if (vizinha) mostrarPaineis([]);
   a.term.dispose(); a.pane.remove(); a.btn.remove(); abas.delete(id);
   if (a.fixada) salvarFixadas();
   try { api.aba_fechar(id); } catch (_) {}
   const eraAtiva = ativa === id;
   if (eraAtiva) { $("#historico").innerHTML = ""; ativa = null; }   // as evidências da aba fechada saem da lateral
   if (!abas.size) novaAba("serial");
-  else if (eraAtiva) ativar(ordemAbas().pop());
+  else if (eraAtiva) ativar(vizinha || ordemAbas().pop());
   arrumarAbas();
 }
 
@@ -607,16 +657,40 @@ function estadoDaSessao(a, estado) {
   p.setAttribute("role", "img");
   p.setAttribute("aria-label", p.title);
 }
-function desenharSaldo(a) {
-  const el = $("#saldo-sessao");
-  const visivel = a.conectado && TIPOS_IA.includes(a.tipo) && !a.demo;
-  el.classList.toggle("oculto", !visivel);
-  if (!visivel) return;
-  el.textContent = a.saldoSessao || "—";
-  el.title = a.saldoSessao ? "Último saldo de sessão informado no terminal: " + a.saldoSessao
-    : "Saldo de sessão ainda não informado pelo assistente";
-  el.setAttribute("aria-label", el.title);
+let cotasLocais = {}, proximaCota = 0, consultandoCota = false;
+function desenharSaldo() {
+  for (const tipo of TIPOS_IA) {
+    const botao = document.querySelector(`#tipos [data-tipo="${tipo}"]`);
+    const selo = botao.querySelector(".cota-ia");
+    const local = cotasLocais[tipo] || {};
+    const recentes = [...abas.values()].filter(a => a.tipo === tipo && a.conectado && !a.demo &&
+      Date.now() - a.instanteSaldo < 300000).sort((a,b) => b.instanteSaldo - a.instanteSaldo);
+    const valor = (chave, campo) => {
+      const j = local[chave];
+      if (Number.isFinite(j?.livre) && j.fim * 1000 > Date.now()) return j.livre + "%";
+      return recentes.find(a => a[campo])?.[campo];
+    };
+    const sessao = valor("sessao", "saldoSessao"), semana = valor("semana", "saldoSemana");
+    selo.textContent = sessao || "—";
+    selo.classList.toggle("conhecida", !!sessao);
+    const hora = local.instante ? " · leitura às " + new Date(local.instante * 1000).toLocaleTimeString() : "";
+    botao.title = botao.querySelector("b").textContent + " · Sessão disponível: " + (sessao || "sem informação") +
+      " · Semana disponível: " + (semana || "sem informação") + hora;
+    botao.setAttribute("aria-label", botao.title);
+  }
 }
+async function consultarCotas() {
+  if (document.hidden || !document.querySelector('#tipos [data-cat="ia"]:not(.oculto)')) return;
+  desenharSaldo();
+  if (!api || window.__portal || !api.cotas_assistentes || consultandoCota || Date.now() < proximaCota) return;
+  consultandoCota = true;
+  proximaCota = Date.now() + 15000;
+  try { cotasLocais = await api.cotas_assistentes() || {}; }
+  catch (_) { cotasLocais = {}; }
+  finally { consultandoCota = false; desenharSaldo(); }
+}
+setInterval(consultarCotas, 15000);
+document.addEventListener("visibilitychange", consultarCotas);
 function observarSessao(a) {
   if (!a.conectado || a.demo) return;
   const linha = linhaCursor(a.term).trim();
@@ -628,32 +702,33 @@ function observarSessao(a) {
   }
   if (!TIPOS_IA.includes(a.tipo)) return;
   if (a.estadoSessao === "login") {
-    a.saldoSessao = null;
-    if (a.id === ativa) desenharSaldo(a);
+    a.saldoSessao = a.saldoSemana = null;
+    desenharSaldo();
     return;
   }
   if (/^PS [^>]+>\s*$/.test(linha)) {
     estadoDaSessao(a, "encerrada");
-    a.saldoSessao = null;
+    a.saldoSessao = a.saldoSemana = null;
   } else {
     const b = a.term.buffer.active;
     let janela = "";
     for (let y = b.baseY; y < b.baseY + a.term.rows; y++) {
       const txt = b.getLine(y)?.translateToString(true) || "";
-      // Somente o limite da sessão/janela curta. Contexto e cota semanal são métricas diferentes.
+      // Reconhece apenas linhas que identificam a janela de uso.
       const m = txt.match(/^\s*[│┃]?\s*(?:5h limit|session limit|limite da sessão)\s*:\s*(?:\[[^\]]*\]\s*)?(100|\d{1,2})%\s*(?:left|remaining|restante)/i);
-      if (m) a.saldoSessao = m[1] + "%";
-      const n = txt.match(/^\s*[│┃]?\s*(?:session tokens remaining|tokens restantes na sessão)\s*:\s*(\d+)\s*[│┃]?\s*$/i);
-      if (n) a.saldoSessao = n[1] + " tok";
+      if (m) { a.saldoSessao = m[1] + "%"; a.instanteSaldo = Date.now(); }
+      const semanal = txt.match(/^\s*[│┃]?\s*(?:weekly limit|limite semanal)\s*:\s*(?:\[[^\]]*\]\s*)?(100|\d{1,2})%\s*(?:left|remaining|restante)/i);
+      if (semanal) { a.saldoSemana = semanal[1] + "%"; a.instanteSaldo = Date.now(); }
       if (/^\s*Current session\s*$/i.test(txt)) janela = "sessao";
-      else if (/^\s*(Current week|Weekly limit)/i.test(txt)) janela = "";
+      else if (/^\s*Current week(?:\s*\(all models\))?\s*$/i.test(txt)) janela = "semana";
+      else if (/Current week/i.test(txt)) janela = "";
       else if (janela) {
         const usado = txt.match(/^\s*[█▏▎▍▌▋▊▉░▒▓\s]*(100|\d{1,2})% used\s*$/i);
-        if (usado) { a.saldoSessao = (100 - Number(usado[1])) + "%"; janela = ""; }
+        if (usado) { a[janela === "semana" ? "saldoSemana" : "saldoSessao"] = (100 - Number(usado[1])) + "%"; a.instanteSaldo = Date.now(); janela = ""; }
       }
     }
   }
-  if (a.id === ativa) desenharSaldo(a);
+  desenharSaldo();
 }
 setInterval(() => abas.forEach(a => {
   if (a.conectado && ["serial", "ssh"].includes(a.tipo) && a.estadoSessao === "ativa" &&
@@ -664,12 +739,13 @@ function setConectado(a, on, nome) {
   a.inicio = on ? (a.inicio && a.conectado ? a.inicio : Date.now()) : null;
   if (nome) a.nome = nome;
   if (!on) { a.loginPend = null; esconderSugestao(a); a.share = null; desenharShare(a); }
-  a.saldoSessao = null;
+  a.saldoSessao = a.saldoSemana = null;
   estadoDaSessao(a, !on ? "encerrada" : ["serial", "ssh"].includes(a.tipo) ? "aguardando" : "ativa");
   if (on && ["serial", "ssh"].includes(a.tipo)) observarSessao(a);
   desenharRec(a);
   a.btn.querySelector(".nome").textContent = on || a.nome !== "Nova aba" ? a.nome : "Nova aba";
   a.btn.title = a.nome;
+  if (paineis.includes(a.id)) mostrarPaineis(paineis);
   // ⏱ é preferência DA ABA: reconectou com ele ligado? liga de novo na sessão nova
   if (on && a.manterAtiva && api && !a.demo) api.manter_ativa(a.id, true).then((r) => { a.manterAtiva = !!r.ativo; desenharAtiva(a); }).catch(() => {});
   desenharAtiva(a);
@@ -725,6 +801,7 @@ function mostrarCategoria(cat) {
   document.querySelectorAll("#abas .tipos-grupo").forEach((g) => {
     const v = g.dataset.cat === cat; if (v && g.classList.contains("oculto")) $("#tipos").scrollLeft = 0; g.classList.toggle("oculto", !v); });
   ajustarTipos();
+  if (cat === "ia") consultarCotas();
 }
 // faixa dos tipos estreita (celular): o tipo ativo fica à vista e a borda esmaece quando há mais à direita/esquerda
 function ajustarTipos() {
@@ -759,6 +836,7 @@ function selecionarTipo(tipo, silencioso) {
   $("#livre-txt").textContent = LIVRE[tipo] || "";
   const a = A(); if (a && !silencioso) {
     if (a.tipo !== tipo) a.params = null;
+    if (tipo === "web" && paineis.includes(a.id)) mostrarPaineis([]);
     a.tipo = tipo;
     if (a.fixada) salvarFixadas();
   }
