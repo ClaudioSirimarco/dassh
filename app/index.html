@@ -57,19 +57,21 @@
     <div class="abas" id="abas">
       <!-- seletor de conexão: categorias sempre à vista (barra segmentada) e, ao lado, os tipos da categoria escolhida -->
       <div class="cats" role="tablist" aria-label="Categorias de conexão">
-        <div class="cat sel tem-ativo" role="tab" tabindex="0" aria-selected="true" data-cat="equip" title="Equipamentos: precisam de destino (porta COM, usuario@ip ou endereço)"><span class="ci">🔌</span><span class="cn">Equipamentos</span></div>
-        <div class="cat" role="tab" tabindex="0" data-cat="shell" title="Shell: terminais locais, abrem na hora"><span class="ci">💻</span><span class="cn">Shell</span></div>
+        <div class="cat sel tem-ativo" role="tab" tabindex="0" aria-selected="true" data-cat="equip" title="Equipamentos: porta serial ou endereço web"><span class="ci">🔌</span><span class="cn">Equipamentos</span></div>
+        <div class="cat" role="tab" tabindex="0" data-cat="shell" title="Shell: PowerShell, CMD e SSH"><span class="ci">💻</span><span class="cn">Shell</span></div>
         <div class="cat" role="tab" tabindex="0" data-cat="nuvem" title="Nuvem: CLIs de nuvem, instalam sozinhas se faltarem"><span class="ci">☁</span><span class="cn">Nuvem</span></div>
         <div class="cat" role="tab" tabindex="0" data-cat="ia" title="IA: assistentes no terminal"><span class="ci">🤖</span><span class="cn">IA</span></div>
+        <div class="cat" role="tab" tabindex="0" data-cat="demos" title="Demonstrações por tema"><span class="ci">🎬</span><span class="cn">Demos</span></div>
       </div>
       <div class="tipos" id="tipos">
         <div class="tipos-grupo" data-cat="equip">
           <button data-tipo="serial" data-ic="🔌" class="ativa" title="Serial: console de switch/roteador (COM)"><b>Serial</b></button>
-          <button data-tipo="ssh" data-ic="🔐" title="SSH: usuario@ip"><b>SSH</b></button>
           <button data-tipo="web" data-ic="🌐" title="Web: iDRAC, iLO, iBMC, XClarity, IPMI, firewalls"><b>Web</b></button></div>
         <div class="tipos-grupo oculto" data-cat="shell">
           <button data-tipo="powershell" data-ic="💻" data-direto="1" title="Windows PowerShell (abre na hora)"><b>PowerShell</b></button>
-          <button data-tipo="cmd" data-ic="⌨" data-direto="1" title="Prompt de comando (abre na hora)"><b>CMD</b></button></div>
+          <button data-tipo="cmd" data-ic="⌨" data-direto="1" title="Prompt de comando (abre na hora)"><b>CMD</b></button>
+          <button data-tipo="ssh" data-ic="🔐" title="SSH: usuario@ip"><b>SSH</b></button></div>
+        <div class="tipos-grupo oculto" data-cat="demos"><select id="escolher-demo" aria-label="Escolher demonstração"><option value="">Escolher demonstração…</option></select></div>
         <div class="tipos-grupo oculto" data-cat="nuvem">
           <button data-tipo="azure" data-ic="☁" data-direto="1" title="Azure CLI (instala sozinho se faltar)"><b>Azure</b></button>
           <button data-tipo="gcp" data-ic="☁" data-direto="1" title="Google Cloud CLI, gcloud (instala sozinho se faltar)"><b>Google Cloud</b></button>
@@ -114,8 +116,9 @@
       <!-- opções DESTA guia (a ativa): cada guia tem as suas -->
       <div class="guia-barra" id="guia-barra" role="toolbar" aria-label="Opções desta guia">
         <span class="gb-rot" id="gb-rot" title="Os botões ao lado valem só para a guia ativa — cada guia tem os seus">guia</span>
-        <button class="gb-btn destaque" id="btn-compartilhar" title="📡 Compartilhar ESTA guia ao vivo (convite pelo WhatsApp)">📡<span class="rot"> Compartilhar</span></button>
-        <button class="gb-btn tg" id="tg-gravar" title="⏺ Gravação desta guia">⏺<span class="rot"> REC</span></button>
+        <button class="gb-btn destaque" id="btn-compartilhar" aria-label="Compartilhar guia" title="Compartilhar esta guia"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m8 11 8-5m-8 7 8 5"/><circle cx="5" cy="12" r="3"/><circle cx="19" cy="4" r="3"/><circle cx="19" cy="20" r="3"/></svg><span class="rot"> Compartilhar</span></button>
+        <button class="gb-btn tg" id="tg-gravar" title="Gravação desta guia"><span class="selo-rec">REC</span></button>
+        <span id="saldo-sessao" class="oculto" tabindex="0"></span>
         <button class="gb-btn tg" id="tg-ativa" title="⏱ Manter ESTA guia ativa (evita desconexão por inatividade)">⏱</button>
         <button class="gb-btn tg" id="tg-limpar" title="🧹 Limpar a tela desta guia depois de cada evidência (Salvar/Enviar)">🧹</button>
         <button class="gb-btn" id="btn-tema" title="🎨 Tema desta guia (cores e fonte do terminal)">🎨</button>

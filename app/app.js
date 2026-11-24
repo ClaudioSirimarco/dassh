@@ -213,11 +213,18 @@ function comAba(base) {
 }
 
 // ================= chamadas vindas do Python =================
-window.termWrite = (sid, d) => { const a = abas.get(sid); if (a) { a.term.write(d); a.ultimaEscrita = Date.now(); } };
+window.termWrite = (sid, d) => {
+  const a = abas.get(sid);
+  if (!a) return;
+  a.ultimaEscrita = Date.now();
+  a.term.write(d, () => observarSessao(a));
+};
 window.onAviso = (sid, msg) => { const a = abas.get(sid); if (a) a.term.write(`\r\n\x1b[33m[${msg}]\x1b[0m\r\n`); toast(msg, "aviso"); };
 window.onDesconectado = (sid, motivo) => {
   const a = abas.get(sid); if (!a) return;
+  a.versaoFechamento = (a.versaoFechamento || 0) + 1;
   setConectado(a, false); a.term.write(`\r\n\x1b[33m[${motivo}]\x1b[0m\r\n`); toast(`${a.nome}: ${motivo}`, "aviso");
+  if (!/^(?:Sessão (?:SSH )?encerrada\.?|Conexão cancelada\.|O dono encerrou o compartilhamento\.)$/i.test(motivo)) estadoDaSessao(a, "falha");
   if (a.tipo === "serial" && /lixo|perdida/i.test(motivo)) diagnosticarCabo();
 };
 
@@ -255,7 +262,7 @@ function listaAbas() {
     return `${Math.floor(s / 3600) ? Math.floor(s / 3600) + ":" : ""}${String(Math.floor(s / 60) % 60).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`; };
   m.innerHTML = ordemAbas().map((id, i) => { const a = abas.get(id);
     return `<div class="ma-item ${id === ativa ? "ativa" : ""}" data-id="${id}"><span class="num">${i + 1}</span>
-      <span class="ponto ${a.conectado ? "on" : ""}"></span><span class="ma-nome">${esc(a.nome)}${a.equip ? `<small>${esc(a.equip)}</small>` : ""}</span>
+      <span class="ponto" data-estado="${a.estadoSessao || "encerrada"}" title="${ESTADOS_SESSAO[a.estadoSessao || "encerrada"]}"></span><span class="ma-nome">${esc(a.nome)}${a.equip ? `<small>${esc(a.equip)}</small>` : ""}</span>
       <span class="ma-tempo">${fmt(a)}</span>${a.conectado && a.tipo !== "web" ? `<span class="ma-rec ${a.gravando ? "on" : ""}">${a.gravando ? "REC" : "sem REC"}</span>` : ""}
       <button class="fecha" data-x="${id}" title="Fechar">✕</button></div>`; }).join("") +
     `<div class="ma-rodape">Ctrl+Alt+1…8 troca · arraste para reordenar · botão do meio fecha</div>`;
@@ -291,11 +298,13 @@ function novaAba(tipo, idFixo) {
   b.innerHTML = `<span class="num"></span><span class="ponto"></span><span class="nome">Nova aba</span><span class="tempo" title="Tempo de sessão"></span><span class="ativa-tg" title="⏱ Manter esta sessão ativa (evita desconexão por inatividade) — clique para ligar/desligar">⏱</span><span class="rec" title="Gravação desta aba — clique para parar, gravar ou assistir">REC</span><button class="fecha" title="Fechar aba">✕</button>`;
   b.onclick = (e) => { if (!e.target.classList.contains("fecha") && !e.target.classList.contains("rec") && !e.target.classList.contains("ativa-tg")) ativar(id); };
   b.onauxclick = (e) => { if (e.button === 1) { e.preventDefault(); fecharAba(id); } };   // botão do meio fecha (como no navegador)
+  b.querySelector(".rec").classList.add("selo-rec");
   b.querySelector(".rec").onclick = () => menuGravacao(a);
   b.querySelector(".ativa-tg").onclick = (e) => { e.stopPropagation(); alternarAtiva(a); };
   b.querySelector(".fecha").onclick = () => fecharAba(id);
   arrastavel(b);
   $("#abas-sessao").appendChild(b); a.btn = b;
+  estadoDaSessao(a, "encerrada");
   ativar(id); arrumarAbas();
   term.open(pane);
   a.ser = new SerializeAddon.SerializeAddon(); term.loadAddon(a.ser);
@@ -428,6 +437,7 @@ function desenharGuia(a = A()) {
   if (l) { const on = limparDaAba(a); l.classList.toggle("on", on);
     l.title = on ? "🧹 Limpar a tela desta guia depois de cada evidência: LIGADO — clique para desligar"
                  : "🧹 Limpar a tela desta guia depois de cada evidência: DESLIGADO — clique para ligar"; }
+  desenharSaldo(a);
   const s = $("#btn-compartilhar");
   if (s) { const vivo = a.share && a.share.papel === "dono"; s.classList.toggle("on", !!vivo);
     s.title = vivo ? `📡 Esta guia está AO VIVO (código ${a.share.codigo}) — clique para ver o código` : "📡 Compartilhar ESTA guia ao vivo (convite pelo WhatsApp)"; }
@@ -463,12 +473,80 @@ async function fecharAba(id) {
   arrumarAbas();
 }
 
+const ESTADOS_SESSAO = {
+  ativa: "Sessão ativa", aguardando: "Aguardando confirmação do shell", login: "Aguardando login",
+  encerrada: "Sessão encerrada ou desconectada", falha: "Falha de conexão", demo: "Demonstração",
+  silenciosa: "Sem confirmação recente do equipamento"
+};
+const TIPOS_IA = ["codex", "claude", "gemini", "copilot"];
+function estadoDaSessao(a, estado) {
+  a.estadoSessao = estado;
+  const p = a.btn.querySelector(".ponto");
+  p.dataset.estado = estado;
+  p.title = ESTADOS_SESSAO[estado];
+  p.setAttribute("role", "img");
+  p.setAttribute("aria-label", p.title);
+}
+function desenharSaldo(a) {
+  const el = $("#saldo-sessao");
+  const visivel = a.conectado && TIPOS_IA.includes(a.tipo) && !a.demo;
+  el.classList.toggle("oculto", !visivel);
+  if (!visivel) return;
+  el.textContent = a.saldoSessao || "—";
+  el.title = a.saldoSessao ? "Último saldo de sessão informado no terminal: " + a.saldoSessao
+    : "Saldo de sessão ainda não informado pelo assistente";
+  el.setAttribute("aria-label", el.title);
+}
+function observarSessao(a) {
+  if (!a.conectado || a.demo) return;
+  const linha = linhaCursor(a.term).trim();
+  if (!["web", "remoto"].includes(a.tipo)) {
+    if (/^(?:session (?:expired|timed out)|sessão expirada)[.!]?$/i.test(linha)) estadoDaSessao(a, "login");
+    else if (RE_USER.test(linha) || (a.estadoSessao === "aguardando" && RE_PASS.test(linha))) estadoDaSessao(a, "login");
+    else if (RE_PROMPT.test(linha)) estadoDaSessao(a, "ativa");
+    else if (a.estadoSessao === "silenciosa" && linha) estadoDaSessao(a, "ativa");
+  }
+  if (!TIPOS_IA.includes(a.tipo)) return;
+  if (a.estadoSessao === "login") {
+    a.saldoSessao = null;
+    if (a.id === ativa) desenharSaldo(a);
+    return;
+  }
+  if (/^PS [^>]+>\s*$/.test(linha)) {
+    estadoDaSessao(a, "encerrada");
+    a.saldoSessao = null;
+  } else {
+    const b = a.term.buffer.active;
+    let janela = "";
+    for (let y = b.baseY; y < b.baseY + a.term.rows; y++) {
+      const txt = b.getLine(y)?.translateToString(true) || "";
+      // Somente o limite da sessão/janela curta. Contexto e cota semanal são métricas diferentes.
+      const m = txt.match(/^\s*[│┃]?\s*(?:5h limit|session limit|limite da sessão)\s*:\s*(?:\[[^\]]*\]\s*)?(100|\d{1,2})%\s*(?:left|remaining|restante)/i);
+      if (m) a.saldoSessao = m[1] + "%";
+      const n = txt.match(/^\s*[│┃]?\s*(?:session tokens remaining|tokens restantes na sessão)\s*:\s*(\d+)\s*[│┃]?\s*$/i);
+      if (n) a.saldoSessao = n[1] + " tok";
+      if (/^\s*Current session\s*$/i.test(txt)) janela = "sessao";
+      else if (/^\s*(Current week|Weekly limit)/i.test(txt)) janela = "";
+      else if (janela) {
+        const usado = txt.match(/^\s*[█▏▎▍▌▋▊▉░▒▓\s]*(100|\d{1,2})% used\s*$/i);
+        if (usado) { a.saldoSessao = (100 - Number(usado[1])) + "%"; janela = ""; }
+      }
+    }
+  }
+  if (a.id === ativa) desenharSaldo(a);
+}
+setInterval(() => abas.forEach(a => {
+  if (a.conectado && ["serial", "ssh"].includes(a.tipo) && a.estadoSessao === "ativa" &&
+      Date.now() - a.ultimaEscrita > 120000) estadoDaSessao(a, "silenciosa");
+}), 5000);
 function setConectado(a, on, nome) {
   a.conectado = on;
   a.inicio = on ? (a.inicio && a.conectado ? a.inicio : Date.now()) : null;
   if (nome) a.nome = nome;
   if (!on) { a.loginPend = null; esconderSugestao(a); a.share = null; desenharShare(a); }
-  a.btn.querySelector(".ponto").classList.toggle("on", on);
+  a.saldoSessao = null;
+  estadoDaSessao(a, !on ? "encerrada" : ["serial", "ssh"].includes(a.tipo) ? "aguardando" : "ativa");
+  if (on && ["serial", "ssh"].includes(a.tipo)) observarSessao(a);
   desenharRec(a);
   a.btn.querySelector(".nome").textContent = on || a.nome !== "Nova aba" ? a.nome : "Nova aba";
   a.btn.title = a.nome;
@@ -582,9 +660,12 @@ async function conectar(a = A(), pularRede = false) {
   if (tipo === "ssh" && !destino) return toast("Informe usuario@ip", "aviso");
   if (tipo === "web") return conectarWeb(a);
   a.term.write("\x1bc");
+  const versaoFechamento = a.versaoFechamento;
   const r = await api.conectar(a.id, tipo, porta, baud, destino);
+  if (a.versaoFechamento !== versaoFechamento || abas.get(a.id) !== a) return;
   if (!r.ok) {
     a.term.write(`\x1b[31m${r.erro}\x1b[0m\r\n`);
+    estadoDaSessao(a, "falha");
     if (tipo === "serial" && r.porta_ocupada) {   // porta presa: oferece destravar na hora (e reconecta sozinho)
       a.term.write(`\x1b[33mA ${porta} está ocupada ou travada — tentando liberar…\x1b[0m\r\n`);
       return liberarPorta(porta, a);
@@ -1383,14 +1464,11 @@ function desenharShare(a) {
   if (a.btn) {
     a.btn.classList.toggle("aba-ao-vivo", !!(a.share && a.share.papel === "dono"));   // destaque fica NA guia compartilhada
     a.btn.classList.toggle("aba-remota", !!(a.share && a.share.papel === "convidado"));
-    const p = a.btn.querySelector(".ponto");
-    p.classList.toggle("live", !!(a.share && a.share.papel === "dono"));
-    p.classList.toggle("remoto", !!(a.share && a.share.papel === "convidado"));
   }
   if (a.id !== ativa) return;
   desenharGuia(a);
   const bar = $("#share-barra"), s = a.share;
-  $("#btn-compartilhar").innerHTML = `📡<span class="rot"> ${s && s.papel === "dono" ? "Ao vivo" : "Compartilhar"}</span>`;
+  $("#btn-compartilhar .rot").textContent = s && s.papel === "dono" ? " Ao vivo" : " Compartilhar";
   // só a guia compartilhada (e o que é dela) fica "ao vivo"; as outras guias seguem normais
   document.body.classList.toggle("ao-vivo", !!(s && s.papel === "dono"));
   if (!s) { bar.classList.add("oculto"); bar.innerHTML = ""; return; }

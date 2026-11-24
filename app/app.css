@@ -40,6 +40,19 @@ select:focus, input:focus { border-color: var(--verde); }
 .term-barra .dica { margin-left: auto; opacity: .7; }
 .ponto { width: 9px; height: 9px; border-radius: 50%; background: #4b5563; }
 .ponto.on { background: var(--verde); box-shadow: 0 0 8px var(--verde); }
+.aba .ponto[data-estado="ativa"], .ma-item .ponto[data-estado="ativa"] { background: var(--verde); animation: sessao-ativa 2.2s ease-out infinite; }
+@keyframes sessao-ativa { from { box-shadow: 0 0 0 0 #39ce8388; } 70%, to { box-shadow: 0 0 0 4px transparent; } }
+.aba .ponto[data-estado="falha"], .ma-item .ponto[data-estado="falha"] { background: #fa7076; border-radius: 2px; }
+.aba .ponto[data-estado="login"], .aba .ponto[data-estado="aguardando"], .aba .ponto[data-estado="silenciosa"] { background: transparent; border: 1px solid #929ba8; }
+.aba .ponto[data-estado="demo"] { background: #94a5e6; }
+@media (prefers-reduced-motion: reduce) { .ponto[data-estado="ativa"] { animation: none !important; } }
+.selo-rec { font: 700 9px Consolas, monospace; letter-spacing: .03em; white-space: nowrap; }
+.selo-rec::before { content: "●"; margin-right: 2px; }
+#tg-gravar .selo-rec { border: 1px solid currentColor; padding: 0 3px; border-radius: 4px; }
+#saldo-sessao { font: 10px Consolas, monospace; padding: 1px 4px; border-radius: 12px; border: 1px solid var(--borda); color: var(--suave); white-space: nowrap; }
+#saldo-sessao::before { content: "●"; margin-right: 3px; }
+.conexao:has(.cat.sel[data-cat="demos"]) :is(#slot-con, #conectar) { visibility: hidden; }
+#escolher-demo { max-width: 100%; }
 #terminal { flex: 1; padding: 10px 12px; display: flex; justify-content: center; align-items: flex-start; overflow: hidden; }
 .xterm .xterm-viewport { background: var(--term) !important; }
 ::-webkit-scrollbar { width: 8px; height: 8px; background: transparent; }

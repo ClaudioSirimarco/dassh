@@ -49,6 +49,22 @@ const SIMULACOES = {
 };
 const demoNomeCompleto = (id) => { const s = SIMULACOES[id] || SIMULACOES.cinema; return `${s.cat} · ${s.nome}`; };
 
+const seletorDemo = document.querySelector("#escolher-demo");
+for (const categoria of DEMO_CATEGORIAS) {
+  const grupo = document.createElement("optgroup");
+  grupo.label = categoria;
+  for (const [id, sim] of Object.entries(SIMULACOES)) {
+    if (sim.cat === categoria) grupo.append(new Option(sim.nome, id));
+  }
+  seletorDemo.append(grupo);
+}
+seletorDemo.onchange = () => {
+  const id = seletorDemo.value;
+  seletorDemo.value = "";
+  const a = A();
+  if (a && id) demoIniciar(a.demo ? novaAba("powershell") : a, id);
+};
+
 function demoAtivo(a) { return a && a.demo && a.demo.on && abas.has(a.id); }
 
 function demoTecla(a, d) {
@@ -66,11 +82,11 @@ function demoParar(a) {
 
 function demoIniciar(a, tipo = "cinema") {
   if (!SIMULACOES[tipo]) tipo = "cinema";
-  if (a.conectado) a = novaAba("powershell");        // nunca em cima de uma sessão real
+  if (a && a.conectado) a = novaAba("powershell");        // nunca em cima de uma sessão real
   if (!a) return;
   a.demo = { on: true, turbo: 0, tipo };
   a.nome = "🎬 " + SIMULACOES[tipo].nome; a.btn.querySelector(".nome").textContent = a.nome;
-  a.btn.querySelector(".ponto").classList.add("on");
+  estadoDaSessao(a, "demo");
   arrumarAbas(); ativar(a.id);
   toast(`🎬 ${demoNomeCompleto(tipo)} — simulação, dados FICTÍCIOS · Esc para parar · qualquer tecla acelera`);
   demoRodar(a);
