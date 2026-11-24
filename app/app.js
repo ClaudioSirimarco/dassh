@@ -277,10 +277,13 @@ function novaAba(tipo, idFixo) {
   const pane = document.createElement("div"); pane.className = "term-pane"; $("#terminal").appendChild(pane);
   const fsAtual = ([...abas.values()].find((x) => x.term && x.tipo !== "web") || { term: { options: { fontSize: 15 } } }).term.options.fontSize;
   const origem = A();   // aba nova herda da ativa: tema, atendimento (cliente/visita/chamado) e destino de envio
+  const ocupados = new Set([...abas.values()].map(aba => aba.lugar));
+  const lugar = [1, 2, 3, 4, 5, 6, 7, 8].find(n => !ocupados.has(n));
   const temaIni = (origem && origem.tema) || temaAtual;
   const term = new Terminal({ cols: 100, rows: 30, fontFamily: TEMAS[temaIni].fonte + ", 'Courier New', monospace", fontSize: fsAtual,
     lineHeight: 1.05, cursorBlink: true, scrollback: 5000, theme: TEMA, allowProposedApi: true });
   const a = { id, term, pane, tipo: tipo || tipoTopo(), conectado: false, nome: "Nova aba", alvo: null, params: null,
+              lugar, limparApos: preferenciasLimpeza[`limpar_guia_${lugar}`] ?? LIMPAR_APOS,
               loginPend: null, ultimoPrompt: "", sugestao: null, herdar: origem ? origem.id : null, evLis: [] };
   temaDaAba(a, temaIni);
   abas.set(id, a);
@@ -439,9 +442,12 @@ function alternarGravar() {
 function alternarLimpar() {
   const a = A(); if (!a) return;
   const novo = !limparDaAba(a);
-  abas.forEach((x) => { if (x.limparApos === undefined) x.limparApos = LIMPAR_APOS; });   // as outras guias mantêm o que tinham
-  a.limparApos = novo; LIMPAR_APOS = novo;   // vira o padrão das guias novas
-  api.salvar_pref("limpar_apos", novo); desenharGuia(a);
+  const chave = `limpar_guia_${a.lugar}`;
+  a.limparApos = preferenciasLimpeza[chave] = novo;
+  gravacaoLimpeza = gravacaoLimpeza.then(() => api.salvar_pref(chave, novo))
+    .catch(() => toast("Falha ao guardar a vassoura para a próxima abertura", "erro"));
+  desenharGuia(a);
+  shareAbaPublicar(a);
   toast(novo ? "🧹 Esta guia limpa a tela depois de cada evidência" : "🧹 Esta guia não limpa mais a tela sozinha");
 }
 
@@ -1075,6 +1081,8 @@ function limpar() {
 // backend (um por vez, em segundo plano, salva em disco) — a captura nunca espera o WhatsApp.
 let filaCaptura = Promise.resolve(), capturasPendentes = 0;
 let LIMPAR_APOS = true;   // 🧹 limpar a tela depois de cada evidência (configurável no cartão Evidência)
+let preferenciasLimpeza = {};
+let gravacaoLimpeza = Promise.resolve();
 function evidencia(enviar, roteiro = "", aba = null, comando = "", indiceWeb = null, segredos = null) {
   const a = aba || A(); if (!a) return Promise.resolve();
   if (a.demo) { toast("🎬 Aba de demonstração: é uma simulação — não gera evidência", "aviso"); return Promise.resolve(); }
@@ -1084,7 +1092,8 @@ function evidencia(enviar, roteiro = "", aba = null, comando = "", indiceWeb = n
   capturasPendentes++;
   const bt = $(enviar ? "#enviar" : "#salvar");   // o botão "bate" como um coração enquanto o print é gerado (só transform: leve)
   if (bt) { bt.dataset.pulsos = String((+bt.dataset.pulsos || 0) + 1); bt.classList.add("pulsando"); }
-  const p = filaCaptura.then(() => processarCaptura(a, snap, enviar, roteiro, comando, indiceWeb)).finally(() => {
+  const limparAoCapturar = limparDaAba(a);
+  const p = filaCaptura.then(() => processarCaptura(a, snap, enviar, roteiro, comando, indiceWeb, limparAoCapturar)).finally(() => {
     capturasPendentes--;
     if (!bt) return;
     const resta = Math.max(0, (+bt.dataset.pulsos || 1) - 1);
@@ -1095,7 +1104,7 @@ function evidencia(enviar, roteiro = "", aba = null, comando = "", indiceWeb = n
   return p;
 }
 const ENVIOS = new Map();   // job -> <li> da lista de últimas evidências
-async function processarCaptura(a, snap, enviar, roteiro, comando, indiceWeb) {
+async function processarCaptura(a, snap, enviar, roteiro, comando, indiceWeb, limparAoCapturar) {
   try {
     const r = a.tipo === "web" ? (indiceWeb === "java" ? await api.java_evidencia(a.id, enviar)   // console Java
                                                       : await api.web_evidencia(a.id, enviar, indiceWeb, a.modoWeb === "inteira"))   // página / console remoto
@@ -1111,7 +1120,7 @@ async function processarCaptura(a, snap, enviar, roteiro, comando, indiceWeb) {
     const naTela = a.id === ativa, ul = $("#historico");
     if (naTela) { const v = ul.querySelector(".vazio"); if (v) v.remove(); }
     // tela limpa para o próximo comando (Salvar e Enviar, botão ou atalho) — não vale para Skills e aba Web
-    if (limparDaAba(a) && !roteiro && a.tipo !== "web" && a.conectado) {
+    if (limparAoCapturar && limparDaAba(a) && abas.get(a.id) === a && !roteiro && a.tipo !== "web" && a.conectado) {
       // "cls" só quando o cursor está no PROMPT do shell: com um programa rodando na aba (ex.: Claude Code, vim, top)
       // o texto iria para o programa — nesse caso limpa só a tela do app
       const noPrompt = /^\s*(PS [^>]*>|[A-Za-z]:\\[^>]*>)\s*$/.test(linhaCursor(a.term)) && a.term.buffer.active.type !== "alternate";
@@ -1874,20 +1883,22 @@ async function executarRoteiro(rot, enviar) {
     let c = passos[k];
     if (a.roteiro.parar || !a.conectado) break;
     if (c.copiar_pasta) {   // lista a pasta, lê os nomes dos arquivos e vira um "copy" (com confirmação) para cada um
-      a.term.clear(); let desde = Date.now(); api.escrever(a.id, `dir ${c.copiar_pasta}\r`); await esperarSaida(a, desde, 1500, 30000);
-      const nomes = arquivosDoDir(a.term);
+      if (limparDaAba(a)) a.term.clear();
+      const inicioDir = a.term.registerMarker(0);
+      let desde = Date.now(); api.escrever(a.id, `dir ${c.copiar_pasta}\r`); await esperarSaida(a, desde, 1500, 30000);
+      const nomes = arquivosDoDir(a.term, Math.max(0, inicioDir?.line ?? 0));
+      inicioDir?.dispose();
       const pasta = c.copiar_pasta.includes("*") ? c.copiar_pasta.replace(/[^/]*$/, "") : c.copiar_pasta.replace(/\/?$/, "/");   // curinga: copia da pasta-mãe
       passos.splice(k + 1, 0, ...nomes.map((n) => ({ cmd: `copy ${pasta}${n} ${c.destino}`, confirmar: true, paginas: 2 })));
       a.roteiro.total = passos.length; toast(`📂 ${c.copiar_pasta}: ${nomes.length} arquivo(s) para copiar`);
       c = { cmd: `dir ${c.copiar_pasta}`, paginas: 6 };   // a listagem também vira evidência
-      a.term.clear();
     }
     a.roteiro.i++; a.roteiro.atual = c.mostra || c.cmd; desenharRoteiro(a);
     const env = enviar && (!rot.whatsapp || rot.whatsapp.includes(c.modelo || c.cmd));   // só as evidências-chave vão para o WhatsApp
     let desde = Date.now();
-    if (SHELL_WIN.includes(a.tipo)) {        // shells do Windows: limpar no próprio shell (o ConPTY redesenha a tela)
+    if (limparDaAba(a) && SHELL_WIN.includes(a.tipo)) {        // shells do Windows: limpar no próprio shell (o ConPTY redesenha a tela)
       api.escrever(a.id, "cls\r"); await esperarSaida(a, desde, 600, 10000);
-    } else a.term.clear();
+    } else if (limparDaAba(a)) a.term.clear();
     const buf0 = a.term.buffer.active, ini = buf0.baseY + buf0.cursorY;   // linha onde o comando começa
     desde = Date.now();
     if (!(await digitar(c, c.cmd))) { a.roteiro.parar = true; break; }
@@ -1916,7 +1927,8 @@ async function executarRoteiro(rot, enviar) {
       // continua paginando até o fim e o conteúdo integral fica no log da sessão (anexado ao PDF)
       if (pag <= (c.paginas || 8)) { await evidencia(env, rot.nome, a, c.mostra || c.cmd, null, c.segredos); a.roteiro.evid++; desenharRoteiro(a); }
       else if (pag > 2000) { desde = Date.now(); api.escrever(a.id, "\x03"); await esperarSaida(a, desde, 800, 5000); break; }
-      a.term.clear(); desde = Date.now(); api.escrever(a.id, " ");   // próxima página
+      if (limparDaAba(a)) a.term.clear();
+      desde = Date.now(); api.escrever(a.id, " ");   // próxima página
       await esperarSaida(a, desde);
     }
   }
@@ -1924,9 +1936,9 @@ async function executarRoteiro(rot, enviar) {
   toast(`${r.parar ? "Roteiro interrompido" : "Roteiro concluído"}: ${r.evid} evidência(s) — gere o 📄 Relatório quando quiser`);
 }
 // nomes de arquivo na saída do "dir" (Huawei: "  0  -rw-  12,345  Oct 06 2026 10:00:01   log.log.zip")
-function arquivosDoDir(term) {
+function arquivosDoDir(term, inicio) {
   const b = term.buffer.active, nomes = [];
-  for (let y = 0; y <= b.baseY + b.cursorY; y++) {
+  for (let y = inicio; y <= b.baseY + b.cursorY; y++) {
     const t = (b.getLine(y) && b.getLine(y).translateToString(true)) || "";
     const m = t.match(/^\s*\d+\s+-[rwx-]{3,}\s+[\d,]+\s+.+?\s+(\S+)\s*$/);
     if (m) nomes.push(m[1]);
@@ -2432,6 +2444,8 @@ window.addEventListener("pywebviewready", async () => {
   if (!CONTA.liberada) return;   // a porta da conta (mais abaixo) libera e dispara de novo; no window os ouvintes rodam na ordem de registro
   api = comAba(window.pywebview.api);   // chamadas do atendimento/destino levam o sid da aba ativa
   const ini = await api.inicial();
+  preferenciasLimpeza = { ...ini.cfg };
+  LIMPAR_APOS = ini.cfg.limpar_apos !== false;
   NOME = ini.cfg.nome || ""; MODO_TESTE = ini.teste || "";
   cofre = [];   // a lista do cofre só vem com o PIN do cofre (cofre_pin_abrir)
   await carregarPortas(ini.portas);
@@ -2464,7 +2478,7 @@ window.addEventListener("pywebviewready", async () => {
   $("#diag-cabo").onclick = diagnosticarCabo;
   $("#liberar-porta").onclick = () => liberarPorta();
   // barra DA GUIA: tudo age só na guia ativa (⏱ e REC também ficam no botão de cada guia)
-  LIMPAR_APOS = ini.cfg.limpar_apos !== false; GRAVAR = ini.cfg.gravar_auto !== false;
+  GRAVAR = ini.cfg.gravar_auto !== false;
   $("#tg-limpar").onclick = alternarLimpar;
   $("#tg-gravar").onclick = alternarGravar;
   $("#tg-ativa").onclick = () => alternarAtiva(A());
