@@ -1307,3 +1307,21 @@ body.ao-vivo::before { content: none; }
   70% { transform: scale(1); box-shadow: 0 0 0 0 rgba(94, 224, 181, 0); }
 }
 @media (prefers-reduced-motion: reduce) { .acao.pulsando { animation: none; outline: 2px solid var(--verde-cl); outline-offset: 1px; } }
+
+/* Mesma referência de 220px que a guia normal já usava. A faixa rola em telas estreitas. */
+#abas-sessao .aba { --largura-guia: 110px; flex: 0 0 var(--largura-guia); min-width: 0; max-width: none;
+  box-sizing: border-box; transition: flex-basis .16s ease; gap: 4px; }
+#abas-sessao .aba.ativa { --largura-guia: 220px; }
+#abas-sessao .aba.fixada { --largura-guia: 55px; justify-content: center; padding-inline: 3px; }
+#abas-sessao .aba .num { display: inline-block !important; }
+#abas-sessao .aba.fixada > :is(.nome,.tempo,.fecha,.rec,.ativa-tg) { display: none !important; }
+#abas-sessao .aba.fixada::before { content: "⚑"; font-size: 9px; color: var(--suave); }
+#menu-ctx { width: 232px; max-width: calc(100vw - 8px); max-height: calc(100vh - 8px); }
+#menu-ctx > :is(strong,small) { display: block; padding: 3px 8px; overflow-wrap: anywhere; }
+#menu-ctx small { color: var(--suave); margin-bottom: 5px; }
+#menu-ctx button, #menu-ctx select { width: 100%; text-align: left; padding: 6px 8px; }
+#menu-ctx button { border: none; background: transparent; color: var(--texto); }
+#menu-ctx button:is(:hover,:focus-visible) { background: var(--painel2); }
+.guia-previa { position: fixed; z-index: 29; pointer-events: none; width: 220px; max-width: 95vw; box-sizing: border-box;
+  background: var(--painel); border: 1px solid var(--borda); border-radius: 6px; padding: 6px 10px; overflow-wrap: anywhere; }
+@media (prefers-reduced-motion: reduce) { #abas-sessao .aba { transition: none; } }

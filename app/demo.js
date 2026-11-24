@@ -1322,38 +1322,3 @@ async function demoRodar(a) {
     await pausa(r(500, 1100));
   }
 }
-
-// ---------- menu do botão direito na aba ----------
-function menuAba(a, x, y) {
-  let m = document.getElementById("menu-ctx");
-  if (!m) { m = document.createElement("div"); m.id = "menu-ctx"; m.className = "menu-abas"; document.body.appendChild(m); }
-  const it = [], html = [];
-  const item = (rot, fn) => { html.push(`<div class="ma-item" data-i="${it.length}">${rot}</div>`); it.push(fn); };
-  const cab = (txt) => html.push(`<div style="font:700 10px Consolas,monospace;letter-spacing:.12em;text-transform:uppercase;color:var(--suave);padding:9px 10px 3px">${txt}</div>`);
-  if (a.demo) item("■ Parar demonstração", () => demoParar(a));
-  else {
-    cab(`🎬 Modo demonstração · ${Object.keys(SIMULACOES).length} simulações`);
-    for (const cat of DEMO_CATEGORIAS) {
-      const ids = Object.keys(SIMULACOES).filter((k) => SIMULACOES[k].cat === cat);
-      if (!ids.length) continue;
-      html.push(`<div style="margin:6px 8px 2px;padding-top:6px;border-top:1px solid var(--borda);font:700 11px Consolas,monospace;color:var(--verde)">${cat}</div>`);
-      for (const k of ids) {
-        const v = SIMULACOES[k];
-        item(`<span style="display:block;min-width:0;flex:1"><span style="display:block">${v.nome}</span>` +
-          `<small style="display:block;color:var(--suave);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${v.desc}</small></span>`, () => demoIniciar(a, k));
-      }
-    }
-  }
-  if (a.conectado && a.tipo !== "web" && !a.demo) item(a.gravando ? "⏸ Parar gravação…" : "⏺ Gravar esta aba…", () => menuGravacao(a));
-  item("✕ Fechar aba", () => fecharAba(a.id));
-  m.innerHTML = html.join("") +
-    (a.demo ? "" : `<div class="ma-rodape">Demonstração: só animação — não executa nada, não grava, não gera evidência. Esc para · tecla acelera.</div>`);
-  m.querySelectorAll("[data-i]").forEach((el) => (el.onclick = () => { m.classList.add("oculto"); it[+el.dataset.i](); }));
-  m.style.width = "420px"; m.style.maxHeight = "78vh"; m.style.overflowY = "auto";
-  m.style.left = Math.max(4, Math.min(x, innerWidth - 430)) + "px"; m.style.top = y + 6 + "px";
-  m.classList.remove("oculto");
-  m.style.top = Math.max(4, Math.min(y + 6, innerHeight - m.offsetHeight - 8)) + "px";
-  setTimeout(() => document.addEventListener("mousedown", function fora(e) {
-    if (!m.contains(e.target)) { m.classList.add("oculto"); document.removeEventListener("mousedown", fora); }
-  }), 0);
-}

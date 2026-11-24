@@ -247,9 +247,9 @@ function arrumarAbas() {
 function arrastavel(b) {
   b.draggable = true;
   b.addEventListener("dragstart", (e) => { b.classList.add("arrastando"); e.dataTransfer.effectAllowed = "move"; });
-  b.addEventListener("dragend", () => { b.classList.remove("arrastando"); arrumarAbas(); });
+  b.addEventListener("dragend", () => { b.classList.remove("arrastando"); arrumarAbas(); if (b.classList.contains("fixada")) salvarFixadas(); });
   b.addEventListener("dragover", (e) => {
-    const arr = document.querySelector(".aba.arrastando"); if (!arr || arr === b) return;
+    const arr = document.querySelector(".aba.arrastando"); if (!arr || arr === b || arr.classList.contains("fixada") !== b.classList.contains("fixada")) return;
     e.preventDefault();
     const r = b.getBoundingClientRect();
     b.parentNode.insertBefore(arr, e.clientX < r.left + r.width / 2 ? b : b.nextSibling);
@@ -325,6 +325,22 @@ function novaAba(tipo, idFixo) {
   });
   if (window.__portal && !idFixo) window.__portal.boasVindas(a); else boasVindas(a);
   b.oncontextmenu = (e) => { e.preventDefault(); menuAba(a, e.clientX, e.clientY); };
+  b.onpointerenter = () => {
+    if (a.id === ativa && !a.fixada) return;
+    const dica = document.createElement("div"); dica.className = "guia-previa";
+    dica.textContent = [a.nome, a.etiqueta].filter(Boolean).join(" · ");
+    const r = b.getBoundingClientRect(); dica.style.left = Math.max(4, Math.min(r.left, innerWidth - 224)) + "px";
+    dica.style.top = r.bottom + "px"; document.body.append(dica);
+    b.onpointerleave = () => dica.remove();
+    dicaGuiaAtual?.remove(); dicaGuiaAtual = dica;
+  };
+  b.tabIndex = 0;
+  b.onkeydown = e => {
+    if (e.target !== b) return;
+    if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
+      e.preventDefault(); const r = b.getBoundingClientRect(); menuAba(a, r.left, r.bottom);
+    } else if (e.key === "Enter") ativar(a.id);
+  };
   term.focus();
   return a;
 }
@@ -359,7 +375,7 @@ function ativar(id) {
   if (a.params) {
     if (a.params.porta) $("#porta").value = a.params.porta;
     if (a.params.baud) $("#baud").value = a.params.baud;
-    if (a.params.destino) $("#ssh-destino").value = a.params.destino;
+    if (a.params.destino) $(a.tipo === "web" ? "#web-url" : "#ssh-destino").value = a.params.destino;
   }
   atualizarBotaoConectar();
   $("#aba-alvo").textContent = a.conectado ? a.nome : "";
@@ -461,10 +477,114 @@ function alternarLimpar() {
   toast(novo ? "🧹 Esta guia limpa a tela depois de cada evidência" : "🧹 Esta guia não limpa mais a tela sozinha");
 }
 
+let gravacaoFixadas = Promise.resolve(), dicaGuiaAtual = null;
+function salvarFixadas() {
+  const guias = ordemAbas().map(id => abas.get(id)).filter(a => a.fixada).map(a => {
+    const tipo = a.tipo, p = a.params || {};
+    const params = {};
+    if (tipo === "serial") { params.porta = p.porta; params.baud = p.baud; }
+    if (tipo === "ssh") params.destino = p.destino;
+    if (tipo === "web" && p.destino) {
+      try {
+        const u = new URL(p.destino.includes("://") ? p.destino : "https://" + p.destino);
+        if (["http:", "https:"].includes(u.protocol)) params.destino = u.origin + u.pathname;
+      } catch (_) {}
+    }
+    return { tipo, params, etiqueta: a.etiqueta || "" };
+  });
+  gravacaoFixadas = gravacaoFixadas.then(async () => {
+    if (await api.salvar_pref("guias_fixadas", guias) === false) throw new Error();
+  }).catch(() => toast("Não foi possível guardar as guias fixadas.", "aviso"));
+}
+const CORES_GUIA = { Azul: "#69afff", Verde: "#5dd39e", Âmbar: "#edb64b", Rosa: "#ec8ab4", Roxo: "#b59bf2", Coral: "#fc9179" };
+function etiquetarGuia(a, cor) {
+  a.etiqueta = Object.hasOwn(CORES_GUIA, cor) ? cor : "";
+  a.btn.style.borderTopColor = CORES_GUIA[a.etiqueta] || "";
+}
+function restaurarGuiasFixadas(guias) {
+  if (!Array.isArray(guias)) return;
+  for (const g of guias.slice(0, 8)) {
+    if (!g || !["serial", "ssh", "web", ...DIRETOS].includes(g.tipo)) continue;
+    const a = novaAba(g.tipo);
+    if (!a) break;
+    a.params = g.params || {};
+    a.nome = a.params.destino || a.params.porta || g.tipo;
+    a.btn.querySelector(".nome").textContent = a.nome;
+    a.fixada = true; a.btn.classList.add("fixada");
+    etiquetarGuia(a, g.etiqueta);
+  }
+  if (abas.size) ativar(ordemAbas()[0]);
+}
+function fixarGuia(a) {
+  a.fixada = !a.fixada;
+  a.btn.classList.toggle("fixada", a.fixada);
+  const barra = $("#abas-sessao");
+  barra.insertBefore(a.btn, [...barra.children].find(b => b !== a.btn && !b.classList.contains("fixada")) || null);
+  arrumarAbas(); salvarFixadas();
+}
+function perguntarGuia(texto, acao) {
+  return new Promise(resolve => pedido(texto, acao, "Cancelar", resolve, undefined, true));
+}
+async function reabrirGuia(a) {
+  if (a.reabrindo || a.roteiro) return;
+  a.reabrindo = true;
+  try {
+    const params = a.params && { ...a.params };
+    if (a.conectado) {
+      if (!(await perguntarGuia(`Encerrar a sessão de <b>${esc(a.nome)}</b> e abrir outra na mesma guia? Os processos e o compartilhamento desta sessão serão encerrados.`, "Reiniciar sessão"))) return;
+      if (!abas.has(a.id)) return;
+      await api.desconectar(a.id);
+      setConectado(a, false);
+    }
+    if (abas.has(a.id)) { ativar(a.id); await conectar(a, false, params); }
+  } finally { a.reabrindo = false; }
+}
+function menuAba(a, x, y) {
+  dicaGuiaAtual?.remove();
+  document.querySelector("#menu-ctx")?.remove();
+  const m = document.createElement("div"); m.id = "menu-ctx"; m.className = "menu-abas";
+  m.setAttribute("aria-label", "Opções da guia"); document.body.append(m);
+  const titulo = document.createElement("strong"); titulo.textContent = a.nome;
+  const estado = document.createElement("small"); estado.textContent = a.tipo + " · " + ESTADOS_SESSAO[a.estadoSessao];
+  m.append(titulo, estado);
+  const item = (nome, fn) => {
+    const b = document.createElement("button"); b.textContent = nome; b.type = "button";
+    b.onclick = async () => {
+      m.remove(); if (!abas.has(a.id)) return;
+      ativar(a.id);
+      try { await fn(); } catch (e) { toast(e.message || "Falha na ação da guia", "erro"); }
+    };
+    m.append(b);
+  };
+  if (!a.demo && a.tipo !== "remoto") {
+    if (!a.roteiro && !a.reabrindo) item(a.conectado && ["login", "silenciosa", "encerrada"].includes(a.estadoSessao) ? "Reconectar sessão…" :
+      a.conectado ? "Reiniciar sessão…" : a.params ? "Reconectar sessão" : "Conectar sessão", () => reabrirGuia(a));
+    if (["serial", "ssh", "powershell", "cmd"].includes(a.tipo)) item("Skills desta guia", () => abrirRoteiros(a));
+    if (a.conectado && a.tipo !== "web") {
+      item(a.gravando ? "Gerenciar gravação" : "Gravar sessão", () => menuGravacao(a));
+      item(a.manterAtiva ? "Desligar manter ativa" : "Manter sessão ativa", () => alternarAtiva(a));
+    }
+    if (a.tipo !== "web") item(limparDaAba(a) ? "Desligar limpeza após evidência" : "Limpar após evidência", alternarLimpar);
+    item(a.fixada ? "Desafixar guia" : "Fixar guia", () => fixarGuia(a));
+  }
+  if (a.demo) item("Parar demonstração", () => demoParar(a));
+  const cor = document.createElement("select"); cor.setAttribute("aria-label", "Etiqueta da guia");
+  cor.append(new Option("Sem etiqueta", ""), ...Object.keys(CORES_GUIA).map(c => new Option(c, c)));
+  cor.value = a.etiqueta || ""; cor.onchange = () => { etiquetarGuia(a, cor.value); if (a.fixada) salvarFixadas(); m.remove(); };
+  m.append(cor);
+  item("Fechar guia", () => fecharAba(a.id));
+  m.style.left = Math.max(4, Math.min(x, innerWidth - m.offsetWidth - 4)) + "px";
+  m.style.top = Math.max(4, Math.min(y, innerHeight - m.offsetHeight - 4)) + "px";
+  m.querySelector("button").focus();
+}
+document.addEventListener("pointerdown", e => { const m = $("#menu-ctx"); if (m && !m.contains(e.target)) m.remove(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape") $("#menu-ctx")?.remove(); });
 async function fecharAba(id) {
   const a = abas.get(id); if (!a) return;
+  if (a.fixada && !(await perguntarGuia("Fechar esta guia fixada?", "Fechar guia"))) return;
   if (a.conectado) { await api.desconectar(id); if (["web", "ssh"].includes(a.tipo)) oferecerRemoverRede(); }
   a.term.dispose(); a.pane.remove(); a.btn.remove(); abas.delete(id);
+  if (a.fixada) salvarFixadas();
   try { api.aba_fechar(id); } catch (_) {}
   const eraAtiva = ativa === id;
   if (eraAtiva) { $("#historico").innerHTML = ""; ativa = null; }   // as evidências da aba fechada saem da lateral
@@ -637,10 +757,14 @@ function selecionarTipo(tipo, silencioso) {
                   gemini: "Assistente de IA (Gemini CLI)", copilot: "Assistente de IA (Copilot CLI)" };
   $("#campos-livre").classList.toggle("oculto", ["serial", "ssh", "web"].includes(tipo));   // o espaço do destino nunca some: não há "pulo" de layout
   $("#livre-txt").textContent = LIVRE[tipo] || "";
-  const a = A(); if (a && !silencioso) a.tipo = tipo;
+  const a = A(); if (a && !silencioso) {
+    if (a.tipo !== tipo) a.params = null;
+    a.tipo = tipo;
+    if (a.fixada) salvarFixadas();
+  }
 }
 
-async function conectar(a = A(), pularRede = false) {
+async function conectar(a = A(), pularRede = false, parametros = null) {
   if (!a) return;
   if (a.demo) demoParar(a);   // conectar de verdade encerra a demonstração
   if (window.__portal && !a.conectado) return window.__portal.oferecer();   // portal web sem computador: convida a conectar
@@ -649,16 +773,20 @@ async function conectar(a = A(), pularRede = false) {
     if (["web", "ssh"].includes(a.tipo)) oferecerRemoverRede();   // fim da sessão: tira o IP temporário
     return;
   }
-  if (a.tipo === "ssh" && !pularRede && $("#ssh-destino").value.trim()) {
-    const av = await api.rede_avaliar($("#ssh-destino").value.trim(), [22]);
-    if (av.ok && !av.alcanca) return abrirRede("ssh", () => conectar(a, true), av);
+  const tipo = a.tipo;
+  const { porta, baud, destino } = parametros || { porta: $("#porta").value, baud: $("#baud").value,
+    destino: $(tipo === "web" ? "#web-url" : "#ssh-destino").value.trim() };
+  if (tipo === "ssh" && !pularRede && destino) {
+    const av = await api.rede_avaliar(destino, [22]);
+    if (av.ok && !av.alcanca) return abrirRede("ssh", () => {
+      if (abas.get(a.id) === a && !a.conectado && a.tipo === tipo) conectar(a, true, { porta, baud, destino });
+    }, av);
   }
-  const tipo = a.tipo, porta = $("#porta").value, baud = $("#baud").value, destino = $("#ssh-destino").value.trim();
   if (tipo === "serial" && !porta) return toast("Conecte o cabo console e clique em ⟳", "aviso");
   if (tipo === "serial" && [...abas.values()].some((x) => x !== a && x.conectado && x.tipo === "serial" && x.alvo === porta))
     return toast(`A ${porta} já está aberta em outra aba`, "aviso");
   if (tipo === "ssh" && !destino) return toast("Informe usuario@ip", "aviso");
-  if (tipo === "web") return conectarWeb(a);
+  if (tipo === "web") return conectarWeb(a, false, destino);
   a.term.write("\x1bc");
   const versaoFechamento = a.versaoFechamento;
   const r = await api.conectar(a.id, tipo, porta, baud, destino);
@@ -679,6 +807,7 @@ async function conectar(a = A(), pularRede = false) {
   }
   a.alvo = r.alvo; a.params = { porta, baud, destino }; a.ultimoPrompt = ""; a.gravando = !!r.gravando;
   setConectado(a, true, r.nome); a.term.focus();
+  if (a.fixada) salvarFixadas();
   if (tipo === "serial") api.escrever(a.id, "\r");  // mostra o prompt / tela de login
 }
 
@@ -715,13 +844,12 @@ async function liberarPorta(porta = $("#porta").value, reconectarEm = null) {
 }
 
 // ---------- aba Web: navegador controlado sobre a área do terminal ----------
-async function conectarWeb(a, pularRede = false) {
-  const url = $("#web-url").value.trim();
+async function conectarWeb(a, pularRede = false, url = $("#web-url").value.trim()) {
   if (!url) return toast("Informe o endereço do iDRAC / iLO / iBMC", "aviso");
   if (!pularRede) {  // equipamento não responde? oferece o IP temporário na faixa dele
     toast("Verificando a rede do equipamento…");
     const av = await api.rede_avaliar(url, [443, 80, 8443]);
-    if (av.ok && !av.alcanca) return abrirRede("web", () => conectarWeb(a, true), av);
+    if (av.ok && !av.alcanca) return abrirRede("web", () => conectarWeb(a, true, url), av);
   }
   const el = $("#terminal").getBoundingClientRect(), barra = outerHeight - innerHeight;
   const rect = { x: screenX + el.left, y: screenY + barra + el.top, w: el.width, h: el.height };
@@ -732,6 +860,7 @@ async function conectarWeb(a, pularRede = false) {
   a.pane.classList.add("web"); a.painel = false; a.janelas = [];
   setConectado(a, true, r.nome);
   montarWeb(a); desenharWeb(a);
+  if (a.fixada) salvarFixadas();
   toast(`${r.navegador} aberto DENTRO do DASSH Console — use 📸 / 📤 na barra acima da página`);
 }
 
@@ -1426,7 +1555,7 @@ function avisoControle(a) {
 }
 // Aviso com 2 botões + ✕ (fecha sem fazer nada). "chave": o mesmo assunto nunca empilha — um clique repetido
 // só destaca o aviso que já está aberto. Depois de escolher, o aviso some na hora (sem esperar a ação terminar).
-function pedido(html, sim, nao, cb, chave) {
+function pedido(html, sim, nao, cb, chave, resolverFechar = false) {
   if (chave) {
     const ja = document.querySelector(`#pedidos .pedido[data-chave="${CSS.escape(chave)}"]`);
     if (ja) { ja.classList.remove("piscar"); void ja.offsetWidth; ja.classList.add("piscar"); return; }
@@ -1435,7 +1564,7 @@ function pedido(html, sim, nao, cb, chave) {
   el.innerHTML = `<button class="pedido-x" title="Fechar sem fazer nada">✕</button><p>${html}</p>
     <div class="linha-btn"><button class="btn" data-n>${nao}</button><button class="btn primario" data-s>${sim}</button></div>`;
   let feito = false;
-  const fim = (v) => { if (feito) return; feito = true; el.remove(); if (v !== null) cb(v); };
+  const fim = (v) => { if (feito) return; feito = true; el.remove(); if (v !== null || resolverFechar) cb(v); };
   el.querySelector("[data-s]").onclick = () => fim(true); el.querySelector("[data-n]").onclick = () => fim(false);
   el.querySelector(".pedido-x").onclick = () => fim(null);
   $("#pedidos").appendChild(el);
@@ -2024,8 +2153,15 @@ function arquivosDoDir(term, inicio) {
   return nomes;
 }
 const confirmar = (html) => new Promise((ok) => pedido(html, "Executar", "Cancelar", ok, "confirmar-roteiro"));
-async function abrirRoteiros() {
+let guiaDasSkills = null;
+async function abrirRoteiros(guia = null) {
+  guiaDasSkills = guia && guia.term ? guia : null;
   ROTEIROS = await api.roteiros();
+  if (guiaDasSkills) {
+    const tipo = guiaDasSkills.tipo;
+    ROTEIROS = ROTEIROS.filter(r => r.tipo === tipo || (tipo === "ssh" && r.tipo === "serial"));
+    if (!ROTEIROS.length) return toast("Nenhuma Skill cadastrada para este tipo de guia", "aviso");
+  }
   const fab = [...new Set(ROTEIROS.map((r) => r.fabricante).filter(Boolean))].sort(), f = $("#rot-filtro");
   f.innerHTML = `<option value="">Todos os fabricantes</option>` + fab.map((x) => `<option>${esc(x)}</option>`).join("");
   const fin = [...new Set(ROTEIROS.flatMap((r) => r.finalidade || []))].sort((x, y) => x.localeCompare(y)), g = $("#rot-cat");
@@ -2535,7 +2671,8 @@ window.addEventListener("pywebviewready", async () => {
   atualizarEvid(ini.evid);
   atualizarWa({ conversa: ini.cfg.conversa });
   onFila(await api.fila_status());   // envios que ficaram pendentes da última vez
-  novaAba("serial");
+  restaurarGuiasFixadas(ini.cfg.guias_fixadas);
+  if (!abas.size) novaAba("serial");
   setTimeout(async () => {   // versão nova publicada? (GET anônimo ao GitHub; nada do usuário é enviado) — app E web
     const v = await verificarVersao();
     if (v && v.ok && v.tem) avisarVersao(v);
@@ -2602,6 +2739,7 @@ window.addEventListener("pywebviewready", async () => {
   setInterval(ajustarFonte, 2000);   // segurança: troca de tema/fonte
   $("#rot-executar").onclick = () => {
     if (!rotSel) return;
+    if (guiaDasSkills && guiaDasSkills !== A()) return toast("Volte à guia em que abriu estas Skills.", "aviso");
     const marcados = [...$("#rot-cmds").querySelectorAll("[data-ci]")].filter((c) => c.checked).map((c) => +c.dataset.ci);
     if (!marcados.length) return toast("Marque pelo menos um comando da Skill", "aviso");
     if (ehConfig(rotSel)) {   // configuração: só depois da prévia + "revisei e autorizo" (e ainda confirma no executar)
