@@ -6,24 +6,26 @@
 <link rel="manifest" href="../manifest.webmanifest"><link rel="apple-touch-icon" href="../img/apple-touch-icon.png">
 <meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="DASSH">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#0d1117">
-<meta name="color-scheme" content="dark">
-<title>Plataforma web — DASSH Console</title>
+<meta name="theme-color" content="">
+<meta name="color-scheme" content="dark light">
+<title>Plataforma web — DASSH Code</title>
 <link rel="stylesheet" href="vendor/xterm.css">
 <link rel="stylesheet" href="app.css">
+<script src="aparencia.js"></script>
 </head>
 <body>
-<div id="splash"><img src="logo.svg" alt=""><b>DASSH Console</b><span>preparando o ambiente…</span><i></i></div>
+<div id="splash"><img src="logo.svg" alt=""><b>DASSH Code</b><span>preparando o ambiente…</span><i></i></div>
 <!-- Barra de SISTEMA (plataforma): o que vale para o app inteiro, por função. O que é DE UMA GUIA fica na barra da guia. -->
 <nav class="sistema" id="sistema" aria-label="Plataforma">
-  <div class="marca"><svg class="logo" id="logo" viewBox="0 0 100 100" aria-hidden="true">
-      <defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#00c896"/><stop offset="1" stop-color="#004e40"/></linearGradient></defs>
+  <div class="marca" role="img" aria-label="DASSH Code" title="DASSH Code"><svg class="logo" id="logo" viewBox="0 0 100 100" aria-hidden="true">
+      <defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="var(--marca-inicio)"/><stop offset="1" stop-color="var(--marca-fim)"/></linearGradient></defs>
       <rect x="6" y="6" width="88" height="88" rx="22" fill="url(#lg)"/>
-      <polyline points="24,30 46,50 24,70" fill="none" stroke="#fff" stroke-width="9.5" stroke-linecap="round" stroke-linejoin="round"/>
-      <rect id="logo-cursor" x="52" y="63.5" width="24" height="9" rx="4.5" fill="#fff"/>
-      <circle cx="73" cy="27" r="13" fill="#fff"/>
-      <polyline points="66.5,27.5 71.5,32.5 80,21.5" fill="none" stroke="#004e40" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round"/>
-    </svg><div><b>DASSH Console</b><small>Terminal · evidências · sessão ao vivo</small></div></div>
+      <polyline points="24,30 46,50 24,70" fill="none" stroke="var(--papel)" stroke-width="9.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <rect id="logo-cursor" x="52" y="63.5" width="24" height="9" rx="4.5" fill="var(--papel)"/>
+      <circle cx="73" cy="27" r="13" fill="var(--papel)"/>
+      <polyline points="66.5,27.5 71.5,32.5 80,21.5" fill="none" stroke="var(--marca-fim)" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg><span class="marca-nome" id="marca-nome" data-texto="DASSH Code" aria-hidden="true"><span class="mn-fantasma">DASSH Code</span><span class="mn-vivo"><span id="mn-digitado">DASSH Code</span><i class="mn-cursor"></i></span></span></div>
+  <div class="ilha-slot" id="ilha-slot" aria-hidden="true"></div><!-- lugar fixo da Ilha DASSH (ui/ilha.js): a pílula mora aqui, a expandida flutua sem mexer no layout -->
   <button class="sis-menu" id="sis-menu" aria-expanded="false" aria-controls="sis-itens" title="Menu da plataforma: sessões, biblioteca, ferramentas, conta e versão">☰<span class="rot"> Menu</span></button>
   <div class="sis-itens" id="sis-itens">
     <div class="sis-grupo" role="group" aria-label="Sessões" title="Sessões: entrar na sessão ao vivo de alguém e o celular conectado">
@@ -39,7 +41,7 @@
     </div>
     <div class="sis-grupo" role="group" aria-label="Ferramentas" title="Ferramentas: equipamentos salvos e cofre de senhas">
       <span class="sis-rot">Ferramentas</span>
-      <button class="sis-btn" id="btn-equip" title="📚 Equipamentos salvos: conectar com 1 clique, importar e exportar">📚<span class="rot"> Equipamentos</span></button>
+      <button class="sis-btn" id="btn-equip" title="📚 Selecionar, conectar, importar ou exportar equipamentos salvos">📚<span class="rot"> Equipamentos</span></button>
       <button class="sis-btn" id="btn-cofre" title="🔑 Cofre de usuários e senhas (sugere o login na hora)">🔑<span class="rot"> Cofre</span></button>
     </div>
     <div class="sis-grupo" role="group" aria-label="Conta e sistema" title="Conta e sistema: conta, armazenamento, licença e versão">
@@ -47,7 +49,7 @@
       <button class="sis-btn oculto" id="btn-conta" title="👤 Conta: entrar, sair e dados do usuário da plataforma">👤<span class="rot"> Conta</span></button>
       <button class="sis-btn oculto" id="btn-armazenamento" title="☁ Armazenamento: onde os atendimentos e evidências são salvos (Google Drive, OneDrive, Dropbox, iCloud)">☁<span class="rot"> Armazenamento</span></button>
       <button class="sis-btn" id="btn-licenca" title="🪪 Licença: ver o plano e ativar um convite">🪪<span class="rot"> Licença</span></button>
-      <button class="sis-btn versao" id="btn-versao" title="Versão do DASSH Console — clique para verificar se há atualização">ⓥ<span class="rot" id="versao-txt"> versão</span></button>
+      <button class="sis-btn versao" id="btn-versao" title="Versão do DASSH Code — clique para verificar se há atualização">ⓥ<span class="rot" id="versao-txt"> versão</span></button>
     </div>
   </div>
 </nav>
@@ -57,9 +59,10 @@
     <div class="abas" id="abas">
       <!-- seletor de conexão: categorias sempre à vista (barra segmentada) e, ao lado, os tipos da categoria escolhida -->
       <div class="cats" role="tablist" aria-label="Categorias de conexão">
-        <div class="cat sel tem-ativo" role="tab" tabindex="0" aria-selected="true" data-cat="equip" title="Equipamentos: porta serial ou endereço web"><span class="ci">🔌</span><span class="cn">Equipamentos</span></div>
+        <div class="cat sel tem-ativo" role="tab" tabindex="0" aria-selected="true" data-cat="equip" title="Serial e Web: conectar direto a uma porta serial ou a um endereço web (os equipamentos salvos ficam em 📚 Equipamentos, no topo)"><span class="ci">🔌</span><span class="cn">Serial/Web</span></div>
         <div class="cat" role="tab" tabindex="0" data-cat="shell" title="Shell: PowerShell, CMD e SSH"><span class="ci">💻</span><span class="cn">Shell</span></div>
         <div class="cat" role="tab" tabindex="0" data-cat="nuvem" title="Nuvem: CLIs de nuvem, instalam sozinhas se faltarem"><span class="ci">☁</span><span class="cn">Nuvem</span></div>
+        <div class="cat" role="tab" tabindex="0" data-cat="devops" title="DevOps: Terraform, kubectl, Helm, Docker e PowerShell 7 (instalam sozinhos se faltarem)"><span class="ci">🛠</span><span class="cn">DevOps</span></div>
         <div class="cat" role="tab" tabindex="0" data-cat="ia" title="IA: assistentes no terminal"><span class="ci">🤖</span><span class="cn">IA</span></div>
         <div class="cat" role="tab" tabindex="0" data-cat="demos" title="Demonstrações por tema"><span class="ci">🎬</span><span class="cn">Demos</span></div>
       </div>
@@ -72,15 +75,41 @@
           <button data-tipo="cmd" data-ic="⌨" data-direto="1" title="Prompt de comando (abre na hora)"><b>CMD</b></button>
           <button data-tipo="ssh" data-ic="🔐" title="SSH: usuario@ip"><b>SSH</b></button></div>
         <div class="tipos-grupo oculto" data-cat="demos"><select id="escolher-demo" aria-label="Escolher demonstração"><option value="">Escolher demonstração…</option></select></div>
+        <!-- ferramentas:inicio (gerado por tools/gerar_seletor.py; não editar à mão) -->
         <div class="tipos-grupo oculto" data-cat="nuvem">
-          <button data-tipo="azure" data-ic="☁" data-direto="1" title="Azure CLI (instala sozinho se faltar)"><b>Azure</b></button>
-          <button data-tipo="gcp" data-ic="☁" data-direto="1" title="Google Cloud CLI, gcloud (instala sozinho se faltar)"><b>Google Cloud</b></button>
-          <button data-tipo="aws" data-ic="☁" data-direto="1" title="AWS CLI (instala sozinho se faltar)"><b>AWS</b></button></div>
+          <button data-tipo="azure" data-ic="☁" data-direto="1" data-livre="Azure CLI — instala sozinho se faltar" title="Azure CLI (instala sozinho se faltar)"><b>Azure</b></button>
+          <button data-tipo="gcp" data-ic="☁" data-direto="1" data-livre="Google Cloud CLI, gcloud — instala sozinho se faltar" title="Google Cloud CLI, gcloud (instala sozinho se faltar)"><b>Google Cloud</b></button>
+          <button data-tipo="aws" data-ic="☁" data-direto="1" data-livre="AWS CLI — instala sozinho se faltar" title="AWS CLI (instala sozinho se faltar)"><b>AWS</b></button>
+          <button data-tipo="oci" data-ic="☁" data-direto="1" data-livre="Oracle Cloud, OCI CLI — instala sozinho se faltar" title="Oracle Cloud, OCI CLI (instala sozinho se faltar)"><b>Oracle Cloud</b></button>
+          <button type="button" class="mais-btn" data-mais="nuvem" aria-haspopup="menu" aria-expanded="false" aria-controls="mais-nuvem" title="Mais opções de Nuvem"><b>Mais</b><i class="mais-seta" aria-hidden="true">▾</i></button>
+          <div class="mais-lista" id="mais-nuvem" role="menu" aria-label="Mais opções de Nuvem" hidden>
+            <button type="button" role="menuitem" tabindex="-1" data-tipo="doctl" data-ic="☁" data-direto="1" data-livre="DigitalOcean, doctl — instala sozinho se faltar" title="DigitalOcean, doctl (instala sozinho se faltar)"><b>DigitalOcean</b></button>
+            <button type="button" role="menuitem" tabindex="-1" data-tipo="ibmcloud" data-ic="☁" data-direto="1" data-livre="IBM Cloud CLI — instala sozinho se faltar" title="IBM Cloud CLI (instala sozinho se faltar)"><b>IBM Cloud</b></button>
+            <button type="button" role="menuitem" tabindex="-1" data-tipo="wrangler" data-ic="☁" data-direto="1" data-livre="Cloudflare Wrangler — instala via npm se faltar" title="Cloudflare Wrangler (instala via npm se faltar)"><b>Cloudflare</b></button>
+            <button type="button" role="menuitem" tabindex="-1" data-tipo="cloudflared" data-ic="☁" data-direto="1" data-livre="Cloudflare Tunnel, cloudflared — instala sozinho se faltar" title="Cloudflare Tunnel, cloudflared (instala sozinho se faltar)"><b>Cloudflare Tunnel</b></button>
+          </div></div>
+        <div class="tipos-grupo oculto" data-cat="devops">
+          <button data-tipo="terraform" data-ic="🛠" data-direto="1" data-livre="Terraform, HashiCorp — instala sozinho se faltar" title="Terraform, HashiCorp (instala sozinho se faltar)"><b>Terraform</b></button>
+          <button data-tipo="kubectl" data-ic="🛠" data-direto="1" data-livre="kubectl, Kubernetes — instala sozinho se faltar" title="kubectl, Kubernetes (instala sozinho se faltar)"><b>kubectl</b></button>
+          <button data-tipo="helm" data-ic="🛠" data-direto="1" data-livre="Helm, gerenciador de pacotes do Kubernetes — instala sozinho se faltar" title="Helm, gerenciador de pacotes do Kubernetes (instala sozinho se faltar)"><b>Helm</b></button>
+          <button data-tipo="docker" data-ic="🛠" data-direto="1" data-livre="Docker CLI — instala sozinho se faltar" title="Docker CLI (instala sozinho se faltar)"><b>Docker</b></button>
+          <button data-tipo="pwsh" data-ic="🛠" data-direto="1" data-livre="PowerShell 7 — instala sozinho se faltar" title="PowerShell 7 (instala sozinho se faltar)"><b>PowerShell 7</b></button></div>
         <div class="tipos-grupo oculto" data-cat="ia">
-          <button data-tipo="claude" data-ic="🤖" data-direto="1" title="Claude Code (Anthropic)"><b>Claude</b><span class="cota-ia">—</span></button>
-          <button data-tipo="codex" data-ic="🤖" data-direto="1" title="Codex (OpenAI / ChatGPT)"><b>Codex</b><span class="cota-ia">—</span></button>
-          <button data-tipo="gemini" data-ic="🤖" data-direto="1" title="Gemini CLI (Google)"><b>Gemini</b><span class="cota-ia">—</span></button>
-          <button data-tipo="copilot" data-ic="🤖" data-direto="1" title="Copilot CLI (GitHub)"><b>Copilot</b><span class="cota-ia">—</span></button></div>
+          <button data-tipo="claude" data-ic="🤖" data-direto="1" data-livre="Claude Code (Anthropic)" title="Claude Code (Anthropic)"><b>Claude</b><span class="cota-ia">—</span></button>
+          <button data-tipo="codex" data-ic="🤖" data-direto="1" data-livre="Codex (OpenAI / ChatGPT)" title="Codex (OpenAI / ChatGPT)"><b>Codex</b><span class="cota-ia">—</span></button>
+          <button data-tipo="gemini" data-ic="🤖" data-direto="1" data-livre="Gemini CLI (Google)" title="Gemini CLI (Google)"><b>Gemini</b><span class="cota-ia">—</span></button>
+          <button data-tipo="copilot" data-ic="🤖" data-direto="1" data-livre="Copilot CLI (GitHub)" title="Copilot CLI (GitHub)"><b>Copilot</b><span class="cota-ia">—</span></button>
+          <button type="button" class="mais-btn" data-mais="ia" aria-haspopup="menu" aria-expanded="false" aria-controls="mais-ia" title="Mais opções de IA"><b>Mais</b><i class="mais-seta" aria-hidden="true">▾</i></button>
+          <div class="mais-lista" id="mais-ia" role="menu" aria-label="Mais opções de IA" hidden>
+            <button type="button" role="menuitem" tabindex="-1" data-tipo="ollama" data-ic="🤖" data-direto="1" data-livre="Ollama, IA local — instala sozinho se faltar" title="Ollama, IA local (instala sozinho se faltar)"><b>Ollama</b></button>
+            <button type="button" role="menuitem" tabindex="-1" data-tipo="opencode" data-ic="🤖" class="a-confirmar" aria-disabled="true" title="OpenCode: a confirmar. O comando de instalação ainda não foi conferido, então este botão fica desligado (docs/SELETOR-NUVENS-E-IAS.md)"><b>OpenCode</b><small>a confirmar</small></button>
+            <button type="button" role="menuitem" tabindex="-1" data-tipo="aider" data-ic="🤖" class="a-confirmar" aria-disabled="true" title="Aider: a confirmar. O comando de instalação ainda não foi conferido, então este botão fica desligado (docs/SELETOR-NUVENS-E-IAS.md)"><b>Aider</b><small>a confirmar</small></button>
+            <button type="button" role="menuitem" tabindex="-1" data-tipo="qwen" data-ic="🤖" class="a-confirmar" aria-disabled="true" title="Qwen Code: a confirmar. O comando de instalação ainda não foi conferido, então este botão fica desligado (docs/SELETOR-NUVENS-E-IAS.md)"><b>Qwen Code</b><small>a confirmar</small></button>
+            <button type="button" role="menuitem" tabindex="-1" data-tipo="cursor" data-ic="🤖" class="a-confirmar" aria-disabled="true" title="Cursor Agent: a confirmar. O comando de instalação ainda não foi conferido, então este botão fica desligado (docs/SELETOR-NUVENS-E-IAS.md)"><b>Cursor Agent</b><small>a confirmar</small></button>
+            <button type="button" role="menuitem" tabindex="-1" data-tipo="amazonq" data-ic="🤖" class="a-confirmar" aria-disabled="true" title="Amazon Q: a confirmar. O comando de instalação ainda não foi conferido, então este botão fica desligado (docs/SELETOR-NUVENS-E-IAS.md)"><b>Amazon Q</b><small>a confirmar</small></button>
+            <button type="button" role="menuitem" tabindex="-1" data-tipo="kiro" data-ic="🤖" class="a-confirmar" aria-disabled="true" title="Kiro: a confirmar. O comando de instalação ainda não foi conferido, então este botão fica desligado (docs/SELETOR-NUVENS-E-IAS.md)"><b>Kiro</b><small>a confirmar</small></button>
+          </div></div>
+        <!-- ferramentas:fim -->
       </div>
     </div>
     <div class="slot-con" id="slot-con" title="Destino da conexão: fica sempre neste mesmo lugar, qualquer que seja o tipo">
@@ -113,7 +142,7 @@
       <div class="abas-sessao" id="abas-sessao"></div>
       <button class="nova-aba" id="nova-aba" title="Nova aba (Ctrl+Alt+T)">＋</button>
       <button class="lista-abas oculto" id="lista-abas" title="Todas as abas abertas">▾</button>
-      <button class="nova-aba" id="dividir-guias" title="Dividir guias lado a lado" aria-label="Dividir guias lado a lado" aria-pressed="false">◫</button>
+      <button class="nova-aba" id="dividir-guias" title="Dividir guias lado a lado (Ctrl+Alt+D)" aria-label="Dividir guias lado a lado" aria-controls="terminal" aria-keyshortcuts="Control+Alt+D" aria-pressed="false"><span aria-hidden="true">◫</span><span id="divisao-resumo" aria-hidden="true" hidden><span></span><span></span></span></button>
       <!-- opções DESTA guia (a ativa): cada guia tem as suas -->
       <div class="guia-barra" id="guia-barra" role="toolbar" aria-label="Opções desta guia">
         <span class="gb-rot" id="gb-rot" title="Os botões ao lado valem só para a guia ativa — cada guia tem os seus">guia</span>
@@ -183,13 +212,13 @@
       <div class="card-tit"><span class="envio-tit">Envio <button class="info" data-info="whatsapp" title="Como conectar">i</button>
         <span class="envio-canais" id="envio-canais" role="radiogroup" aria-label="Canal de envio desta aba">
           <button type="button" class="envio-canal" data-canal="whatsapp" role="radio" aria-checked="true" title="WhatsApp: enviar as evidências desta aba para uma conversa ou grupo">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="11.5" r="9" fill="#25d366"/><path d="M4.6 21.4l1.3-4.6 3.4 2.6z" fill="#25d366"/><path d="M8.6 7.6c.4-.5 1-.5 1.3 0l.9 1.8c.2.4.1.8-.2 1.1l-.5.5c.6 1.3 1.6 2.3 2.9 2.9l.5-.5c.3-.3.7-.4 1.1-.2l1.8.9c.5.3.5.9 0 1.3-.8.8-2 1.1-3.1.6-2.3-1-4.1-2.8-5.1-5.1-.5-1.1-.2-2.3.6-3.1z" fill="#fff"/></svg>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="11.5" r="9" fill="var(--marca-whatsapp)"/><path d="M4.6 21.4l1.3-4.6 3.4 2.6z" fill="var(--marca-whatsapp)"/><path d="M8.6 7.6c.4-.5 1-.5 1.3 0l.9 1.8c.2.4.1.8-.2 1.1l-.5.5c.6 1.3 1.6 2.3 2.9 2.9l.5-.5c.3-.3.7-.4 1.1-.2l1.8.9c.5.3.5.9 0 1.3-.8.8-2 1.1-3.1.6-2.3-1-4.1-2.8-5.1-5.1-.5-1.1-.2-2.3.6-3.1z" fill="var(--papel)"/></svg>
             <i class="envio-pt" aria-hidden="true"></i></button>
           <button type="button" class="envio-canal" data-canal="telegram" role="radio" aria-checked="false" title="Telegram: enviar as evidências desta aba para um chat pelo seu bot">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="#2aabee"/><path d="M5.6 11.7l10.9-4.3c.5-.2 1 .1.8.9l-1.8 8.6c-.1.6-.6.8-1.1.5l-2.9-2.1-1.4 1.4c-.2.2-.4.2-.5 0l.2-2.9 5.3-4.8c.2-.2 0-.3-.3-.1l-6.6 4.1-2.8-.9c-.6-.2-.6-.6.2-.9z" fill="#fff"/></svg>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="var(--marca-telegram)"/><path d="M5.6 11.7l10.9-4.3c.5-.2 1 .1.8.9l-1.8 8.6c-.1.6-.6.8-1.1.5l-2.9-2.1-1.4 1.4c-.2.2-.4.2-.5 0l.2-2.9 5.3-4.8c.2-.2 0-.3-.3-.1l-6.6 4.1-2.8-.9c-.6-.2-.6-.6.2-.9z" fill="var(--papel)"/></svg>
             <i class="envio-pt" aria-hidden="true"></i></button>
           <button type="button" class="envio-canal" data-canal="email" role="radio" aria-checked="false" title="E-mail: enviar as evidências desta aba para um ou mais destinatários">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="5" width="19" height="14" rx="2.5" fill="#ea8a2e"/><path d="M4 7.2l8 5.6 8-5.6" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="5" width="19" height="14" rx="2.5" fill="var(--marca-email)"/><path d="M4 7.2l8 5.6 8-5.6" fill="none" stroke="var(--papel)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
             <i class="envio-pt" aria-hidden="true"></i></button>
         </span>
         <button class="btn mini canais-btn" id="btn-canais" title="Configuração avançada dos canais (servidor SMTP, token do bot, testes)">⚙</button></span>
@@ -365,7 +394,8 @@
           <div class="bib-ferr oculto" data-ferr="equipamentos">
             <button class="btn mini primario" id="eq-novo">＋ Novo equipamento</button>
             <button class="btn mini" id="eq-salvar-aba" title="Guarda a conexão da aba atual na lista">＋ Salvar a aba atual</button>
-            <button class="btn mini" id="importarUI-abrir" title="PuTTY, KiTTY, MobaXterm, SecureCRT, mRemoteNG, Termius, WinSCP, Windows Terminal, OpenSSH, Royal TS, RDM · CSV/JSON">⇅ Importar e exportar</button></div>
+            <button class="btn mini" id="importarUI-abrir" title="PuTTY, KiTTY, MobaXterm, SecureCRT, mRemoteNG, Termius, WinSCP, Windows Terminal, OpenSSH, Royal TS, RDM · CSV/JSON">⇅ Importar e exportar</button>
+            <select class="btn mini oculto" id="eq-ocultar-origem" aria-label="Ocultar equipamentos por origem"></select></div>
           <div class="bib-ferr oculto" data-ferr="cofre">
             <button class="btn mini primario" id="cf-nova">＋ Nova credencial</button>
             <button class="btn mini" id="cf-trocar-pin" title="Trocar o PIN do cofre">🔢 Trocar PIN</button>
@@ -380,11 +410,30 @@
         <div class="bib-chips oculto" id="bib-chips"></div>
         <small class="bib-dica-sec" id="bib-dica"></small>
         <div class="bib-painel" id="bib-painel">
+          <div class="eq-barra oculto" id="bib-acoes" role="group" aria-label="Ações da seleção"></div>
+          <div class="eq-barra oculto" id="eq-acoes" role="group" aria-label="Ações da seleção de equipamentos">
+            <button type="button" class="btn mini primario" data-eq-acao="conectar" disabled>▶ Conectar</button>
+            <button type="button" class="btn mini" data-eq-acao="editar" disabled>Editar</button>
+            <button type="button" class="btn mini" data-eq-acao="duplicar" disabled>Duplicar</button>
+            <button type="button" class="btn mini" data-eq-acao="mover" disabled>Mover de grupo</button>
+            <button type="button" class="btn mini" data-eq-acao="copiar" disabled>Copiar destino</button>
+            <button type="button" class="btn mini" data-eq-acao="remover" disabled>Remover</button>
+            <button type="button" class="btn mini oculto" data-eq-acao="desfazer" data-desfazer-importacao disabled>Desfazer esta importação</button>
+            <span id="eq-selecao" role="status" aria-atomic="true">0 selecionados</span>
+          </div>
+          <form class="eq-barra eq-lote oculto" id="eq-lote">
+            <label id="eq-lote-grupo" for="eq-grupo-destino">Novo grupo
+              <input id="eq-grupo-destino" placeholder="A/B/C (vazio para sem grupo)" autocomplete="off">
+            </label>
+            <span id="eq-lote-msg"></span>
+            <button type="submit" class="btn mini primario" id="eq-lote-ok" aria-describedby="eq-lote-msg">Confirmar</button>
+            <button type="button" class="btn mini" id="eq-lote-cancelar" aria-describedby="eq-lote-msg">Cancelar</button>
+          </form>
           <div class="eq-form oculto" id="eq-form">
-            <input id="eq-f-nome" placeholder="Nome (ex.: SW Core andar 3)">
-            <select id="eq-f-tipo"><option value="ssh">SSH</option><option value="web">Web</option><option value="serial">Serial</option></select>
-            <input id="eq-f-destino" placeholder="admin@10.0.0.1 · https://10.0.0.20 · COM3:9600">
-            <input id="eq-f-grupo" placeholder="Grupo / cliente"><input id="eq-f-obs" placeholder="Observação">
+            <input id="eq-f-nome" placeholder="Nome (ex.: SW Core andar 3)" aria-label="Nome">
+            <select id="eq-f-tipo" aria-label="Tipo"><option value="ssh">SSH</option><option value="web">Web</option><option value="serial">Serial</option><option value="powershell">PowerShell</option><option value="cmd">CMD</option></select>
+            <input id="eq-f-destino" placeholder="admin@10.0.0.1 · https://10.0.0.20 · COM3:9600" aria-label="Destino">
+            <input id="eq-f-grupo" placeholder="Grupo / cliente" aria-label="Grupo"><input id="eq-f-obs" placeholder="Observação" aria-label="Observação">
             <button class="btn primario" id="eq-f-ok">Salvar</button><button class="btn" id="eq-f-cancelar">Cancelar</button></div>
           <div class="importarUI oculto" id="importarUI">
             <div class="importarUI-topo"><b id="importarUI-titulo">📥 Importar de outra ferramenta</b>
@@ -394,12 +443,21 @@
             <div class="importarUI-fase-ferr" id="importarUI-fase-ferr">
               <div class="importarUI-sec">Arquivos do DASSH</div>
               <div class="importarUI-dassh">
-                <div class="importarUI-card achou-dassh"><span class="importarUI-ic" style="--c:#00a884">⬇</span>
+                <div class="importarUI-card achou-dassh"><span class="importarUI-ic" style="--c:var(--verde)">⬇</span>
                   <div class="importarUI-txt"><b>Planilha CSV ou backup JSON</b><small>Colunas nome, tipo, destino, grupo, obs (Excel, Google Planilhas…)</small></div>
                   <span class="importarUI-botoes"><button class="btn mini primario" id="eq-importar">Escolher arquivo…</button></span></div>
-                <div class="importarUI-card achou-dassh"><span class="importarUI-ic" style="--c:#4f8cff">⬆</span>
+                <div class="importarUI-card achou-dassh"><span class="importarUI-ic" style="--c:var(--importacao-azul)">⬆</span>
                   <div class="importarUI-txt"><b>Exportar equipamentos</b><small>Planilha CSV (abre no Excel) ou backup JSON — sem senhas</small></div>
                   <span class="importarUI-botoes"><button class="btn mini primario" id="eq-exportar">Exportar…</button></span></div>
+                <div class="importarUI-card achou-dassh bk-card"><span class="importarUI-ic" style="--c:var(--verde)">🗄</span>
+                  <div class="importarUI-txt"><b>Fazer backup dos meus dados</b><small>Equipamentos, preferências, histórico e canais de envio em um ZIP com hash. NÃO leva as senhas do cofre, os tokens das nuvens nem as chaves da conta e do celular: elas dependem do Windows deste computador.</small>
+                    <label class="ti-check"><input type="checkbox" id="bk-atend"> Levar também evidências e logs (pode ser grande)</label></div>
+                  <span class="importarUI-botoes"><button class="btn mini primario" id="bk-fazer">Fazer backup</button></span></div>
+                <div class="importarUI-card achou-dassh bk-card"><span class="importarUI-ic" style="--c:var(--importacao-azul)">♻</span>
+                  <div class="importarUI-txt"><b>Restaurar backup</b><small>Mostra uma prévia antes. O que for substituído é copiado para a pasta de segurança, nunca sobrescrito às cegas.</small></div>
+                  <span class="importarUI-botoes"><button class="btn mini" id="bk-restaurar">Restaurar…</button></span></div>
+                <div id="bk-msg" class="ajuda ti-msg" role="status" aria-live="polite"></div>
+                <div id="bk-area" class="bk-area"></div>
               </div>
               <div class="importarUI-sec">Outras ferramentas <small>sem senhas: só nome, tipo, host/porta, usuário, porta serial e pasta</small></div>
               <div id="importarUI-ferr" class="importarUI-ferr"></div>
@@ -410,8 +468,7 @@
                 <span id="importarUI-conta"></span><span id="importarUI-avisos" class="importarUI-avisos"></span></div>
               <div class="importarUI-lista"><table class="tabela eq-tab"><thead><tr><th></th><th>Nome</th><th>Tipo</th><th>Destino</th>
                 <th>Grupo / pasta</th><th>Situação</th></tr></thead><tbody id="importarUI-linhas"></tbody></table></div>
-              <div class="importarUI-rodape"><small>Sem senhas: só nome, tipo, host/porta, usuário, porta serial e pasta. Itens que já
-                existem atualizam nome/grupo.</small>
+              <div class="importarUI-rodape"><small>Itens existentes conservam os valores preenchidos. A mesclagem aproveita até uma sessão selecionada por host.</small>
                 <button class="btn primario" id="importarUI-ok">Importar selecionados</button></div>
             </div>
           </div>
@@ -420,7 +477,7 @@
             <input type="hidden" id="cf-id">
             <input id="cf-nome" placeholder="Nome (ex.: Switch BB bancada)" aria-label="Nome" required>
             <input id="cf-usuario" placeholder="Usuário (vazio se só pede senha)" aria-label="Usuário">
-            <input id="cf-senha" type="password" placeholder="Senha (vazio = manter)" aria-label="Senha" autocomplete="new-password">
+            <span class="gs-campo"><input id="cf-senha" type="password" placeholder="Senha (vazio = manter)" aria-label="Senha" autocomplete="new-password"><button type="button" class="btn mini" data-gerar-senha="cf-senha" aria-label="Gerar senha para a credencial" aria-haspopup="dialog">🎲</button></span>
             <input id="cf-alvo" placeholder="Vale para: COM8, 10.0.0.1, switch…" aria-label="Vale para">
             <button type="submit" class="btn primario">Salvar</button><button type="button" class="btn" id="cf-limpar">Cancelar</button>
           </form>
@@ -476,7 +533,7 @@
         <label class="cv-l">Para quem (contato ou grupo do WhatsApp)
           <input id="cv-para" list="cv-lista" autocomplete="off"><datalist id="cv-lista"></datalist></label>
         <div class="cv-chips" id="cv-chips"></div>
-        <label class="cv-l">Link de download do DASSH Console <small>(fica salvo para os próximos convites)</small>
+        <label class="cv-l">Link de download do DASSH Code <small>(fica salvo para os próximos convites)</small>
           <input id="cv-link" placeholder="https://github.com/…/releases/latest  ·  link do OneDrive/Drive"></label>
         <p class="ajuda">O convite pode ir para uma conversa diferente da que recebe as evidências. Quem recebe instala, clica em
           <b>🔗 Entrar</b> e digita o código; você aprova a entrada e decide quem digita (verde = ativo, amarelo = observando).</p>
@@ -512,7 +569,7 @@
         <canvas id="pdf-rub" width="560" height="180"></canvas>
         <div class="pdf-data">Data e hora: <b id="pdf-agora"></b></div>
         <button class="btn primario largo" id="pdf-assinar">✍ Assinar e datar</button>
-        <p class="ajuda">Assinatura eletrônica com certificado próprio do DASSH Console (criado para o seu nome; a chave fica
+        <p class="ajuda">Assinatura eletrônica com certificado próprio do DASSH Code (criado para o seu nome; a chave fica
           protegida pelo Windows). Qualquer alteração no PDF depois de assinado é detectada. Para assinatura
           <b>gov.br</b> ou <b>ICP-Brasil</b>, use "Abrir fora" — o quadro do outro papel continua livre.</p>
       </div>
@@ -570,10 +627,34 @@
   </div>
 </div>
 
-<!-- 👤 Tela de entrada: conta DASSH (nuvem — a mesma no site, no app e no portátil) ligada à proteção local deste computador -->
+<dialog id="gs-dialog" aria-labelledby="gs-titulo">
+  <h2 id="gs-titulo">Gerador de senha</h2>
+  <div class="gs-opcoes">
+    <label id="gs-tamanho-l">Tamanho <input id="gs-tamanho" type="number" min="10" max="128" value="20" required></label>
+    <label id="gs-simbolos-l"><input id="gs-simbolos" type="checkbox" checked> Incluir símbolos</label>
+    <label><input id="gs-frase" type="checkbox"> Frase-senha (8 palavras compostas)</label>
+  </div>
+  <label for="gs-valor">Senha gerada</label>
+  <input id="gs-valor" type="password" readonly autocomplete="off" spellcheck="false">
+  <div class="gs-acoes">
+    <button type="button" id="gs-gerar" class="btn" autofocus>Gerar outra</button>
+    <button type="button" id="gs-mostrar" class="btn" aria-pressed="false">Mostrar</button>
+    <button type="button" id="gs-copiar" class="btn">Copiar</button>
+    <button type="button" id="gs-usar" class="btn primario">Usar no campo</button>
+  </div>
+  <form id="gs-cofre" class="oculto" autocomplete="off">
+    <label for="gs-nome">Nome da credencial</label>
+    <input id="gs-nome" required maxlength="120">
+    <button type="submit" class="btn">Guardar no Cofre</button>
+  </form>
+  <p id="gs-status" role="status"></p>
+  <button type="button" id="gs-fechar" class="btn">Fechar</button>
+</dialog>
+
+<!-- 👤 Tela de entrada da conta DASSH e proteção local -->
 <div id="conta-tela" class="oculto" role="dialog" aria-modal="true" aria-labelledby="ct-tit">
   <div class="ct-caixa">
-    <div class="ct-marca"><img src="logo.svg" alt=""><div><b id="ct-tit">DASSH Console</b><small id="ct-sub">Entre na sua conta</small></div></div>
+    <div class="ct-marca"><img src="logo.svg" alt=""><div><b id="ct-tit">DASSH Code</b><small id="ct-sub">Entre na sua conta</small></div></div>
     <div class="ct-abas" role="tablist" aria-label="Entrar ou criar conta"><button type="button" role="tab" data-ctm="entrar">Entrar</button><button type="button" role="tab" data-ctm="criar">Criar conta</button></div>
     <div id="ct-sociais">
       <div class="ct-oauth" id="ct-oauth"></div>
@@ -582,7 +663,7 @@
     <form id="ct-form" autocomplete="on" novalidate>
       <label><span id="ct-rot-usuario">E-mail</span> <input id="ct-usuario" name="username" autocomplete="username" spellcheck="false" maxlength="120" required inputmode="email"></label>
       <label id="ct-l-senha"><span id="ct-rot-senha">Senha</span>
-        <span class="ct-senha-caixa"><input id="ct-senha" name="password" type="password" autocomplete="current-password" maxlength="256" required><button type="button" class="ct-olho" id="ct-olho" title="Mostrar a senha" aria-label="Mostrar a senha">👁</button></span></label>
+        <span class="ct-senha-caixa gs-campo"><input id="ct-senha" name="password" type="password" autocomplete="current-password" maxlength="256" required><button type="button" class="ct-olho" id="ct-olho" title="Mostrar a senha" aria-label="Mostrar a senha">👁</button><button type="button" class="btn mini oculto" data-gerar-senha="ct-senha" aria-label="Gerar senha para a conta" aria-haspopup="dialog">🎲</button></span></label>
       <label id="ct-l-senha2" class="oculto">Repita a senha <input id="ct-senha2" type="password" autocomplete="new-password" maxlength="256"></label>
       <label id="ct-l-rec" class="oculto">Chave de recuperação <input id="ct-rec" spellcheck="false" autocomplete="off" placeholder="XXXX-XXXX-XXXX-XXXX-XXXX-XXXX"></label>
       <label id="ct-l-local" class="oculto"><span id="ct-rot-local">Senha da conta local deste computador</span> <input id="ct-senha-local" type="password" autocomplete="off" maxlength="256"></label>
@@ -608,19 +689,39 @@
 <!-- 👤 Conta: abrirConta() -->
 <div class="modal oculto" id="modal-conta">
   <div class="janela conta-janela">
-    <div class="jan-topo"><b>👤 Conta</b><button class="sug-x" data-fecha>✕</button></div>
+    <div class="jan-topo"><b id="conta-tit">👤 Conta</b><button class="sug-x" data-fecha>✕</button></div>
     <div class="jan-corpo">
       <div class="conta-info" id="conta-info"></div>
-      <div class="conta-acoes"><button class="btn" id="conta-bloquear" title="Tranca a tela; a sessão termina e é preciso a senha para voltar">🔒 Bloquear agora</button>
+      <label class="conta-aparencia">Aparência <select data-aparencia><option value="automatico">Automático</option><option value="escuro" selected>Escuro</option><option value="claro">Claro</option></select></label>
+      <div class="conta-acoes" id="conta-acoes"><button class="btn" id="conta-bloquear" title="Tranca a tela; a sessão termina e é preciso a senha para voltar">🔒 Bloquear agora</button>
         <button class="btn" id="conta-sair-todas" title="Encerra todas as sessões abertas (app e navegador)">Sair de todas as sessões</button></div>
+      <form class="form" id="conta-politica" autocomplete="off" novalidate>
+        <b>Sessão e inatividade</b>
+        <label>Bloquear a tela após <select id="cp-ociosa"><option value="15">15 min sem uso</option><option value="30">30 min sem uso</option><option value="60">1 hora sem uso</option><option value="240">4 horas sem uso</option><option value="0">Nunca</option></select></label>
+        <label>Encerrar a sessão de vez após <select id="cp-idade"><option value="12">12 horas</option><option value="168">7 dias</option><option value="720">30 dias</option><option value="0">Nunca</option></select></label>
+        <label id="cp-senha-bloco" class="oculto">Confirme a senha para desligar a expiração <input id="cp-senha" type="password" autocomplete="current-password"></label>
+        <p class="ajuda">Ao bloquear, as suas conexões continuam abertas e só a senha destranca. "Nunca" deixa o app sem trava neste computador: use só em máquina sua e com a tela do Windows protegida.</p>
+        <div style="display:flex;gap:8px;align-items:center"><button type="submit" class="btn primario">Salvar</button><span id="cp-msg" class="ajuda"></span></div>
+      </form>
       <form class="form" id="conta-troca" autocomplete="off" novalidate>
         <b>Trocar senha</b>
         <label>Senha atual <input id="cs-atual" type="password" autocomplete="current-password"></label>
-        <label>Senha nova <input id="cs-nova" type="password" autocomplete="new-password"></label>
+        <label>Senha nova <span class="gs-campo"><input id="cs-nova" type="password" autocomplete="new-password"><button type="button" class="btn mini" data-gerar-senha="cs-nova" aria-label="Gerar senha nova" aria-haspopup="dialog">🎲</button></span></label>
         <label>Repita a senha nova <input id="cs-nova2" type="password" autocomplete="new-password"></label>
         <div style="display:flex;gap:8px;align-items:center"><button type="submit" class="btn primario">Trocar senha</button><span id="cs-msg" class="ajuda"></span></div>
       </form>
-      <h4 class="cel-tit">Entrar com outra conta</h4>
+      <section class="cm" id="conta-metodos" aria-labelledby="cm-tit">
+        <h4 class="cel-tit" id="cm-tit">Métodos de login</h4>
+        <p class="ajuda" id="cm-ajuda">Uma conta só: vincule Google, GitHub e e-mail e, entrando por qualquer um deles, você cai no mesmo perfil e nos mesmos dados.</p>
+        <div id="cm-lista" class="armaz-lista cm-lista" role="list" aria-label="Métodos de login"></div>
+        <form class="form oculto" id="cm-reaut" autocomplete="off" novalidate>
+          <label>Confirme a sua senha para continuar <input id="cm-senha" type="password" autocomplete="current-password"></label>
+          <div style="display:flex;gap:8px;align-items:center"><button type="submit" class="btn primario">Continuar</button><button type="button" class="btn" id="cm-reaut-cancelar">Cancelar</button></div>
+        </form>
+        <div id="cm-msg" class="ajuda cm-msg" role="status" aria-live="polite"></div>
+      </section>
+      <section class="cm ti" id="conta-titular" aria-labelledby="ti-tit"></section>
+      <h4 class="cel-tit" id="conta-outra-tit">Entrar com outra conta</h4>
       <div id="conta-oauth" class="conta-oauth"></div>
     </div>
   </div>
@@ -633,10 +734,18 @@
     <div class="jan-corpo">
       <div id="armaz-atual" class="armaz-atual"></div>
       <label class="rot-opc"><input type="checkbox" id="armaz-so-aba"> Só nesta aba (as outras abas continuam salvando onde estão)</label>
+      <section class="nuv" aria-labelledby="nuv-tit">
+        <h3 id="nuv-tit">Conectar minha nuvem (login)</h3>
+        <p class="ajuda" id="nuv-ajuda"></p>
+        <div id="nuv-lista" class="armaz-lista nuv-lista" role="list" aria-label="Nuvens"></div>
+        <div id="nuv-destino"></div>
+        <div id="nuv-msg" class="ajuda" role="status" aria-live="polite"></div>
+      </section>
+      <h3 style="font-size:14px;margin:6px 0">Pasta sincronizada (aplicativo instalado)</h3>
       <div id="armaz-lista" class="armaz-lista"></div>
       <p class="ajuda">Usa o aplicativo de sincronização que já está no computador: o DASSH salva os atendimentos e evidências na pasta
         escolhida e o próprio Drive/OneDrive/Dropbox/iCloud envia para a nuvem. Nenhuma senha passa pelo DASSH.
-        Conexão direta pelas APIs (sem o aplicativo instalado) virá com o servidor de contas.</p>
+        Para conectar direto pelo login da conta (sem o aplicativo instalado), use o bloco acima.</p>
     </div>
   </div>
 </div>
@@ -644,8 +753,11 @@
 <div id="toast"></div>
 <script src="vendor/xterm.js"></script>
 <script src="vendor/addon-serialize.js"></script>
+<script src="pwa-celular.js" defer></script>
+<script src="ilha.js"></script>
 <script src="ponte-agente.js"></script>
 <script src="app.js"></script>
 <script src="demo.js"></script>
+<script src="titular.js"></script>
 </body>
 </html>

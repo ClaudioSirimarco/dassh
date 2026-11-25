@@ -1,4 +1,4 @@
-// Ponte web: roda a interface REAL do DASSH Console (index.html + app.js) no navegador, como observador de uma sessão
+// Ponte web: roda a interface REAL do DASSH Code (index.html + app.js) no navegador, como observador de uma sessão
 // compartilhada. Substitui o backend Python (window.pywebview.api) pelo protocolo dassh/v2 (v1 como reserva; mesmo do compartilhar.py):
 // cada código = um tópico próprio (sessões independentes); vários observadores por sessão, cada um aprovado pelo dono.
 // Nada do computador de quem compartilha (cofre, outras abas, pastas, WhatsApp) é exposto: só o shell compartilhado.
@@ -244,7 +244,7 @@ class Convidado {
 }
 
 const sessoes = new Map();
-const SO_NO_APP = { ok: false, erro: "Disponível no DASSH Console instalado. Aqui você acompanha a sessão compartilhada." };
+const SO_NO_APP = { ok: false, erro: "Disponível no DASSH Code instalado. Aqui você acompanha a sessão compartilhada." };
 const api = {
   inicial: async () => ({
     cfg: { nome: lsGet("dassh-nome", ""), baud: 9600, tema: lsGet("dassh-tema", "dassh"), conversa: "", limpar_apos: true },

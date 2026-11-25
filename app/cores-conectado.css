@@ -1,0 +1,56 @@
+/* Cores usadas pelo modo Conectado e pela plataforma completa. */
+:root {
+  --texto: #e6edf3;
+  --verde-cl: #5ee0b5;
+  --superficie-recuada: #0b0f14;
+  --midia-fundo: #000;
+  --gravacao: #ff6b6b;
+  --cel-sucesso-fundo: #0f2a20;
+  --cel-sucesso-borda: #1d5f45;
+  --cel-acento: #00dc78;
+  --cel-aviso: #f0c674;
+  --campo-fundo: #0f151c;
+  --cel-painel: #131a22;
+  --cel-borda: #233041;
+  --cel-suave: #8b98a8;
+  --cel-link: #6cb6ff;
+  --cel-estado: #1c2430;
+  --cel-aviso-borda: #5f4f1d;
+  --cel-aviso-fundo: #2a240f;
+  --cel-campo: #0e141b;
+  --cel-botao: #223041;
+  --cel-sobre-acento: #04140d;
+  --cel-perigo-fundo: #3a1d22;
+  --cel-tecla: #1a2330;
+  --sombreado-45: rgba(0,0,0,.45);
+  --sombreado-50: rgba(0,0,0,.5);
+  --cel-vidro-94: rgba(11,15,20,.94);
+  --terminal-remoto-texto: #d8dee9;
+  --terminal-remoto-cursor: #00dc78;
+}
+:root[data-tema="claro"] {
+  --texto: #182c32;
+  --verde-cl: #005c47;
+  --superficie-recuada: #eff4f5;
+  --gravacao: #ac2334;
+  --cel-sucesso-fundo: #ddf3e8;
+  --cel-sucesso-borda: #51856d;
+  --cel-acento: #00664c;
+  --cel-aviso: #76520a;
+  --campo-fundo: #f8fafb;
+  --cel-painel: #ffffff;
+  --cel-borda: #72858c;
+  --cel-suave: #465a63;
+  --cel-link: #205f91;
+  --cel-estado: #e5edf0;
+  --cel-aviso-borda: #8e7333;
+  --cel-aviso-fundo: #fff1d0;
+  --cel-campo: #f6f9fa;
+  --cel-botao: #e2eaed;
+  --cel-sobre-acento: #ffffff;
+  --cel-perigo-fundo: #fbe6ea;
+  --cel-tecla: #eaf0f3;
+  --sombreado-45: rgba(20,42,52,.45);
+  --sombreado-50: rgba(20,42,52,.5);
+  --cel-vidro-94: rgba(246,250,251,.94);
+}

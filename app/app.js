@@ -1,6 +1,6 @@
-// DASSH Console — interface (abas de sessão, cofre, histórico, evidências, WhatsApp)
+// DASSH Code — interface (abas de sessão, cofre, histórico, evidências, WhatsApp)
 const $ = (s) => document.querySelector(s);
-const pad2 = (n) => String(n).padStart(2, "0");
+const pad2 = (n) => String(Number.isFinite(Number(n)) ? Math.trunc(Number(n)) : 0).padStart(2, "0"); // M05: sempre dígitos (nunca marcação do manifesto)
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
 // Temas do terminal: o atual + os esquemas de cor mais usados por devs/suporte (Windows Terminal, VS Code, iTerm2).
@@ -27,6 +27,12 @@ const TEMAS = {
   solarized: { nome: "Solarized Dark", fonte: "Consolas", t: { background: "#002b36", foreground: "#839496", cursor: "#93a1a1",
     selectionBackground: "#073642", ...ANSI(["#073642", "#dc322f", "#859900", "#b58900", "#268bd2", "#d33682", "#2aa198", "#eee8d5",
     "#002b36", "#cb4b16", "#586e75", "#657b83", "#839496", "#6c71c4", "#93a1a1", "#fdf6e3"]) } },
+  papel: { nome: "Papel claro", claro: true, fonte: "Consolas", t: { background: "#f7fafb", foreground: "#1c303b", cursor: "#005741",
+    selectionBackground: "#a9d3e5", selectionForeground: "#142b38", ...ANSI(["#172c36", "#a3283c", "#216436", "#795400", "#215897", "#7c3e86", "#106575", "#53626b",
+    "#465862", "#b0213e", "#00703f", "#855300", "#174da7", "#873672", "#006979", "#45515c"]) } },
+  marfim: { nome: "Marfim", claro: true, fonte: "'Cascadia Mono', Consolas", t: { background: "#fff7e6", foreground: "#362f25", cursor: "#714318",
+    selectionBackground: "#e6cf9d", selectionForeground: "#372914", ...ANSI(["#31291e", "#a13425", "#426129", "#795013", "#355489", "#783d74", "#1d6261", "#615c51",
+    "#524a40", "#a02f38", "#346529", "#82500a", "#284d96", "#82356d", "#006865", "#534e43"]) } },
   fosforo: { nome: "Retrô (fósforo verde)", fonte: "'Courier New'", t: { background: "#050a05", foreground: "#33ff66", cursor: "#33ff66",
     selectionBackground: "#1f4d2a", ...ANSI(["#050a05", "#66ff99", "#33ff66", "#99ff99", "#22cc55", "#55ee88", "#88ffaa", "#33ff66",
     "#1f7a3a", "#88ffaa", "#66ff99", "#ccffcc", "#44dd77", "#77ffaa", "#aaffcc", "#e6ffe6"]) } },
@@ -46,9 +52,12 @@ function abrirTemas() {
   if (!pop.classList.contains("oculto")) return pop.classList.add("oculto");
   g.innerHTML = "";
   Object.entries(TEMAS).forEach(([id, tm]) => {
-    const t = tm.t, d = document.createElement("div");
+    const t = tm.t, d = document.createElement("button");
+    d.type = "button";
+    d.setAttribute("aria-label", tm.nome);
     const emUso = (A() && A().tema) || temaAtual;   // tema POR ABA: marca o da aba ativa
     d.className = "tp-item" + (id === emUso ? " sel" : "");
+    d.setAttribute("aria-pressed", String(id === emUso));
     d.innerHTML = `<div class="tp-prev" style="background:${t.background};color:${t.foreground};font-family:${tm.fonte},monospace">` +
       `<span style="color:${t.green}">&lt;SW-CORE&gt;</span>display version\n` +
       `Huawei <span style="color:${t.cyan}">YunShan OS</span> 1.24\n` +
@@ -75,6 +84,7 @@ function mostrarTemaAtivo() {
   const a = A(); if (!a || !a.T) return;
   TEMA = a.T; PALETA = a.P;
   document.documentElement.style.setProperty("--term", a.T.background);
+  document.documentElement.style.setProperty("--term-escuro", TEMAS[a.tema].claro ? "var(--superficie-recuada)" : a.T.background);
   const sel = document.querySelector("#tema"); if (sel) sel.value = a.tema;
 }
 function aplicarTema(id, salvar) {
@@ -89,7 +99,10 @@ function aplicarTema(id, salvar) {
 // nomes próprios como o fabricante escreve (Azure, Google Cloud, PowerShell).
 const NOMES_TIPO = { serial: "Serial", powershell: "PowerShell", cmd: "CMD", ssh: "SSH", web: "Web", remoto: "Remoto",
   aws: "AWS", azure: "Azure", gcp: "Google Cloud", gcloud: "Google Cloud",
-  claude: "Claude Code", codex: "Codex", gemini: "Gemini CLI", copilot: "Copilot CLI" };
+  claude: "Claude Code", codex: "Codex", gemini: "Gemini CLI", copilot: "Copilot CLI",
+  // Nuvem, DevOps e IA local (catálogo único: ferramentas_cli.py)
+  oci: "Oracle Cloud", doctl: "DigitalOcean", ibmcloud: "IBM Cloud", wrangler: "Cloudflare", cloudflared: "Cloudflare Tunnel",
+  terraform: "Terraform", kubectl: "kubectl", helm: "Helm", docker: "Docker", pwsh: "PowerShell 7", ollama: "Ollama" };
 const nomeTipo = (t) => NOMES_TIPO[String(t || "").toLowerCase()] || (t ? String(t).charAt(0).toUpperCase() + String(t).slice(1) : "");
 let NOME = "";  // nome do técnico (aparece no compartilhamento)
 const RE_USER = /(user ?name|login|usu[aá]rio)\s*:\s*$/i;
@@ -100,65 +113,88 @@ const abas = new Map();
 const A = () => abas.get(ativa);
 
 // ================= utilidades =================
-function toast(msg, cls = "") {
+// Avisos: há UM só toast. Um aviso novo SUBSTITUI o anterior; o de progresso ({ fixo: true }) fica até ser substituído ou fechado.
+function toast(msg, cls = "", { fixo = false } = {}) {
   const t = $("#toast"); t.textContent = msg; t.className = "mostrar " + cls;
-  clearTimeout(toast._t); toast._t = setTimeout(() => (t.className = cls), 3800);
+  clearTimeout(toast._t); toast._fixo = fixo;
+  if (!fixo) toast._t = setTimeout(() => (t.className = cls), 3800);
 }
+function toastFechar() { const t = $("#toast"); clearTimeout(toast._t); toast._fixo = false; t.className = ""; }
+// plural em português: pl(1, "evidência") -> "1 evidência"; pl(0, "evidência") -> "0 evidências"; pl(2, "gravação", "gravações")
+const pl = (n, sing, plur) => `${n} ${n === 1 ? sing : plur || sing + "s"}`;
+// nome de arquivo longo com reticências no MEIO (mantém o começo e a extensão); o nome inteiro vai no title e no botão "Copiar nome"
+function nomeNoMeio(nome, max = 30) {
+  if (nome.length <= max) return nome;
+  const fim = Math.max(10, Math.floor(max / 3)); return nome.slice(0, max - fim - 1) + "…" + nome.slice(-fim);
+}
+document.addEventListener("click", (ev) => {
+  const b = ev.target.closest && ev.target.closest("[data-copiar-nome]"); if (!b) return;
+  navigator.clipboard.writeText(b.dataset.copiarNome).then(() => toast("📋 Nome do arquivo copiado"), () => toast("Não foi possível copiar", "erro"));
+});
 const abrirModal = (id) => $(id).classList.remove("oculto");
 const fecharModal = (el) => el.closest(".modal").classList.add("oculto");
 
 // ================= terminal sempre inteiro na tela =================
-// O terminal é fixo em 100x30 (padrão da evidência). Em vez de cortar quando a janela diminui, a FONTE se ajusta
-// ao espaço disponível (9 a 17 px) — vale para todas as abas, ao redimensionar, trocar de aba ou de tema.
+// Em guia única, a fonte se ajusta ao espaço e a grade fica em 100 × 30.
+// Nos painéis, a grade também se adapta para preservar a leitura.
 function ajustarFonte() {
   const box = $("#terminal"); if (!box || !box.clientWidth) return;
   const cs = getComputedStyle(box);
   const larguraTotal = box.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) - 6;
-  const alturaTotal = box.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom) - 3;   // a conta é exata: 3 px de folga bastam
+  const alturaTotal = box.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom) - 3;
   if (paineis.length && !cabeDivisao()) mostrarPaineis([]);
-  const W = paineis.length ? (larguraTotal - 12) / 2 : larguraTotal;
-  const H = alturaTotal - (paineis.length ? 24 : 0);
+  const W = larguraTotal, H = alturaTotal;
   // celular em pé: fonte legível fixa e o terminal (100 colunas) vira uma faixa larga que se arrasta para os lados
   const retrato = matchMedia("(max-width: 600px) and (orientation: portrait)").matches;
   abas.forEach((a) => {
     if (a.tipo === "web" && a.conectado) return;
+    if (paineis.includes(a.id)) { ajustarPainel(a); return; }
+    redimensionarGuia(a, 100, 30);
     if (retrato) { if (a.term.options.fontSize !== 10) a.term.options.fontSize = 10; return; }
-    // DETERMINÍSTICO: o tamanho depende só do espaço (W x H), das colunas/linhas e da fonte — nunca do tamanho atual.
-    // Antes a conta partia da célula medida no tamanho atual; no navegador (zoom/escala 125-150%) a célula não cresce de forma
-    // linear com a fonte e o resultado alternava entre dois valores (a fonte "pulsava"). Aqui: do maior ao menor, o 1º que cabe.
-    const minimo = paineis.length || innerWidth < 700 ? 5 : 9;   // celular: a evidência continua 100x30, então a fonte encolhe para caber inteira
-    let alvo = minimo;
-    const espaco = Math.round(W) + "x" + Math.round(H), teto = (a._teto && a._teto[espaco]) || 17;
-    for (let f = teto; f >= minimo; f -= 0.25) {   // passo fino: a altura da linha do xterm "pula" em px do aparelho
-      const c = medirCelula(a.term, f);   // tamanho EXATO que o xterm vai desenhar (mesma conta dele)
-      if (c.telaW <= W && c.telaH <= H) { alvo = f; break; }
-    }
+    const minimo = innerWidth < 700 ? 5 : 9;   // preserva a grade 100 × 30 em telas estreitas
+    const alvo = calcularFonteTerminal(a.term, W, H, 100, 30, minimo);
     if (alvo !== a.term.options.fontSize) a.term.options.fontSize = alvo;
-    // trava que SÓ DESCE: se o terminal real não coube neste espaço, guarda um teto menor para este espaço (nunca sobe sozinho)
-    requestAnimationFrame(() => {
-      const tela = a.pane && a.pane.querySelector(".xterm-screen"); if (!tela || a.pane.style.display === "none") return;
-      const r = tela.getBoundingClientRect();
-      if ((r.width > W + 6 || r.height > H + 6) && a.term.options.fontSize > minimo) {
-        (a._teto || (a._teto = {}))[espaco] = a.term.options.fontSize - 0.5; a.term.options.fontSize -= 0.5;
-      }
-    });
   });
 }
-// Mede a célula e a tela (.xterm-screen) com a MESMA conta do xterm.js (CharSizeService + DomRenderer._updateDimensions):
-//   largura do "W" no canvas (fracionária, sem arredondar) · altura = fontBoundingBoxAscent + Descent;
-//   altura do caractere em px do aparelho = ceil(h·dpr) · célula = floor(isso·lineHeight) · tela = round(célula·linhas/dpr).
-// Antes a estimativa arredondava a LARGURA para cima no pixel do aparelho e usava uma altura aproximada (×1,18) + fator de
-// calibração congelado no 1º tamanho medido + 3% de folga: com escala 100% (navegador num monitor comum, zoom) o "ceil" valia
-// até 1 px inteiro por coluna e a fonte saía 1–2 px menor que no app a 150% para o MESMO espaço. Agora é exato em qualquer escala.
-function medirCelula(term, fs = term.options.fontSize) {
+function ajustarPainel(a) {
+  const W = a.pane.offsetWidth - 20;
+  const H = a.pane.offsetHeight - a.cabPainel.offsetHeight - 4;
+  if (W < 1 || H < 1) return;
+  // Prioriza 80 colunas e 30 linhas; sob pressão mantém 12 px e ajusta a grade.
+  const fonte = calcularFonteTerminal(a.term, W, H, 80, 30, 12);
+  const c = medirCelula(a.term, fonte);
+  if (a.term.options.fontSize !== fonte) a.term.options.fontSize = fonte;
+  redimensionarGuia(a, Math.max(2, Math.min(100, Math.floor(W / c.width))),
+    Math.max(1, Math.min(30, Math.floor(H / c.height))));
+}
+function redimensionarGuia(a, cols, rows) {
+  if (a.term.cols !== cols || a.term.rows !== rows) a.term.resize(cols, rows);
+  if (!a.conectado || !a.histId || !api) return;
+  const chave = a.histId + ":" + cols + "x" + rows;
+  if (a.gradeEnviada === chave) return;
+  const id = a.histId;
+  a.gradeEnviada = chave;
+  a.envioGrade = (a.envioGrade || Promise.resolve()).then(async () => {
+    if (a.histId !== id || !a.conectado || a.gradeEnviada !== chave) return;
+    if (await api.terminal_grade(a.id, id, cols, rows) === false && a.gradeEnviada === chave) a.gradeEnviada = null;
+  }).catch(() => { if (a.gradeEnviada === chave) a.gradeEnviada = null; });
+}
+function calcularFonteTerminal(term, largura, altura, cols, rows, minimo) {
+  for (let fonte = 17; fonte > minimo; fonte -= 0.25) {
+    const c = medirCelula(term, fonte);
+    if (Math.round(c.width * cols) <= largura && Math.round(c.height * rows) <= altura) return fonte;
+  }
+  return minimo;
+}
+function medirCelula(term, fonte) {
   const c = medirCelula.c || (medirCelula.c = document.createElement("canvas").getContext("2d"));
-  const dpr = window.devicePixelRatio || 1, lh = term.options.lineHeight || 1;
-  c.font = `${fs}px ${term.options.fontFamily}`;
+  const lh = term.options.lineHeight || 1;
+  c.font = `${fonte}px ${term.options.fontFamily}`;
   const m = c.measureText("W");
-  const alt = (m.fontBoundingBoxAscent + m.fontBoundingBoxDescent) || fs * 1.17;   // navegador sem as métricas: aproximação
-  const devCel = Math.floor(Math.ceil(alt * dpr) * lh);
-  return { width: m.width, height: devCel / dpr,
-           telaW: Math.round(m.width * term.cols), telaH: Math.round(devCel * term.rows / dpr) };
+  const altura = (m.fontBoundingBoxAscent + m.fontBoundingBoxDescent) || fonte * 1.17;
+  // Em escalas a partir de DPR 1, o arredondamento do xterm acrescenta até 1 px CSS por linha,
+  // antes de aplicar o lineHeight. Reserve essa folga em todas as escalas.
+  return { width: m.width, height: (altura + 1) * lh };
 }
 let _ajTimer = null;
 const ajustarDepois = () => { clearTimeout(_ajTimer); _ajTimer = setTimeout(ajustarFonte, 60); };
@@ -210,6 +246,7 @@ function comAba(base) {
       if (args.length > n) return f.apply(t, args);
       while (args.length < n) args.push(null);
       args.push(ativa || null);
+      if (nome === "relatorio_gerar") args.push(A()?.etiqueta || null);
       return f.apply(t, args);
     };
   } });
@@ -221,6 +258,7 @@ window.termWrite = (sid, d) => {
   if (!a) return;
   a.ultimaEscrita = Date.now();
   a.term.write(d, () => {
+    if (a.conectado && !a.demo) chatFamiliaDetectada(a);
     if (!TIPOS_IA.includes(a.tipo)) return observarSessao(a);
     if (a.timerCota) return;
     a.timerCota = setTimeout(() => {
@@ -234,7 +272,7 @@ window.onDesconectado = (sid, motivo) => {
   const a = abas.get(sid); if (!a) return;
   a.versaoFechamento = (a.versaoFechamento || 0) + 1;
   setConectado(a, false); a.term.write(`\r\n\x1b[33m[${motivo}]\x1b[0m\r\n`); toast(`${a.nome}: ${motivo}`, "aviso");
-  if (!/^(?:Sessão (?:SSH )?encerrada\.?|Conexão cancelada\.|O dono encerrou o compartilhamento\.)$/i.test(motivo)) estadoDaSessao(a, "falha");
+  if (!/^(?:Sessão (?:SSH )?encerrada\.?|Conexão cancelada\.|O dono encerrou o compartilhamento\.)$/i.test(motivo)) { estadoDaSessao(a, "falha"); ilhaQueda(a, motivo); }
   if (a.tipo === "serial" && /lixo|perdida/i.test(motivo)) diagnosticarCabo();
 };
 
@@ -243,8 +281,27 @@ window.onDesconectado = (sid, motivo) => {
 // e o botão ▾ com a lista de todas as abas (estado, tempo, gravação) quando há 3 ou mais.
 const ordemAbas = () => [...document.querySelectorAll("#abas-sessao .aba")].map((b) => b.dataset.id).filter((id) => abas.has(id));
 function arrumarAbas() {
-  ordemAbas().forEach((id, i) => { const a = abas.get(id); a.btn.querySelector(".num").textContent = i + 1;
-    a.btn.title = `${a.nome}${a.equip ? " — " + a.equip : ""}  (Ctrl+Alt+${i + 1})`; });
+  const ordem = ordemAbas();
+  const resumo = $("#divisao-resumo"), botaoDivisao = $("#dividir-guias");
+  resumo.hidden = !paineis.length;
+  const descricao = paineis.map((id, i) => {
+    const n = ordem.indexOf(id) + 1, foco = id === ativa;
+    const selo = resumo.children[i];
+    selo.textContent = `${i === 0 ? "E" : "D"}${n}`;
+    selo.classList.toggle("painel-foco", foco);
+    return `Painel ${i === 0 ? "esquerdo" : "direito"}, guia ${n}${foco ? " com foco" : ""}`;
+  }).join(". ");
+  if (descricao) botaoDivisao.setAttribute("aria-description", descricao);
+  else botaoDivisao.removeAttribute("aria-description");
+  ordem.forEach((id, i) => { const a = abas.get(id); a.btn.querySelector(".num").textContent = i + 1;
+    const painel = paineis.indexOf(id);
+    a.btn.title = `${a.nome}${a.equip ? " — " + a.equip : ""}  (Ctrl+Alt+${i + 1})`;
+    if (painel >= 0) {
+      const lado = painel === 0 ? "Esquerdo" : "Direito";
+      a.btn.title += ` · Painel ${lado.toLowerCase()}${id === ativa ? " com foco" : ""}`;
+      a.cabPainel.textContent = `${lado} · guia ${i + 1} · ${a.nome}${id === ativa ? " · em foco" : ""}`;
+    }
+  });
   $("#abas-sessao").classList.toggle("muitas", abas.size >= 4);
   document.querySelector(".term-barra").classList.toggle("muitas", abas.size >= 4);
   $("#lista-abas").classList.toggle("oculto", abas.size < 3);
@@ -292,20 +349,22 @@ function novaAba(tipo, idFixo) {
   if (abas.size >= 8) return toast("Máximo de 8 abas", "aviso");
   const id = idFixo || "t" + (++seq);   // idFixo: aba aberta pelo celular (o Python já criou a sessão com esse id)
   const pane = document.createElement("div"); pane.className = "term-pane"; $("#terminal").appendChild(pane);
-  const fsAtual = ([...abas.values()].find((x) => x.term && x.tipo !== "web") || { term: { options: { fontSize: 15 } } }).term.options.fontSize;
+  const cabPainel = document.createElement("div");
+  cabPainel.className = "term-painel-cab"; pane.append(cabPainel);
+  const fsAtual = [...abas.values()].find(x => x.tipo !== "web" && !paineis.includes(x.id))?.term.options.fontSize || 15;
   const origem = A();   // aba nova herda da ativa: tema, atendimento (cliente/visita/chamado) e destino de envio
   const ocupados = new Set([...abas.values()].map(aba => aba.lugar));
   const lugar = [1, 2, 3, 4, 5, 6, 7, 8].find(n => !ocupados.has(n));
   const temaIni = (origem && origem.tema) || temaAtual;
   const term = new Terminal({ cols: 100, rows: 30, fontFamily: TEMAS[temaIni].fonte + ", 'Courier New', monospace", fontSize: fsAtual,
     lineHeight: 1.05, cursorBlink: true, scrollback: 5000, theme: TEMA, allowProposedApi: true });
-  const a = { id, term, pane, tipo: tipo || tipoTopo(), conectado: false, nome: "Nova aba", alvo: null, params: null,
+  const a = { id, term, pane, cabPainel, tipo: tipo || tipoTopo(), conectado: false, nome: "Nova aba", alvo: null, params: null,
               lugar, limparApos: preferenciasLimpeza[`limpar_guia_${lugar}`] ?? LIMPAR_APOS,
               loginPend: null, ultimoPrompt: "", sugestao: null, herdar: origem ? origem.id : null, evLis: [] };
   temaDaAba(a, temaIni);
   abas.set(id, a);
   const b = document.createElement("div"); b.className = "aba"; b.dataset.id = id;
-  b.innerHTML = `<span class="num"></span><span class="ponto"></span><span class="nome">Nova aba</span><span class="tempo" title="Tempo de sessão"></span><span class="ativa-tg" title="⏱ Manter esta sessão ativa (evita desconexão por inatividade) — clique para ligar/desligar">⏱</span><span class="rec" title="Gravação desta aba — clique para parar, gravar ou assistir">REC</span><button class="fecha" title="Fechar aba">✕</button>`;
+  b.innerHTML = `<span class="num"></span><span class="ponto"></span><span class="guia-painel" role="img" hidden></span><span class="nome">Nova aba</span><span class="tempo" title="Tempo de sessão"></span><span class="ativa-tg" title="⏱ Manter esta sessão ativa (evita desconexão por inatividade) — clique para ligar/desligar">⏱</span><span class="rec" title="Gravação desta aba — clique para parar, gravar ou assistir">REC</span><button class="fecha" title="Fechar aba">✕</button>`;
   b.onclick = (e) => { if (!e.target.classList.contains("fecha") && !e.target.classList.contains("rec") && !e.target.classList.contains("ativa-tg")) ativar(id); };
   b.onauxclick = (e) => { if (e.button === 1) { e.preventDefault(); fecharAba(id); } };   // botão do meio fecha (como no navegador)
   b.querySelector(".rec").classList.add("selo-rec");
@@ -360,7 +419,7 @@ function novaAba(tipo, idFixo) {
 
 // frase de boas-vindas digitada (como num terminal de verdade); para sozinha se a aba conectar
 async function boasVindas(a) {
-  const partes = [["\x1b[38;2;94;224;181m", "DASSH Console"], ["\x1b[0m", " — escolha a conexão no topo e clique em "],
+  const partes = [["\x1b[38;2;94;224;181m", "DASSH Code"], ["\x1b[0m", " — escolha a conexão no topo e clique em "],
                   ["\x1b[1m", "Conectar"], ["\x1b[0m", "."]];
   await new Promise((r) => setTimeout(r, 250));
   for (const [cor, txt] of partes) {
@@ -385,13 +444,26 @@ function mostrarPaineis(ids) {
   botao.setAttribute("aria-pressed", String(!!ids.length));
   botao.title = ids.length ? "Desfazer divisão" : "Dividir guias lado a lado";
   botao.setAttribute("aria-label", botao.title);
-  for (const a of abas.values()) {
-    const i = ids.indexOf(a.id);
-    a.pane.classList.toggle("em-painel", i >= 0);
-    a.pane.dataset.titulo = a.nome + " · guia " + (ordemAbas().indexOf(a.id) + 1);
-    a.pane.style.order = i >= 0 ? i : "";
-  }
+  botao.title += " (Ctrl+Alt+D)";
+  atualizarPaineis();
+  arrumarAbas();
   ajustarDepois();
+}
+function atualizarPaineis() {
+  for (const a of abas.values()) {
+    const i = paineis.indexOf(a.id), visivel = i >= 0, foco = visivel && a.id === ativa;
+    const selo = a.btn.querySelector(".guia-painel");
+    a.pane.classList.toggle("em-painel", visivel);
+    a.pane.style.order = visivel ? i : "";
+    a.btn.classList.toggle("guia-em-painel", visivel);
+    a.btn.classList.toggle("painel-foco", foco);
+    selo.hidden = !visivel;
+    if (visivel) {
+      const esquerdo = i === 0;
+      selo.textContent = (esquerdo ? "E" : "D") + (foco ? " ›" : "");
+      selo.setAttribute("aria-label", `Painel ${esquerdo ? "esquerdo" : "direito"}${foco ? " com foco" : ""}`);
+    }
+  }
 }
 function dividirGuias(a, outra) {
   if (paineis.length) return mostrarPaineis([]);
@@ -412,6 +484,7 @@ function ativar(id) {
   }
   ativa = id;
   abas.forEach((a) => { a.pane.classList.toggle("ativa", a.id === id); a.btn.classList.toggle("ativa", a.id === id); });
+  atualizarPaineis();
   const a = A();
   if (trocou) montarHistorico(a);
   mostrarTemaAtivo();
@@ -477,7 +550,8 @@ const limparDaAba = (a) => (a && a.limparApos !== undefined ? a.limparApos : LIM
 function desenharGuia(a = A()) {
   if (!a || a.id !== ativa) return;
   const n = ordemAbas().indexOf(a.id) + 1, rot = $("#gb-rot");
-  if (rot) { rot.textContent = `aba ${n || ""}`.trim(); rot.title = `Os botões ao lado valem só para a aba ${n} (${a.nome}) — cada aba (guia) tem os seus`; }
+  const painel = paineis.indexOf(a.id);
+  if (rot) { rot.textContent = painel >= 0 ? `Foco · ${painel === 0 ? "E" : "D"}` : `aba ${n || ""}`.trim(); rot.title = `Os botões ao lado valem só para a aba ${n} (${a.nome}) — cada aba (guia) tem os seus`; }
   const term = a.tipo !== "web", con = !!a.conectado;
   const g = $("#tg-gravar");
   if (g) {
@@ -541,10 +615,18 @@ function salvarFixadas() {
     if (await api.salvar_pref("guias_fixadas", guias) === false) throw new Error();
   }).catch(() => toast("Não foi possível guardar as guias fixadas.", "aviso"));
 }
-const CORES_GUIA = { Azul: "#69afff", Verde: "#5dd39e", Âmbar: "#edb64b", Rosa: "#ec8ab4", Roxo: "#b59bf2", Coral: "#fc9179" };
+const CORES_GUIA = { Azul: "var(--etiqueta-azul)", Verde: "var(--etiqueta-verde)", Âmbar: "var(--etiqueta-ambar)", Rosa: "var(--etiqueta-rosa)", Roxo: "var(--etiqueta-roxo)", Coral: "var(--etiqueta-coral)" };
 function etiquetarGuia(a, cor) {
   a.etiqueta = Object.hasOwn(CORES_GUIA, cor) ? cor : "";
   a.btn.style.borderTopColor = CORES_GUIA[a.etiqueta] || "";
+  if (a.histId && a.conectado) guardarEtiquetaSessao(a);
+}
+let gravacaoEtiquetas = Promise.resolve();
+function guardarEtiquetaSessao(a) {
+  const id = a.histId, cor = a.etiqueta || "";
+  gravacaoEtiquetas = gravacaoEtiquetas.then(async () => {
+    if (await api.hist_etiquetar(id, cor) !== true) throw new Error();
+  }).catch(() => toast("Não foi possível guardar a etiqueta da sessão.", "erro"));
 }
 function restaurarGuiasFixadas(guias) {
   if (!Array.isArray(guias)) return;
@@ -586,54 +668,97 @@ async function reabrirGuia(a) {
 }
 function menuAba(a, x, y) {
   dicaGuiaAtual?.remove();
-  document.querySelector("#menu-ctx")?.remove();
+  $("#menu-ctx")?.remove();
   const m = document.createElement("div"); m.id = "menu-ctx"; m.className = "menu-abas";
-  m.setAttribute("aria-label", "Opções da guia"); document.body.append(m);
+  m.setAttribute("role", "group");
+  m.setAttribute("aria-label", "Opções da guia");
   const titulo = document.createElement("strong"); titulo.textContent = a.nome;
   const estado = document.createElement("small"); estado.textContent = a.tipo + " · " + ESTADOS_SESSAO[a.estadoSessao];
   m.append(titulo, estado);
-  const item = (nome, fn) => {
-    const b = document.createElement("button"); b.textContent = nome; b.type = "button";
+  function grupo(nome, classe = "") {
+    const g = document.createElement("div"); g.className = "ctx-grupo " + classe;
+    g.setAttribute("role", "group"); g.setAttribute("aria-label", nome);
+    return g;
+  }
+  function item(g, icone, nome, fn, atalho = "", ativarGuia = true) {
+    const b = document.createElement("button"); b.type = "button";
+    b.innerHTML = `<span class="ctx-icone" aria-hidden="true">${icone}</span><span>${nome}</span>${atalho ? `<kbd aria-hidden="true">${atalho}</kbd>` : ""}`;
+    if (atalho) b.setAttribute("aria-keyshortcuts", "Control+Alt+D");
     b.onclick = async () => {
       m.remove(); if (!abas.has(a.id)) return;
-      ativar(a.id);
+      if (ativarGuia) ativar(a.id); else a.btn.focus();
       try { await fn(); } catch (e) { toast(e.message || "Falha na ação da guia", "erro"); }
     };
-    m.append(b);
-  };
+    g.append(b);
+  }
+  const conexao = grupo("Sessão"), ferramentas = grupo("Ferramentas"), organizacao = grupo("Organização");
+  const encerrar = grupo("Encerramento", "ctx-perigo");
   if (!a.demo && a.tipo !== "remoto") {
-    if (!a.roteiro && !a.reabrindo) item(a.conectado && ["login", "silenciosa", "encerrada"].includes(a.estadoSessao) ? "Reconectar sessão…" :
-      a.conectado ? "Reiniciar sessão…" : a.params ? "Reconectar sessão" : "Conectar sessão", () => reabrirGuia(a));
-    if (["serial", "ssh", "powershell", "cmd"].includes(a.tipo)) item("Skills desta guia", () => abrirRoteiros(a));
-    if (a.conectado && a.tipo !== "web") {
-      item(a.gravando ? "Gerenciar gravação" : "Gravar sessão", () => menuGravacao(a));
-      item(a.manterAtiva ? "Desligar manter ativa" : "Manter sessão ativa", () => alternarAtiva(a));
+    if (!a.roteiro && !a.reabrindo) {
+      const reconectar = ["login", "silenciosa", "encerrada"].includes(a.estadoSessao);
+      const nome = a.conectado ? (reconectar ? "Reconectar sessão…" : "Reiniciar sessão…")
+        : a.params ? "Reconectar sessão" : "Conectar sessão";
+      item(a.conectado ? encerrar : conexao, "↻", nome, () => reabrirGuia(a));
     }
-    if (a.tipo !== "web") item(limparDaAba(a) ? "Desligar limpeza após evidência" : "Limpar após evidência", alternarLimpar);
-    item(a.fixada ? "Desafixar guia" : "Fixar guia", () => fixarGuia(a));
+    if (a.conectado && a.tipo !== "web") {
+      item(conexao, "◷", a.manterAtiva ? "Desligar manter ativa" : "Manter sessão ativa", () => alternarAtiva(a));
+      item(ferramentas, "⏺", a.gravando ? "Gerenciar gravação" : "Gravar sessão", () => menuGravacao(a));
+    }
+    if (["serial", "ssh", "powershell", "cmd"].includes(a.tipo))
+      item(ferramentas, "⚡︎", "Skills desta guia", () => abrirRoteiros(a));
+    if (a.tipo !== "web")
+      item(ferramentas, "◇", limparDaAba(a) ? "Desligar limpeza após evidência" : "Limpar após evidência", alternarLimpar);
+    item(organizacao, "⚑", a.fixada ? "Desafixar guia" : "Fixar guia", () => fixarGuia(a));
   }
   const antes = A();
-  if (paineis.length) item("Desfazer divisão", () => mostrarPaineis([]));
-  else if (a.tipo !== "web") item("Dividir lado a lado", () => dividirGuias(a, antes !== a && antes?.tipo !== "web" ? antes : null));
-  if (a.demo) item("Parar demonstração", () => demoParar(a));
-  const cor = document.createElement("select"); cor.setAttribute("aria-label", "Etiqueta da guia");
+  if (paineis.length) item(organizacao, "◫", "Desfazer divisão", () => mostrarPaineis([]), "Ctrl+Alt+D", false);
+  else if (a.tipo !== "web")
+    item(organizacao, "◫", "Dividir lado a lado", () => dividirGuias(a, antes !== a && antes?.tipo !== "web" ? antes : null), "Ctrl+Alt+D", false);
+  const etiqueta = document.createElement("label"); etiqueta.className = "ctx-etiqueta";
+  etiqueta.innerHTML = '<span class="ctx-icone" aria-hidden="true">⬡</span><span>Etiqueta da guia</span>';
+  const cor = document.createElement("select");
+  cor.setAttribute("aria-label", "Etiqueta da guia");
   cor.append(new Option("Sem etiqueta", ""), ...Object.keys(CORES_GUIA).map(c => new Option(c, c)));
-  cor.value = a.etiqueta || ""; cor.onchange = () => { etiquetarGuia(a, cor.value); if (a.fixada) salvarFixadas(); m.remove(); };
-  m.append(cor);
-  item("Fechar guia", () => fecharAba(a.id));
+  cor.value = a.etiqueta || "";
+  cor.onchange = () => { etiquetarGuia(a, cor.value); if (a.fixada) salvarFixadas(); m.remove(); a.btn.focus(); };
+  etiqueta.append(cor); organizacao.append(etiqueta);
+  if (a.demo) item(encerrar, "■", "Parar demonstração", async () => {
+    if (await perguntarGuia(`Parar a demonstração de <b>${esc(a.nome)}</b>?`, "Parar demonstração")) demoParar(a);
+  });
+  item(encerrar, "×", "Fechar guia", () => fecharAba(a.id, true), "", false);
+  m.append(...[conexao, ferramentas, organizacao, encerrar].filter(g => g.childElementCount));
+  const rodape = document.createElement("div"); rodape.className = "ctx-atalhos";
+  rodape.innerHTML = "<kbd>↑ ↓</kbd> Navegar <kbd>Esc</kbd> Voltar";
+  m.append(rodape);
+  m.onkeydown = e => {
+    if (e.key === "Escape") { e.stopPropagation(); m.remove(); a.btn.focus(); return; }
+    const divisao = organizacao.querySelector("[aria-keyshortcuts]");
+    if (divisao && e.ctrlKey && e.altKey && e.key.toLowerCase() === "d") {
+      e.preventDefault(); e.stopPropagation(); divisao.click(); return;
+    }
+    if (e.target === cor || !["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) return;
+    e.preventDefault();
+    const botoes = [...m.querySelectorAll("button")], i = botoes.indexOf(e.target);
+    const j = e.key === "Home" ? 0 : e.key === "End" ? botoes.length - 1 :
+      (i + (e.key === "ArrowDown" ? 1 : -1) + botoes.length) % botoes.length;
+    botoes[j].focus();
+  };
+  document.body.append(m);
   m.style.left = Math.max(4, Math.min(x, innerWidth - m.offsetWidth - 4)) + "px";
   m.style.top = Math.max(4, Math.min(y, innerHeight - m.offsetHeight - 4)) + "px";
   m.querySelector("button").focus();
 }
 document.addEventListener("pointerdown", e => { const m = $("#menu-ctx"); if (m && !m.contains(e.target)) m.remove(); });
-document.addEventListener("keydown", e => { if (e.key === "Escape") $("#menu-ctx")?.remove(); });
-async function fecharAba(id) {
+async function fecharAba(id, confirmar = false) {
   const a = abas.get(id); if (!a) return;
-  if (a.fixada && !(await perguntarGuia("Fechar esta guia fixada?", "Fechar guia"))) return;
+  if (confirmar || a.fixada) {
+    const aviso = a.conectado ? " A conexão e os processos desta sessão serão encerrados." : "";
+    if (!(await perguntarGuia(`Fechar a guia <b>${esc(a.nome)}</b>?${aviso}`, "Fechar guia")) || !abas.has(id)) return;
+  }
   if (a.conectado) { await api.desconectar(id); if (["web", "ssh"].includes(a.tipo)) oferecerRemoverRede(); }
   const vizinha = paineis.includes(id) && paineis.find(p => p !== id);
   if (vizinha) mostrarPaineis([]);
-  a.term.dispose(); a.pane.remove(); a.btn.remove(); abas.delete(id);
+  a.term.dispose(); a.pane.remove(); a.btn.remove(); abas.delete(id); ilhaSync();
   if (a.fixada) salvarFixadas();
   try { api.aba_fechar(id); } catch (_) {}
   const eraAtiva = ativa === id;
@@ -659,6 +784,7 @@ function estadoDaSessao(a, estado) {
 }
 let cotasLocais = {}, proximaCota = 0, consultandoCota = false;
 function desenharSaldo() {
+  ilhaSync();
   for (const tipo of TIPOS_IA) {
     const botao = document.querySelector(`#tipos [data-tipo="${tipo}"]`);
     const selo = botao.querySelector(".cota-ia");
@@ -671,10 +797,16 @@ function desenharSaldo() {
       return recentes.find(a => a[campo])?.[campo];
     };
     const sessao = valor("sessao", "saldoSessao"), semana = valor("semana", "saldoSemana");
-    selo.textContent = sessao || "—";
-    selo.classList.toggle("conhecida", !!sessao);
+    let saldo = sessao;
+    if (tipo === "claude") {
+      const janelas = [sessao, semana].filter(Boolean).map(v => parseFloat(v));
+      if (janelas.length) saldo = Math.min(...janelas) + "%";
+    }
+    selo.textContent = saldo || "—";
+    selo.classList.toggle("conhecida", !!saldo);
     const hora = local.instante ? " · leitura às " + new Date(local.instante * 1000).toLocaleTimeString() : "";
-    botao.title = botao.querySelector("b").textContent + " · Sessão disponível: " + (sessao || "sem informação") +
+    const limite = tipo === "claude" && saldo ? " · Disponível nas janelas conhecidas: " + saldo : "";
+    botao.title = botao.querySelector("b").textContent + limite + " · Sessão disponível: " + (sessao || "sem informação") +
       " · Semana disponível: " + (semana || "sem informação") + hora;
     botao.setAttribute("aria-label", botao.title);
   }
@@ -738,7 +870,11 @@ function setConectado(a, on, nome) {
   a.conectado = on;
   a.inicio = on ? (a.inicio && a.conectado ? a.inicio : Date.now()) : null;
   if (nome) a.nome = nome;
-  if (!on) { a.loginPend = null; esconderSugestao(a); a.share = null; desenharShare(a); }
+  if (!on) {
+    a.histId = null; a.loginPend = null; esconderSugestao(a); a.share = null;
+    a.chatFamiliaBanner = a.chatFamiliaPrompt = null;
+    desenharShare(a);
+  }
   a.saldoSessao = a.saldoSemana = null;
   estadoDaSessao(a, !on ? "encerrada" : ["serial", "ssh"].includes(a.tipo) ? "aguardando" : "ativa");
   if (on && ["serial", "ssh"].includes(a.tipo)) observarSessao(a);
@@ -750,11 +886,13 @@ function setConectado(a, on, nome) {
   if (on && a.manterAtiva && api && !a.demo) api.manter_ativa(a.id, true).then((r) => { a.manterAtiva = !!r.ativo; desenharAtiva(a); }).catch(() => {});
   desenharAtiva(a);
   if (a.id === ativa) { atualizarBotaoConectar(); $("#aba-alvo").textContent = on ? a.nome : ""; rotuloAbaLateral(a); }
-  arrumarAbas();
+  ilhaSync();
+  arrumarAbas(); atualizarEstadosEquip();
 }
 
 // ---------- gravação por aba: REC vermelho = gravando · REC cinza riscado = sem gravar (clique para mudar) ----------
 function desenharRec(a) {
+  ilhaSync();
   const r = a.btn && a.btn.querySelector(".rec"); if (!r) return;
   const mostra = a.conectado && a.tipo !== "web";   // aba Web não grava terminal
   r.classList.toggle("on", mostra && !!a.gravando);
@@ -800,13 +938,18 @@ function mostrarCategoria(cat) {
   document.querySelectorAll("#abas .cat").forEach((c) => { const s = c.dataset.cat === cat; c.classList.toggle("sel", s); c.setAttribute("aria-selected", s); });
   document.querySelectorAll("#abas .tipos-grupo").forEach((g) => {
     const v = g.dataset.cat === cat; if (v && g.classList.contains("oculto")) $("#tipos").scrollLeft = 0; g.classList.toggle("oculto", !v); });
+  fecharMais();
   ajustarTipos();
+  const ab = document.querySelector("#abas [data-tipo].ativa"), ca = ab?.closest(".tipos-grupo")?.dataset.cat;
+  if (ca && cat !== "demos") camposDoTipo(ca === cat ? ab.dataset.tipo : null);
   if (cat === "ia") consultarCotas();
 }
 // faixa dos tipos estreita (celular): o tipo ativo fica à vista e a borda esmaece quando há mais à direita/esquerda
 function ajustarTipos() {
   const t = $("#tipos"); if (!t) return;
-  const b = t.querySelector(".tipos-grupo:not(.oculto) button.ativa");
+  const ab = $("#abas");   // categoria com tipos demais para a largura: as categorias NÃO selecionadas ficam só com o ícone (o nome vai no título), em vez de rolar de lado
+  if (ab) { ab.classList.remove("cats-curtas"); if (t.scrollWidth > t.clientWidth + 1 && window.innerWidth > 900) ab.classList.add("cats-curtas"); }
+  const b = t.querySelector(".tipos-grupo:not(.oculto) button.ativa:not([role='menuitem'])");
   if (b) { const bl = b.offsetLeft, br = bl + b.offsetWidth;   // .tipos é position: relative
     if (bl < t.scrollLeft) t.scrollLeft = bl - 8; else if (br > t.scrollLeft + t.clientWidth) t.scrollLeft = br - t.clientWidth + 8; }
   bordasTipos();
@@ -817,14 +960,18 @@ function bordasTipos() {
   t.classList.toggle("mais-dir", rola && t.scrollLeft + t.clientWidth < t.scrollWidth - 2);
   t.classList.toggle("mais-esq", rola && t.scrollLeft > 2);
 }
-const DIRETOS = ["powershell", "cmd", "azure", "gcp", "aws", "claude", "codex", "gemini", "copilot"];   // abrem na hora: não têm destino a preencher
-function selecionarTipo(tipo, silencioso) {
-  document.querySelectorAll("#abas [data-tipo]").forEach((x) => x.classList.toggle("ativa", x.dataset.tipo === tipo));
-  const it = document.querySelector(`#abas [data-tipo="${tipo}"]`), g = it && it.closest(".tipos-grupo");
-  if (g) { mostrarCategoria(g.dataset.cat);   // a categoria do tipo escolhido fica à vista
-    document.querySelectorAll("#abas .cat").forEach((c) => { c.classList.toggle("tem-ativo", c.dataset.cat === g.dataset.cat);
-      if (c.dataset.cat === g.dataset.cat) c.dataset.ultimo = tipo; }); }
-  $("#conectar").classList.toggle("invisivel", DIRETOS.includes(tipo));   // some (mas guarda o lugar) quando não há o que conectar
+// abrem na hora: não têm destino a preencher. Vêm dos botões data-direto do seletor (gerados do catálogo ferramentas_cli.py);
+// botões "a confirmar" estão desligados e não entram.
+const DIRETOS = [...document.querySelectorAll("#tipos [data-direto]")].map((b) => b.dataset.tipo);
+// campos específicos do tipo (porta, SSH, URL, dica); tipo null = a categoria à vista não contém o tipo ativo: nada de campos órfãos
+function camposDoTipo(tipo) {
+  if (!tipo) {
+    $("#conectar").classList.add("invisivel");
+    ["serial", "ssh", "web"].forEach((t) => $("#campos-" + t).classList.add("oculto"));
+    $("#campos-livre").classList.remove("oculto"); $("#livre-txt").textContent = "Escolha uma opção deste grupo";
+    return;
+  }
+  $("#conectar").classList.toggle("invisivel", !!document.querySelector(`#tipos [data-direto][data-tipo="${tipo}"]`));   // some (mas guarda o lugar) quando não há o que conectar
   $("#campos-serial").classList.toggle("oculto", tipo !== "serial");
   $("#campos-ssh").classList.toggle("oculto", tipo !== "ssh");
   $("#campos-web").classList.toggle("oculto", tipo !== "web");
@@ -833,7 +980,21 @@ function selecionarTipo(tipo, silencioso) {
                   aws: "AWS CLI — instala sozinho se faltar", claude: "Assistente de IA (Claude Code)", codex: "Assistente de IA (Codex)",
                   gemini: "Assistente de IA (Gemini CLI)", copilot: "Assistente de IA (Copilot CLI)" };
   $("#campos-livre").classList.toggle("oculto", ["serial", "ssh", "web"].includes(tipo));   // o espaço do destino nunca some: não há "pulo" de layout
-  $("#livre-txt").textContent = LIVRE[tipo] || "";
+  $("#livre-txt").textContent = LIVRE[tipo] || document.querySelector(`#tipos [data-tipo="${tipo}"]`)?.dataset.livre || "";
+}
+function selecionarTipo(tipo, silencioso) {
+  document.querySelectorAll("#abas [data-tipo]").forEach((x) => x.classList.toggle("ativa", x.dataset.tipo === tipo));
+  atualizarMais();
+  const it = document.querySelector(`#abas [data-tipo="${tipo}"]`), g = it && it.closest(".tipos-grupo");
+  const cat = silencioso && A()?.demo ? "demos" : g?.dataset.cat;
+  if (cat) {
+    mostrarCategoria(cat);
+    document.querySelectorAll("#abas .cat").forEach((c) => {
+      c.classList.toggle("tem-ativo", c.dataset.cat === cat);
+      if (cat !== "demos" && c.dataset.cat === cat) c.dataset.ultimo = tipo;
+    });
+  }
+  camposDoTipo(tipo);
   const a = A(); if (a && !silencioso) {
     if (a.tipo !== tipo) a.params = null;
     if (tipo === "web" && paineis.includes(a.id)) mostrarPaineis([]);
@@ -884,6 +1045,8 @@ async function conectar(a = A(), pularRede = false, parametros = null) {
     return;
   }
   a.alvo = r.alvo; a.params = { porta, baud, destino }; a.ultimoPrompt = ""; a.gravando = !!r.gravando;
+  a.histId = r.hist_id;
+  if (a.histId && a.etiqueta) guardarEtiquetaSessao(a);
   setConectado(a, true, r.nome); a.term.focus();
   if (a.fixada) salvarFixadas();
   if (tipo === "serial") api.escrever(a.id, "\r");  // mostra o prompt / tela de login
@@ -906,7 +1069,7 @@ async function liberarPorta(porta = $("#porta").value, reconectarEm = null) {
   if (r.programas && r.programas.length) {
     const p = r.programas[0];
     return pedido(`🔓 A <b>${esc(porta)}</b> parece estar com outro programa: <b>${esc(r.programas.map((x) => x.nome).join(", "))}</b>.<br>
-      <small>Feche-o (o que estiver aberto nele será perdido) para o DASSH Console usar a porta.</small>`, `Fechar ${esc(p.nome)}`, "Cancelar",
+      <small>Feche-o (o que estiver aberto nele será perdido) para o DASSH Code usar a porta.</small>`, `Fechar ${esc(p.nome)}`, "Cancelar",
       async (sim) => { if (!sim) return; const f = await api.porta_fechar_programa(p.pid, p.nome);
         if (!f.ok) return toast(f.erro || "Não foi possível fechar", "erro"); setTimeout(() => liberarPorta(porta, reconectarEm), 800); });
   }
@@ -935,11 +1098,13 @@ async function conectarWeb(a, pularRede = false, url = $("#web-url").value.trim(
   const r = await api.conectar(a.id, "web", null, null, url, rect);
   if (!r.ok) return toast(r.erro, "erro");
   a.alvo = r.alvo; a.params = { destino: url }; a.navegador = r.navegador;
+  a.histId = r.hist_id;
+  if (a.histId && a.etiqueta) guardarEtiquetaSessao(a);
   a.pane.classList.add("web"); a.painel = false; a.janelas = [];
   setConectado(a, true, r.nome);
   montarWeb(a); desenharWeb(a);
   if (a.fixada) salvarFixadas();
-  toast(`${r.navegador} aberto DENTRO do DASSH Console — use 📸 / 📤 na barra acima da página`);
+  toast(`${r.navegador} aberto DENTRO do DASSH Code — use 📸 / 📤 na barra acima da página`);
 }
 
 // ---------- janelas encaixadas: barra da aba Web, tela cheia e sincronização da posição ----------
@@ -1042,16 +1207,16 @@ async function desenharWeb(a) {
   if (!p) { p = document.createElement("div"); p.className = "web-painel"; (a.pane.querySelector(".web-area") || a.pane).appendChild(p); }
   if (!a.conectado) { p.innerHTML = `<h3>🌐 Navegador fechado</h3><p class="url">Clique em Conectar para abrir de novo.</p>`; return; }
   const r = await api.web_paginas(a.id), pags = r.ok ? r.paginas : [];
-  p.innerHTML = `<h3>🌐 ${esc(a.alvo || "")}</h3><div class="url">Navegador: ${esc(a.navegador || "")} · ${pags.length} janela(s)</div>
+  p.innerHTML = `<h3>🌐 ${esc(a.alvo || "")}</h3><div class="url">Navegador: ${esc(a.navegador || "")} · ${pl(pags.length, "janela")}</div>
     <div class="web-acoes"><button class="btn primario" data-cap>📸 Capturar evidência <small>Ctrl+Alt+P</small></button>
       <button class="btn" data-env>📤 Capturar e enviar <small>Ctrl+Alt+E</small></button>
       <button class="btn" data-fr>🗔 Voltar ao navegador</button><button class="btn" data-at>⟳ Atualizar lista</button></div>
-    ${a.javaAtivo ? `<ul class="web-janelas"><li class="ativa"><span>☕ Console Java do equipamento<br><small>aberto com o Java próprio do DASSH Console
+    ${a.javaAtivo ? `<ul class="web-janelas"><li class="ativa"><span>☕ Console Java do equipamento<br><small>aberto com o Java próprio do DASSH Code
       (sem Java instalado, sem lista de exceções)</small></span><button class="btn primario" data-java="0">📸 Capturar</button>
       <button class="btn" data-java="1">📤 Capturar e enviar</button></li></ul>` : ""}
     <ul class="web-janelas">${pags.map((g) => `<li class="${g.ativa ? "ativa" : ""}"><span>${esc(g.titulo)}<br><small>${esc(g.url)}</small></span>
       <button class="btn" data-capi="${g.i}">📸 Capturar esta</button><button class="btn" data-fri="${g.i}">Mostrar</button></li>`).join("")}</ul>
-    <div class="web-dica">💡 O navegador e o <b>console virtual</b> (HTML5 ou Java) abrem <b>dentro do DASSH Console</b>, nesta área.
+    <div class="web-dica">💡 O navegador e o <b>console virtual</b> (HTML5 ou Java) abrem <b>dentro do DASSH Code</b>, nesta área.
       Cada janela vira um botão na barra de cima — clique para alternar. 📸 captura a janela à vista. <b>⤢ Tela cheia</b> usa a tela
       inteira para o equipamento; <b>↩ Voltar ao normal</b> restaura. Certificados próprios desses equipamentos são aceitos.</div>
     ${a.ultimaWeb ? `<img class="web-ultima" src="${a.ultimaWeb}" alt="">` : ""}`;
@@ -1155,7 +1320,7 @@ function cofreArmarTimer() {
 }
 function cofreAberto(r) { COFRE.token = r.token; COFRE.min = r.ocioso_min || COFRE.min; cofre = r.itens || []; cofreArmarTimer(); }
 async function cofreChamar(metodo, ...args) {   // chamada do cofre COM o token; trancado no backend -> esquece aqui também
-  const r = await api[metodo](...args, COFRE.token);
+  const r = await (api || contaApi())[metodo](...args, COFRE.token);
   if (r && r.trancado) cofreEsquecer();
   else if (COFRE.token) { cofreArmarTimer(); if (r && Array.isArray(r.itens)) cofre = r.itens; }
   return r;
@@ -1185,8 +1350,9 @@ async function pinEnviar(box, modo) {
   const falha = (t) => { msg.textContent = "✖ " + t; msg.className = "pin-msg erro"; const i = box.querySelector("input[type=password]"); if (i) i.select(); return false; };
   if (modo !== "abrir" && v("novo") !== v("conf")) return falha("Os dois PINs não conferem.");
   msg.textContent = "Conferindo…"; msg.className = "pin-msg";
-  const r = modo === "abrir" ? await api.cofre_pin_abrir(v("atual")) : modo === "definir" ? await api.cofre_pin_definir(v("novo"))
-    : modo === "trocar" ? await api.cofre_pin_definir(v("novo"), v("atual")) : await api.cofre_pin_redefinir(v("conta"), v("novo"), !!v("apagar"));
+  const ponte = api || contaApi();
+  const r = modo === "abrir" ? await ponte.cofre_pin_abrir(v("atual")) : modo === "definir" ? await ponte.cofre_pin_definir(v("novo"))
+    : modo === "trocar" ? await ponte.cofre_pin_definir(v("novo"), v("atual")) : await ponte.cofre_pin_redefinir(v("conta"), v("novo"), !!v("apagar"));
   if (!r || !r.ok) return falha((r && r.erro) || "não foi possível");
   cofreAberto(r);
   if (modo !== "abrir") toast(modo === "definir" ? "🔢 PIN do cofre criado" : "🔢 PIN do cofre atualizado");
@@ -1198,9 +1364,10 @@ function pinLigar(box, est, modo, aoTrocarModo) {
 }
 // Fluxos internos (preencher login no terminal, Skill com senha do cofre): pede o PIN numa janelinha e segue.
 async function garantirCofre(motivo, modoForcado) {
-  if (!api) return false;
+  const ponte = api || contaApi();
+  if (!ponte.cofre_pin_estado) return false;
   if (COFRE.token && !modoForcado) { const r = await cofreChamar("cofre_listar"); if (r && r.ok) return true; }
-  const est = await api.cofre_pin_estado(null);
+  const est = await ponte.cofre_pin_estado(null);
   let modo = modoForcado || (est.definido ? "abrir" : "definir");
   const m = $("#modal-pin"), box = $("#pin-campos");
   return new Promise((res) => {
@@ -1228,6 +1395,133 @@ function formCofre(c) {
   $("#cofre-form-tit").textContent = c ? "Editar credencial" : "Nova credencial"; $("#cf-nome").focus();
 }
 const abrirCofre = () => abrirBiblioteca("cofre");   // 🔑 da tela principal, "Gerenciar cofre" da sugestão…
+
+// ================= gerador de senha =================
+const GS_INICIOS = "abacaxi abeto acaju amora aveia bambu banana batata bezerro biscoito bota brejo broto cacau caju canoa capim castanha cedro cera coco cometa cravo duna erva farofa figo foca favo goiaba grama gruta".split(" ");
+const GS_FINS = "aberto aceso ativo atento bravo breve certo chato checo chique chuvoso curto direto divino doce dourado exato firme fofo forte fosco fresco farto denso gordo imenso macio maduro manso marrom morno novo".split(" ");
+function sorteioSenha(total, dado) {
+  const teto = 256 - (256 % total);
+  do { crypto.getRandomValues(dado); } while (dado[0] >= teto);
+  return dado[0] % total;
+}
+function gerarSenha(tamanho, simbolos, frase) {
+  const dado = new Uint8Array(1);
+  const pegar = (grupo) => grupo[sorteioSenha(grupo.length, dado)];
+  if (frase) return Array.from({ length: 8 }, () => pegar(GS_INICIOS) + pegar(GS_FINS)).join("-");
+  const grupos = ["abcdefghijkmnopqrstuvwxyz", "ABCDEFGHJKLMNPQRSTUVWXYZ", "23456789"];
+  if (simbolos) grupos.push("!#$%&()*+,-.:=?@^_~");
+  const todos = grupos.join("");
+  let senha;
+  do { senha = Array.from({ length: tamanho }, () => pegar(todos)).join(""); }
+  while (!grupos.every((grupo) => [...senha].some((c) => grupo.includes(c))));
+  return senha;
+}
+
+{
+  const pin = $("#modal-pin");
+  const dialogo = $("#gs-dialog"), valor = $("#gs-valor"), tamanho = $("#gs-tamanho"),
+    simbolos = $("#gs-simbolos"), frase = $("#gs-frase"), status = $("#gs-status"), mostrar = $("#gs-mostrar"),
+    cofreForm = $("#gs-cofre");
+  let campo = null, origem = null, salvando = false;
+  const ocultar = () => {
+    valor.type = "password";
+    mostrar.textContent = "Mostrar";
+    mostrar.setAttribute("aria-pressed", "false");
+  };
+  const gerar = () => {
+    $("#gs-tamanho-l").classList.toggle("oculto", frase.checked);
+    $("#gs-simbolos-l").classList.toggle("oculto", frase.checked);
+    if (!frase.checked && !tamanho.reportValidity()) { valor.value = ""; return; }
+    valor.value = gerarSenha(tamanho.valueAsNumber, simbolos.checked, frase.checked);
+    status.textContent = "";
+    return true;
+  };
+  const fechar = () => {
+    valor.value = "";
+    ocultar();
+    dialogo.close();
+  };
+  document.addEventListener("click", (ev) => {
+    const b = ev.target.closest("[data-gerar-senha]");
+    if (!b || salvando || dialogo.open) return;
+    const destino = b.dataset.gerarSenha;
+    campo = destino ? document.getElementById(destino) : b.parentElement.querySelector("input[data-var]");
+    if (!campo || campo.disabled) return;
+    origem = b;
+    tamanho.value = 20;
+    simbolos.checked = true;
+    frase.checked = false;
+    $("#gs-nome").value = "";
+    cofreForm.classList.toggle("oculto", NA_WEB || !contaApi().cofre_salvar || destino === "cf-senha");
+    ocultar();
+    gerar();
+    dialogo.showModal();
+  });
+  pin.addEventListener("click", (ev) => {
+    if (salvando && (ev.target === pin || ev.target.closest("[data-fecha]"))) fecharModal(pin);
+  });
+  pin.addEventListener("keydown", (ev) => {
+    if (salvando && ev.key === "Escape") fecharModal(pin);
+  });
+  dialogo.addEventListener("cancel", (ev) => { ev.preventDefault(); fechar(); });
+  dialogo.addEventListener("close", () => {
+    const foco = origem;
+    campo = null;
+    origem = null;
+    if (!salvando) foco?.focus();
+  });
+  $("#gs-gerar").onclick = gerar;
+  frase.onchange = gerar;
+  simbolos.onchange = gerar;
+  tamanho.onchange = gerar;
+  $("#gs-fechar").onclick = fechar;
+  mostrar.onclick = () => {
+    if (valor.type === "text") return ocultar();
+    valor.type = "text";
+    mostrar.textContent = "Ocultar";
+    mostrar.setAttribute("aria-pressed", "true");
+  };
+  $("#gs-copiar").onclick = async () => {
+    if (!valor.value) return;
+    try {
+      await navigator.clipboard.writeText(valor.value);
+      status.textContent = "Copiada para a área de transferência.";
+    } catch (_) { status.textContent = "Não foi possível copiar a senha."; }
+  };
+  $("#gs-usar").onclick = () => {
+    if (!valor.value) return;
+    const destino = campo;
+    const repetir = { "ct-senha": "#ct-senha2", "cs-nova": "#cs-nova2" }[destino.id];
+    destino.value = valor.value;
+    destino.dispatchEvent(new Event("input", { bubbles: true }));
+    if (repetir) $(repetir).value = valor.value;
+    origem = destino;
+    fechar();
+  };
+  cofreForm.onsubmit = async (ev) => {
+    ev.preventDefault();
+    const nome = $("#gs-nome").value.trim();
+    if (!nome || !valor.value || NA_WEB || salvando) return;
+    const foco = origem;
+    const item = { nome, senha: valor.value, alvo: campo.dataset.var ? (A()?.alvo || "") : "" };
+    salvando = true;
+    fechar();
+    pin.classList.add("gs-pin");
+    try {
+      if (await garantirCofre("Guardar a senha gerada.")) {
+        const r = await cofreChamar("cofre_salvar", item);
+        toast(r?.ok ? "Credencial salva no cofre" : "Não foi possível guardar a senha.", r?.ok ? "" : "erro");
+      }
+    } catch (_) {
+      toast("Não foi possível guardar a senha.", "erro");
+    } finally {
+      item.senha = "";
+      salvando = false;
+      pin.classList.remove("gs-pin");
+      foco?.focus();
+    }
+  };
+}
 
 // ================= histórico de sessões =================
 function duracao(ini, fim) {
@@ -1271,13 +1565,29 @@ function desenharHist() {
     tr.querySelector("[data-rc]").onclick = () => reconectar(r);
     tr.querySelector("[data-grav]").onclick = () => tocarGravacao(r.gravacao, `${r.nome} — ${dd}/${m} ${t.slice(0, 5)}`);
     tr.querySelector("[data-log]").onclick = () => api.abrir_arquivo(r.log);
-    tr.querySelector("[data-x]").onclick = () => confirmarExclusao(`a sessão ${esc(r.nome)} de ${dd}/${m} ${t.slice(0, 5)} (gravação e logs)`, async () => {
-      const x = await api.hist_excluir(r.id);
-      if (!x.ok) return toast(x.erro, "erro");
-      toast(`🗑 Sessão excluída — ${x.arquivos} arquivo(s) na Lixeira`);
+    tr.querySelector("[data-x]").onclick = () => excluirSessao(r, async () => {
       HIST = await api.historico(); desenharHist();
     });
     tb.appendChild(tr);
+  });
+}
+function excluirSessoes(rs, depois) {
+  confirmarExclusao(`${rs.length} sessões (gravações e logs)`, async () => {
+    let feitas = 0, arquivos = 0;
+    for (const r of rs) {
+      const x = await api.hist_excluir(r.id);
+      if (x.ok) { feitas++; arquivos += x.arquivos || 0; } else toast(x.erro, "erro");
+    }
+    if (feitas) toast(`🗑 ${pl(feitas, "sessão excluída", "sessões excluídas")} — ${pl(arquivos, "arquivo")} na Lixeira`);
+    await depois();
+  });
+}
+function excluirSessao(r, depois) {
+  confirmarExclusao(`a sessão ${esc(r.nome)} de ${esc(_dt(r.inicio))} (gravação e logs)`, async () => {
+    const x = await api.hist_excluir(r.id);
+    if (!x.ok) return toast(x.erro, "erro");
+    toast(`🗑 Sessão excluída — ${pl(x.arquivos, "arquivo")} na Lixeira`);
+    await depois();
   });
 }
 
@@ -1304,12 +1614,29 @@ function desenharEvidencias() {
     g.appendChild(c);
   });
 }
+function excluirEvidencias(es) {
+  confirmarExclusao(`${es.length} evidências`, async () => {
+    const feitas = []; let ultima = null;
+    for (const e of es) {
+      const x = await api.evid_excluir(e.caminho);
+      if (x.ok) { feitas.push(e.caminho); ultima = x.evid || ultima; } else toast(x.erro, "erro");
+    }
+    if (ultima) atualizarEvid(ultima);
+    BIB.evs = BIB.evs.filter((item) => !feitas.includes(item.caminho)); bibContagens(); desenharBib();
+    document.querySelectorAll("#historico li.ev-item").forEach((li) => { if (feitas.includes(li.dataset.arq)) li.classList.add("excluida"); });
+    if (feitas.length) toast(`🗑 ${pl(feitas.length, "evidência")} na Lixeira — exclusões registradas no manifesto de custódia`);
+  });
+}
 function excluirEvidencia(e, depois) {
   confirmarExclusao(`a evidência Nº ${pad2(e.num || 0)} (${esc(e.arquivo)})`, async () => {
     const x = await api.evid_excluir(e.caminho);
     if (!x.ok) return toast(x.erro, "erro");
     toast(`🗑 Evidência Nº ${pad2(e.num || 0)} na Lixeira — exclusão registrada no manifesto de custódia`);
     if (x.evid) atualizarEvid(x.evid);
+    if (bibDesktop.matches && BIB.sec === "evidencias" && !$("#modal-bib").classList.contains("oculto")) {
+      BIB.evs = BIB.evs.filter((item) => item.caminho !== e.caminho);
+      bibContagens(); desenharBib();
+    }
     document.querySelectorAll("#historico li.ev-item").forEach((li) => { if (li.dataset.arq === e.caminho) li.classList.add("excluida"); });
     if (depois) depois();
     if (!$("#modal-evid").classList.contains("oculto")) { const r = await api.evid_lista(); EVS = r.itens || []; desenharEvidencias(); }
@@ -1333,8 +1660,11 @@ function cor(cell, fg, T = TEMA, P = PALETA) {
   return "#" + v.toString(16).padStart(6, "0");
 }
 function snapshot(term) {
-  // cores do tema DA ABA (cada aba tem o seu); o backend troca o padrão do tema pelo padrão aprovado da evidência
-  const ab = [...abas.values()].find((x) => x.term === term), T = (ab && ab.T) || TEMA, P = (ab && ab.P) || PALETA;
+  // A evidência tem fundo preto. Para terminais claros, use a paleta ANSI padrão da evidência.
+  const ab = [...abas.values()].find((x) => x.term === term);
+  const claro = TEMAS[ab?.tema || temaAtual].claro;
+  const T = claro ? TEMAS.dassh.t : (ab?.T || TEMA);
+  const P = claro ? paleta(T) : (ab?.P || PALETA);
   const b = term.buffer.active, linhas = [];
   for (let y = 0; y < term.rows; y++) {
     const ln = b.getLine(b.viewportY + y), runs = [];
@@ -1405,6 +1735,8 @@ async function processarCaptura(a, snap, enviar, roteiro, comando, indiceWeb, li
       if (r.enviado && r.enviado.fila) { st = "na fila"; cls = "fila"; toast(`Evidência nº ${pad2(r.num)} salva e na fila de envio (${r.enviado.posicao}º)`); }
       else { st = "não enviada"; cls = "erro"; toast(`Nº ${pad2(r.num)} salva e copiada, mas NÃO enviada: ${(r.enviado && r.enviado.erro) || "erro"}`, "erro"); }
     } else toast(`Evidência nº ${pad2(r.num)} salva e copiada (Ctrl+V no WhatsApp)`);
+    if (ILHA_ON()) ilha.publicar("evidencia", { tipo: "evidencia", titulo: `Evidência nº ${pad2(r.num)} salva`, dado: `Evidência nº ${pad2(r.num)}`,
+      detalhe: enviar ? "Salva e enviada para a fila de envio." : "Salva e copiada: cole no WhatsApp com Ctrl+V.", acoes: [{ id: "fila", rotulo: "Ver a fila", icone: "envio", aoClicar: () => abrirFila() }] });
     const naTela = a.id === ativa, ul = $("#historico");
     if (naTela) { const v = ul.querySelector(".vazio"); if (v) v.remove(); }
     // tela limpa para o próximo comando (Salvar e Enviar, botão ou atalho) — não vale para Skills e aba Web
@@ -1453,7 +1785,7 @@ window.onFila = (f) => {
     and.className = "wa-andamento";
     and.innerHTML = `⏳ ${f.pendentes} na fila — ` + (CANAL_ROT[a.canal] ? `configure o ${CANAL_ROT[a.canal]} em 📨 Canais` : "abra o WhatsApp");
   } else if (FALHAS.length) {
-    and.className = "wa-andamento erro"; and.innerHTML = `⚠ ${FALHAS.length} envio(s) falharam — clique para reenviar`;
+    and.className = "wa-andamento erro"; and.innerHTML = `⚠ ${FALHAS.length === 1 ? "1 envio falhou" : `${FALHAS.length} envios falharam`} — clique para reenviar`;
   } else if (f.pendentes) {
     and.className = "wa-andamento"; and.innerHTML = `⏳ ${f.pendentes} na fila…`;
   } else and.className = "wa-andamento oculto";
@@ -1461,6 +1793,7 @@ window.onFila = (f) => {
   clearTimeout(filaTimer);
   if (f.pendentes) filaTimer = setTimeout(async () => onFila(await api.fila_status()), 1000);
   if (!$("#modal-fila").classList.contains("oculto")) desenharFila();
+  ilhaFila(f);
 };
 function desenharFila() {
   const f = FILA, tb = $("#fila-linhas"); tb.innerHTML = "";
@@ -1480,7 +1813,7 @@ function desenharFila() {
   desenharFila.pag = p;
   linhas.slice(ini, fim).forEach((j) => {
     const tr = document.createElement("tr");
-    const sit = { env: `<span class="chip env">enviando…</span>`, esp: `<span class="chip esp">na fila${j.tentativas ? ` · ${j.tentativas} falha(s)` : ""}</span>`,
+    const sit = { env: `<span class="chip env">enviando…</span>`, esp: `<span class="chip esp">na fila${j.tentativas ? ` · ${pl(j.tentativas, "falha")}` : ""}</span>`,
                   err: `<span class="chip err">falhou</span>` }[j.sit];
     tr.innerHTML = `<td>${j.pos}</td><td>${esc(rotuloJob(j))}${j.erro ? `<br><small style="color:var(--erro)">${esc(j.erro)}</small>` : ""}</td><td>${sit}</td>
       <td style="text-align:right;white-space:nowrap">${j.sit === "err" ? `<button class="btn" data-re>↻ Reenviar</button>` : ""}
@@ -1668,6 +2001,7 @@ function atualizarEstadoShare(a, d) {
   desenharShare(a);
 }
 function desenharShare(a) {
+  ilhaSync();
   if (a.btn) {
     a.btn.classList.toggle("aba-ao-vivo", !!(a.share && a.share.papel === "dono"));   // destaque fica NA guia compartilhada
     a.btn.classList.toggle("aba-remota", !!(a.share && a.share.papel === "convidado"));
@@ -1736,7 +2070,7 @@ async function abrirConvite(a = A()) {
   abrirModal("#modal-convite"); setTimeout(() => $("#cv-para").focus(), 50);
   $("#cv-link").oninput = () => {   // troca a linha do link na prévia (função: "$&"/"$1" na URL não viram padrão)
     const l = $("#cv-link").value.trim(), t = $("#cv-texto").value;
-    const nova = l ? `1️⃣ Baixe o DASSH Console (Windows):\n${l}` : "1️⃣ Instale o DASSH Console (Windows) — peça o instalador a quem convidou";
+    const nova = l ? `1️⃣ Baixe o DASSH Code (Windows):\n${l}` : "1️⃣ Instale o DASSH Code (Windows) — peça o instalador a quem convidou";
     $("#cv-texto").value = t.replace(/1️⃣[^\n]*(\n(?!2️⃣)[^\n]*)?/, () => nova);
   };
   $("#cv-copiar").onclick = () => { navigator.clipboard.writeText($("#cv-texto").value).catch(() => {}); toast("Convite copiado — cole onde quiser"); };
@@ -1763,6 +2097,7 @@ function avisoCel(a) {
   toast(`📱 ${a.celCtrl} está com o controle desta aba — clique em “Retomar” no indicador 📱`, "aviso");
 }
 function desenharCel() {
+  ilhaSync();
   const e = CEL || { conectados: [], aparelhos: [], controles: {} };
   abas.forEach((a) => { a.celCtrl = (e.controles || {})[a.id] || null; if (a.btn) a.btn.classList.toggle("cel-ctrl", !!a.celCtrl); });
   const chip = $("#cel-chip"), con = e.conectados || [];
@@ -1798,7 +2133,7 @@ async function celAuditoria() {
     revogado: "foi revogado", recusado: "foi recusado", disponivel_ligado: "PC ficou disponível", disponivel_desligado: "PC ficou indisponível" };
   $("#cel-aud").innerHTML = lista.map((r) => `<div><span class="q">${esc(r.quando.slice(5))}</span> <b>${esc(r.nome || "")}</b> ${esc(ROT[r.acao] || r.acao)}` +
     `${r.aba ? ` <i>${esc(r.aba)}</i>` : r.sid ? ` <i>${esc(r.sid)}</i>` : ""}${r.tipo ? ` (${esc(r.tipo)}${r.destino ? " " + esc(r.destino) : r.porta ? " " + esc(r.porta) : ""})` : ""}` +
-    `${r.d ? ` <code>${esc(r.d)}</code>` : ""}${r.motivo ? ` — ${esc(r.motivo)}` : ""}</div>`).join("") || `<p class="ajuda">Nada registrado ainda.</p>`;
+    `${r.n ? ` <code>${esc(r.n)} caracteres${r.senha ? ", possível senha" : ""}</code>` : ""}${r.motivo ? ` — ${esc(r.motivo)}` : ""}</div>`).join("") || `<p class="ajuda">Nada registrado ainda.</p>`;
 }
 async function abrirCelular() {
   abrirModal("#modal-cel");
@@ -1881,10 +2216,10 @@ function celIlhaRecolher() {
     il.classList.add("recolhida");
   }, 7000);
 }
-window.onCelAba = (sid, nome, tipo, alvo, gravando) => {   // aba aberta PELO CELULAR: o Python já conectou, aqui só aparece a aba
+window.onCelAba = (sid, nome, tipo, alvo, gravando, histId) => {   // aba aberta PELO CELULAR: o Python já conectou, aqui só aparece a aba
   if (abas.has(sid)) return;
   const a = novaAba(tipo, sid); if (!a) return;
-  a.tipo = tipo; a.alvo = alvo; a.gravando = !!gravando; a.term.write("\x1bc");
+  a.tipo = tipo; a.alvo = alvo; a.gravando = !!gravando; a.histId = histId; a.term.write("\x1bc");
   setConectado(a, true, nome); desenharCel();
   toast(`📱 Aba “${nome}” aberta pelo celular`);
 };
@@ -1911,7 +2246,7 @@ async function entrarSessao(codigo) {
   a.term.write("\x1bcConectando à sessão " + codigo.toUpperCase() + "…\r\n");
   const r = await api.conectar(a.id, "remoto", null, null, codigo);
   if (!r.ok) { a.term.write(`\x1b[31m${r.erro}\x1b[0m\r\n`); return toast(r.erro, "erro"); }
-  a.alvo = r.alvo; setConectado(a, true, r.nome);
+  a.alvo = r.alvo; a.histId = r.hist_id; setConectado(a, true, r.nome);
   a.share = { papel: "convidado", aguardando: true, souAtivo: false }; desenharShare(a);
   a.term.write("Pedido enviado — aguardando o dono aprovar…\r\n");
   return a;
@@ -1931,7 +2266,7 @@ async function abrirRede(tipo, continuar, av) {
   const s = av.sugestao;
   let h = av.alcanca ? `<div class="rede-st ok">✔ ${esc(av.ip)} responde (porta ${av.porta}). Pode conectar.</div>`
     : `<div class="rede-st ruim">✖ ${esc(av.ip)} não respondeu.${av.mesma_rede && !av.conflito ? ` O notebook já está na rede pela placa ${esc(av.mesma_rede.placa)} — confira o cabo e se o equipamento está ligado.` : ""}</div>`;
-  if (av.conflito) h += `<div class="rede-conf">⚠ ${esc(av.conflito)} O DASSH Console resolve com uma <b>rota exclusiva</b> para ${esc(av.ip)} pela placa do cabo (Wi-Fi e internet continuam funcionando).</div>`;
+  if (av.conflito) h += `<div class="rede-conf">⚠ ${esc(av.conflito)} O DASSH Code resolve com uma <b>rota exclusiva</b> para ${esc(av.ip)} pela placa do cabo (Wi-Fi e internet continuam funcionando).</div>`;
   if (s) {
     const opts = (av.placas || []).map((p) => `<option ${p.nome === s.placa ? "selected" : ""} value="${esc(p.nome)}">${esc(p.nome)} — ${p.status === "Up" ? "conectada" : "sem cabo"}</option>`).join("");
     h += `<p style="margin:4px 0">O notebook precisa de um IP na rede <b>${esc(s.rede)}</b>. Sugestão (IP <b>adicional</b> e temporário — não altera sua configuração atual):</p>
@@ -1939,7 +2274,7 @@ async function abrirRede(tipo, continuar, av) {
         <label>IP do notebook<input id="rd-ip" value="${esc(s.ip)}"></label>
         <label>Máscara<select id="rd-pref"><option value="24" selected>255.255.255.0 (/24)</option><option value="16">255.255.0.0 (/16)</option>
           <option value="25">255.255.255.128 (/25)</option><option value="26">255.255.255.192 (/26)</option></select></label></div>
-      ${s.cabo_desconectado ? `<div class="rede-conf" style="border-color:#6b5520;background:#2a2412;color:var(--aviso)">🔌 A placa ${esc(s.placa)} está <b>sem cabo</b>: ligue o cabo de rede do notebook na porta de gerência do equipamento.</div>` : ""}`;
+      ${s.cabo_desconectado ? `<div class="rede-conf" style="border-color:var(--aviso-borda);background:var(--aviso-painel);color:var(--aviso)">🔌 A placa ${esc(s.placa)} está <b>sem cabo</b>: ligue o cabo de rede do notebook na porta de gerência do equipamento.</div>` : ""}`;
   }
   h += `<div class="rede-acoes">${s ? `<button class="btn primario" id="rd-aplicar">Aplicar IP temporário${continuar ? " e conectar" : ""}</button>` : ""}
     <button class="btn" id="rd-testar">⟳ Testar de novo</button>${continuar ? `<button class="btn" id="rd-seguir">Conectar mesmo assim</button>` : ""}</div>` + padroesHtml();
@@ -2123,7 +2458,7 @@ function desenharRoteiro(a) {
   bar.classList.remove("oculto");
   bar.innerHTML = `<b>▶ ${esc(r.nome)}</b><span>${r.i}/${r.total}</span><code>${esc(r.atual || "")}</code>
     <span class="prog"><i style="width:${Math.round((r.i / r.total) * 100)}%"></i></span>
-    <span>${r.evid} evidência(s)</span><button class="btn" id="rot-parar">${r.parar ? "Parando…" : "■ Parar"}</button>`;
+    <span>${pl(r.evid, "evidência")}</span><button class="btn" id="rot-parar">${r.parar ? "Parando…" : "■ Parar"}</button>`;
   bar.querySelector("#rot-parar").onclick = () => { r.parar = true; desenharRoteiro(a); };
 }
 // Saída maior que a tela e sem paginação (PowerShell, Linux): captura tela por tela rolando o terminal.
@@ -2147,8 +2482,10 @@ async function executarRoteiro(rot, enviar) {
   const proibidos = rot.somente_leitura ? rot.comandos.filter((c) => !RE_LEITURA.test(c.cmd)) : [];
   if (proibidos.length) return toast(`Roteiro bloqueado: "${proibidos[0].cmd}" não é comando de consulta`, "erro");
   const config = rot.tipo_skill === "configuracao";
-  if (config && !(await confirmar(`⚠ <b>ESTA SKILL ALTERA A CONFIGURAÇÃO DO EQUIPAMENTO</b><br><b>${esc(rot.nome)}</b>: ${rot.comandos.length} comando(s) serão digitados na aba <b>${esc(a.nome || "")}</b>, um por vez, com evidência de cada tela. Confirma a execução?`))) return;
+  const versao = a.versaoFechamento;
+  if (config && !(await confirmar(`⚠ <b>ESTA SKILL ALTERA A CONFIGURAÇÃO DO EQUIPAMENTO</b><br><b>${esc(rot.nome)}</b>: ${rot.comandos.length === 1 ? "1 comando será digitado" : `${rot.comandos.length} comandos serão digitados`} na aba <b>${esc(a.nome || "")}</b>, um por vez, com evidência de cada tela. Confirma a execução?`))) return;
   if (!config && !rot.somente_leitura && !(await confirmar(`⚠ <b>${esc(rot.nome)}</b> GRAVA arquivos (ex.: cópia para o pendrive). Não altera a configuração do equipamento. Executar?`))) return;
+  if (a.roteiro || !a.conectado || !abas.has(a.id) || a.versaoFechamento !== versao) return;
   // Skill de configuração: digita pelo backend (completa a senha do cofre e passa a ocultá-la no log/gravação/evidência)
   const digitar = async (c, texto) => {
     if (!config) { api.escrever(a.id, texto + "\r"); return true; }
@@ -2159,11 +2496,30 @@ async function executarRoteiro(rot, enviar) {
       if (r && r.ok === false) { toast(r.erro || "Falha ao digitar o comando", "erro"); return false; }
       return true;
     }
-    if (Object.keys(c.cofre || {}).length) { toast("Senha do cofre indisponível nesta versão: digite a senha no formulário", "erro"); return false; }
+    if (Object.keys(c.cofre || {}).length || c.segredos?.length) {
+      toast("A proteção de senhas da Skill está indisponível nesta versão.", "erro"); return false;
+    }
     api.escrever(a.id, texto + "\r"); return true;
   };
+  const r = a.roteiro = { nome: rot.nome, i: 0, total: rot.comandos.length, evid: 0, parar: false };
+  let id = null, resultado = "Falha na execução";
+  try {
+    try { id = await api.skill_iniciar_registro?.(a.id, rot.nome); } catch (_) {}
+    await rodarPassosSkill(a, rot, enviar, digitar);
+    resultado = r.parar || !a.conectado || !abas.has(a.id) ? "Interrompida" : "Fluxo concluído";
+  } catch (_) {
+    resultado = "Falha na execução";
+  } finally {
+    a.roteiro = null;
+    desenharRoteiro(a);
+    if (id) {
+      try { await api.skill_finalizar_registro(a.id, id, resultado); } catch (_) {}
+    }
+  }
+  toast(`${resultado}: ${pl(r.evid, "evidência")} — gere o 📄 Relatório quando quiser`);
+}
+async function rodarPassosSkill(a, rot, enviar, digitar) {
   const passos = [...rot.comandos];
-  a.roteiro = { nome: rot.nome, i: 0, total: passos.length, evid: 0, parar: false };
   for (let k = 0; k < passos.length; k++) {
     let c = passos[k];
     if (a.roteiro.parar || !a.conectado) break;
@@ -2175,7 +2531,7 @@ async function executarRoteiro(rot, enviar) {
       inicioDir?.dispose();
       const pasta = c.copiar_pasta.includes("*") ? c.copiar_pasta.replace(/[^/]*$/, "") : c.copiar_pasta.replace(/\/?$/, "/");   // curinga: copia da pasta-mãe
       passos.splice(k + 1, 0, ...nomes.map((n) => ({ cmd: `copy ${pasta}${n} ${c.destino}`, confirmar: true, paginas: 2 })));
-      a.roteiro.total = passos.length; toast(`📂 ${c.copiar_pasta}: ${nomes.length} arquivo(s) para copiar`);
+      a.roteiro.total = passos.length; toast(`📂 ${c.copiar_pasta}: ${pl(nomes.length, "arquivo")} para copiar`);
       c = { cmd: `dir ${c.copiar_pasta}`, paginas: 6 };   // a listagem também vira evidência
     }
     a.roteiro.i++; a.roteiro.atual = c.mostra || c.cmd; desenharRoteiro(a);
@@ -2186,7 +2542,7 @@ async function executarRoteiro(rot, enviar) {
     } else if (limparDaAba(a)) a.term.clear();
     const buf0 = a.term.buffer.active, ini = buf0.baseY + buf0.cursorY;   // linha onde o comando começa
     desde = Date.now();
-    if (!(await digitar(c, c.cmd))) { a.roteiro.parar = true; break; }
+    if (!(await digitar(c, c.cmd))) throw new Error("Falha ao executar comando da Skill");
     await esperarSaida(a, desde);
     for (let n = 0; c.confirmar && n < 3 && /\[\s*Y\s*\/\s*N\s*\]\s*:?\s*$/i.test(linhaCursor(a.term)); n++) {   // "Copy ...? [Y/N]:"
       desde = Date.now(); api.escrever(a.id, "y\r"); await esperarSaida(a, desde, 1500, 120000);
@@ -2199,11 +2555,12 @@ async function executarRoteiro(rot, enviar) {
         toast(`O equipamento perguntou "${ln.trim().slice(-60)}" e o campo da Skill está vazio — Skill interrompida`, "erro");
         a.roteiro.parar = true; break;
       }
-      desde = Date.now(); if (!(await digitar(c, r.enviar))) { a.roteiro.parar = true; break; }
+      desde = Date.now();
+      if (!(await digitar(c, r.enviar))) throw new Error("Falha ao responder pela Skill");
       await esperarSaida(a, desde, 1200, 60000);
     }
     for (let pag = 1; ; pag++) {
-      if (a.roteiro.parar) break;
+      if (a.roteiro.parar || !a.conectado || !abas.has(a.id)) break;
       const ln = linhaCursor(a.term);
       if (!RE_MORE.test(ln)) {                            // comando terminou (prompt)
         await capturarRolando(a, ini, c, rot.nome, env); break;
@@ -2211,14 +2568,12 @@ async function executarRoteiro(rot, enviar) {
       // até o limite: evidência de cada página; depois do limite NÃO corta a saída (o fabricante quer tudo):
       // continua paginando até o fim e o conteúdo integral fica no log da sessão (anexado ao PDF)
       if (pag <= (c.paginas || 8)) { await evidencia(env, rot.nome, a, c.mostra || c.cmd, null, c.segredos); a.roteiro.evid++; desenharRoteiro(a); }
-      else if (pag > 2000) { desde = Date.now(); api.escrever(a.id, "\x03"); await esperarSaida(a, desde, 800, 5000); break; }
+      else if (pag > 2000) { desde = Date.now(); api.escrever(a.id, "\x03"); await esperarSaida(a, desde, 800, 5000); a.roteiro.parar = true; break; }
       if (limparDaAba(a)) a.term.clear();
       desde = Date.now(); api.escrever(a.id, " ");   // próxima página
       await esperarSaida(a, desde);
     }
   }
-  const r = a.roteiro; a.roteiro = null; desenharRoteiro(a);
-  toast(`${r.parar ? "Roteiro interrompido" : "Roteiro concluído"}: ${r.evid} evidência(s) — gere o 📄 Relatório quando quiser`);
 }
 // nomes de arquivo na saída do "dir" (Huawei: "  0  -rw-  12,345  Oct 06 2026 10:00:01   log.log.zip")
 function arquivosDoDir(term, inicio) {
@@ -2266,8 +2621,9 @@ function desenharRoteiros() {
     const g = comb(r) === 0 ? "Combinam com esta aba" : fabDe(r);
     if (g !== grupo) { const h = document.createElement("li"); h.className = "rot-grupo"; h.textContent = g; ul.appendChild(h); grupo = g; }
     const li = document.createElement("li"); li.className = "rot-item";
+    li.dataset.arquivo = r.arquivo; li.dataset.origem = r.origem || "";
     li.innerHTML = `<div class="rot-item-l1"><b>${esc(r.nome)}</b>${ehConfig(r) ? '<span class="tag tag-config">⚙ configuração</span>' : '<span class="tag tag-coleta">🔎 coleta</span>'}</div>
-      <small>${esc(fabDe(r))} · ${r.comandos.length} comando(s)${(r.finalidade || []).length ? " · " + esc(r.finalidade.join(", ")) : ""}</small>`;
+      <small>${esc(fabDe(r))} · ${pl(r.comandos.length, "comando")}${(r.finalidade || []).length ? " · " + esc(r.finalidade.join(", ")) : ""}</small>`;
     li.onclick = () => {
       rotSel = r; ul.querySelectorAll("li").forEach((x) => x.classList.remove("sel")); li.classList.add("sel");
       $("#rot-tit").textContent = r.nome; $("#rot-desc").textContent = (r.descricao || "") + (r.somente_leitura ? " · somente leitura" : "");
@@ -2307,7 +2663,7 @@ function desenharFormSkill(r) {
     const val = skillCfg.valores[v.id] ?? "", obr = v.obrigatorio ? ' <b class="obr" title="obrigatório">*</b>' : "";
     let campo;
     if (v.tipo === "lista") campo = `<select data-var="${esc(v.id)}">${SKL.opcoes(v).map((o) => `<option value="${esc(o.valor)}"${o.valor === val ? " selected" : ""}>${esc(o.rotulo)}</option>`).join("")}</select>`;
-    else if (v.tipo === "senha") campo = `<input type="password" data-var="${esc(v.id)}" value="${esc(val)}" autocomplete="new-password" spellcheck="false"${skillCfg.cofre[v.id] ? " disabled" : ""}>` +
+    else if (v.tipo === "senha") campo = `<input type="password" data-var="${esc(v.id)}" value="${esc(val)}" autocomplete="new-password" spellcheck="false"${skillCfg.cofre[v.id] ? " disabled" : ""}><button type="button" class="btn mini" data-gerar-senha aria-label="Gerar senha para ${esc(v.rotulo || v.id)}" aria-haspopup="dialog"${skillCfg.cofre[v.id] ? " disabled" : ""}>🎲</button>` +
       (credenciais.length ? `<select data-cofre="${esc(v.id)}" title="Usar a senha de uma credencial do cofre (não passa pela interface)"><option value="">digitar</option>${credenciais.map((c) => `<option value="${esc(c.id)}"${skillCfg.cofre[v.id] === c.id ? " selected" : ""}>🔐 ${esc(c.nome)}</option>`).join("")}</select>`
         : !COFRE.token ? `<button type="button" class="btn mini" data-destrancar title="Destranca o cofre com o PIN para escolher uma credencial">🔒 Usar do cofre</button>` : "");
     else campo = `<input type="text" data-var="${esc(v.id)}" value="${esc(val)}" spellcheck="false" placeholder="${esc(v.tipo === "ip" ? "ex.: 192.168.10.2" : v.tipo === "mascara" ? "ex.: 255.255.255.0" : v.tipo === "vlan" ? "1 a 4094" : v.tipo === "wwn" ? "10:00:00:90:fa:12:34:56" : "")}">`;
@@ -2319,7 +2675,7 @@ function desenharFormSkill(r) {
   }));
   f.querySelectorAll("[data-cofre]").forEach((s) => (s.onchange = () => {
     const id = s.dataset.cofre; if (s.value) skillCfg.cofre[id] = s.value; else delete skillCfg.cofre[id];
-    const inp = f.querySelector(`[data-var="${CSS.escape(id)}"]`); inp.disabled = !!s.value; if (s.value) inp.value = skillCfg.valores[id] = "";
+    const inp = f.querySelector(`[data-var="${CSS.escape(id)}"]`); inp.disabled = !!s.value; inp.nextElementSibling.disabled = inp.disabled; if (s.value) inp.value = skillCfg.valores[id] = "";
   }));
   f.querySelectorAll("[data-destrancar]").forEach((b) => (b.onclick = async () => { if (await garantirCofre("A Skill pode usar uma senha do cofre.")) desenharFormSkill(r); }));
 }
@@ -2355,55 +2711,307 @@ function copiarScriptSkill() {
 
 // ================= relatório =================
 async function gerarRelatorio() {
-  toast("Gerando o relatório do atendimento (PDF)…");
+  toast("Gerando o relatório do atendimento (PDF)…", "", { fixo: true });
+  ilhaTarefa("relatorio", "Gerando o relatório", "PDF do atendimento");
   $("#btn-relatorio").disabled = true;
   try {
     const r = await api.relatorio_gerar();
     if (!r.ok) return toast(r.erro, "erro");
+    toastFechar();   // o progresso termina aqui: some junto com a conclusão
+    gerarRelatorio.ok = true;
     const nome = r.pdf.split("\\").pop();
-    pedido(`📄 <b>Relatório gerado</b> — ${r.evidencias} evidência(s), ${r.logs} log(s), ${r.gravacoes} gravação(ões).<br>
-      <small>${esc(nome)} · ${esc(r.id)}</small>`, "Ver e assinar", "Enviar no WhatsApp", (abrir) => {
+    pedido(`📄 <b>Relatório gerado</b> — ${pl(r.evidencias, "evidência")}, ${pl(r.logs, "log")}, ${pl(r.gravacoes, "gravação", "gravações")}.<br>
+      <span class="nome-arq"><small title="${esc(nome)}">${esc(nomeNoMeio(nome))}</small><button type="button" class="nome-copiar" data-copiar-nome="${esc(nome)}" title="Copiar o nome do arquivo">Copiar nome</button></span>`, "Ver e assinar", "Enviar no WhatsApp", (abrir) => {
       if (abrir) abrirPdf(r.pdf);
       else api.wa_enviar_arquivo(r.pdf, `Relatório de atendimento ${r.id}`).then((x) =>
         x.ok ? toast(`Relatório na fila de envio para ${x.conversa} (${x.posicao}º)`) : toast(x.erro, "erro"));
     });
-  } finally { $("#btn-relatorio").disabled = false; }
+  } catch (err) { toast(`Não foi possível gerar o relatório: ${err && err.message || err}`, "erro"); }
+  finally { $("#btn-relatorio").disabled = false; if (toast._fixo) toastFechar(); ilhaTarefaFim("relatorio", !!gerarRelatorio.ok, "Relatório pronto", "O PDF do atendimento foi gerado."); gerarRelatorio.ok = false; }
 }
 
 // ---------- equipamentos salvos ----------
-// A lista mora na seção 📚 Equipamentos da 🗂 Biblioteca (busca, filtros, "Ordenar por", cartões iguais às outras seções).
 let EQ = [], eqEdit = null;
 const TIPO_NOME = NOMES_TIPO;
-async function abrirEquip() { await abrirBiblioteca("equipamentos"); setTimeout(() => $("#bib-busca").focus(), 50); }
-function desenharEquip() {   // lista mudou (salvar/importar/remover): redesenha a seção, se for a atual
+const novaSelecao = () => ({ selecionados: new Set(), recolhidos: new Set(), ancora: null, foco: null });
+const EQ_LISTA = { ...novaSelecao(), pendente: null, ocupada: false };
+async function abrirEquip() {
+  await abrirBiblioteca("equipamentos");
+  if (BIB.sec === "equipamentos" && !$("#modal-bib").classList.contains("oculto")) $("#bib-busca").focus();
+}
+function desenharEquip() {
   const n = $('#bib-nav [data-sec="equipamentos"] .bib-n'); if (n) n.textContent = EQ.length;
   if (BIB.sec === "equipamentos" && !$("#modal-bib").classList.contains("oculto")) desenharBib();
 }
-function cartaoEquip(e) {
-  const c = document.createElement("div"); c.className = "bib-item"; c.dataset.id = e.id;
-  c.innerHTML = `<div class="bib-l1"><span class="eq-tipo t-${esc(e.tipo)}">${esc(nomeTipo(e.tipo))}</span> <b>${esc(e.nome)}</b>
-      <span class="bib-meta mono">${esc(e.destino)}</span>
-      <span class="bib-meta">${e.grupo ? esc(e.grupo) + " · " : ""}último uso: ${esc(e.ultima || "—")}</span></div>
-    ${e.obs ? `<div class="bib-l2 bib-meta">${esc(e.obs)}</div>` : ""}
-    <div class="bib-acoes"><button class="btn mini primario" data-c>▶ Conectar</button><button class="btn mini" data-e>✎ Editar</button>
-      <button class="btn mini" data-r>🗑 Remover</button></div>`;
-  c.ondblclick = (ev) => { if (!ev.target.closest("button")) conectarEquip(e); };
-  c.querySelector("[data-c]").onclick = () => conectarEquip(e);
-  c.querySelector("[data-e]").onclick = () => formEquip(e);
-  c.querySelector("[data-r]").onclick = async (ev) => {
-    const b = ev.currentTarget; if (b.dataset.conf !== "1") { b.dataset.conf = "1"; b.textContent = "Confirmar?"; return; }
-    await api.equip_remover(e.id); EQ = await api.equip_listar(); desenharEquip(); toast(`Removido: ${e.nome}`);
+function ferramentaEquip(e) { return (e.origem || "").split(" · ")[0]; }
+function partesGrupoEquip(grupo) { return (grupo || "").split("/").map((p) => p.trim()).filter(Boolean); }
+function estadoEquip(e) {
+  const ligado = [...abas.values()].some((a) => a.conectado && a.tipo === e.tipo &&
+    (e.tipo === "serial" ? a.params?.porta === e.destino.split(":")[0] : !!e.destino && a.params?.destino === e.destino));
+  return ligado ? "Em uso" : e.ultima ? `Último uso: ${e.ultima}` : "Nunca usado";
+}
+function atualizarEstadosEquip() {
+  if ($("#modal-bib").classList.contains("oculto")) return;
+  document.querySelectorAll("#eq-linhas .eq-linha").forEach((linha) => {
+    const e = EQ.find((item) => item.id === linha.dataset.id);
+    if (e) linha.querySelector(".eq-estado").textContent = estadoEquip(e);
+  });
+}
+async function recarregarEquip() {
+  const lista = await api.equip_listar();
+  if (!Array.isArray(lista)) throw new Error("A lista de equipamentos não pôde ser atualizada");
+  EQ = lista; desenharEquip();
+}
+function linhaEquip(e, agrupamento) {
+  const linha = document.createElement("div"); linha.className = "eq-linha";
+  const [ferramenta, data] = (e.origem || "").split(" · ");
+  const origem = [ferramenta, data && new Date(data).toLocaleString("pt-BR")].filter(Boolean).join(" · ");
+  linha.innerHTML = `<span class="eq-nome"><span class="eq-tipo">${esc(nomeTipo(e.tipo))}</span><b>${esc(e.nome)}</b></span>
+    <span class="eq-destino">${esc(e.destino)}</span>
+    <span class="eq-etiquetas">${e.grupo && !(bibDesktop.matches && agrupamento === "cliente") ? `<small>${esc(e.grupo)}</small>` : ""}
+      ${origem ? `<small title="Origem da importação">${esc(origem)}</small>` : ""}</span>
+    <small class="eq-estado">${esc(estadoEquip(e))}</small>`;
+  return linha;
+}
+function nosVisiveis(lista) {
+  return [...lista.querySelectorAll("[data-eq-no]")].filter((no) => !no.closest("[hidden]"));
+}
+function focoLista(lista, no, focar) {
+  const anterior = lista.querySelector('[data-eq-no][tabindex="0"]');
+  if (anterior) anterior.tabIndex = -1;
+  lista.tabIndex = no ? -1 : 0;
+  if (no) no.tabIndex = 0;
+  lista.controle.estado.foco = no?.dataset.eqNo || null;
+  if (focar) (no || lista).focus();
+}
+function mostrarSelecao(lista, nos = nosVisiveis(lista)) {
+  const estado = lista.controle.estado;
+  const ids = nos.filter((no) => no.dataset.id).map((no) => no.dataset.id);
+  estado.selecionados = new Set(ids.filter((id) => estado.selecionados.has(id)));
+  if (!ids.includes(estado.ancora)) estado.ancora = null;
+  lista.querySelectorAll("[data-id]").forEach((no) => no.setAttribute("aria-selected", estado.selecionados.has(no.dataset.id)));
+  lista.controle.atualizar();
+}
+function selecionarLinha(lista, no, { shiftKey, ctrlKey, metaKey }, alternar = false) {
+  const estado = lista.controle.estado;
+  const nos = nosVisiveis(lista), id = no.dataset.id, soma = ctrlKey || metaKey;
+  lista.controle.cancelar?.();
+  if (shiftKey) {
+    const linhas = nos.filter((n) => n.dataset.id), ate = linhas.indexOf(no);
+    const ancora = estado.ancora || nos.find((n) => n.dataset.eqNo === estado.foco)?.dataset.id;
+    const indice = linhas.findIndex((n) => n.dataset.id === ancora), de = indice < 0 ? ate : indice;
+    estado.ancora = linhas[de].dataset.id;
+    if (!soma) estado.selecionados.clear();
+    linhas.slice(Math.min(de, ate), Math.max(de, ate) + 1).forEach((n) => estado.selecionados.add(n.dataset.id));
+  } else {
+    if (!soma && !alternar) estado.selecionados = new Set([id]);
+    else if (estado.selecionados.has(id)) estado.selecionados.delete(id);
+    else estado.selecionados.add(id);
+    estado.ancora = id;
+  }
+  focoLista(lista, no, true);
+  mostrarSelecao(lista, nos);
+}
+function desenharListaSelecionavel(lista, itens, agrupamento, buscando, restaurarFoco, controle) {
+  lista.controle = controle;
+  const papel = agrupamento ? "treeitem" : "option", grupos = new Map();
+  lista.setAttribute("role", agrupamento ? "tree" : "listbox");
+  lista.setAttribute("aria-label", controle.titulo);
+  lista.setAttribute("aria-multiselectable", "true");
+  lista.setAttribute("aria-describedby", "bib-dica");
+  for (const item of itens) {
+    const partes = agrupamento ? controle.grupos(item, agrupamento) : [];
+    let pai = lista;
+    partes.forEach((p, i) => {
+      const chave = `g:${agrupamento}:${JSON.stringify(partes.slice(0, i + 1))}`;
+      if (!grupos.has(chave)) {
+        const no = document.createElement("div"); no.className = "eq-ramo";
+        no.dataset.eqNo = chave; no.tabIndex = -1;
+        no.setAttribute("role", "treeitem");
+        const rotulo = document.createElement("div"); rotulo.className = "eq-rotulo-grupo";
+        rotulo.id = `eq-rotulo-${grupos.size}`; rotulo.textContent = p;
+        no.setAttribute("aria-labelledby", rotulo.id);
+        const filhos = document.createElement("div"); filhos.setAttribute("role", "group");
+        no.append(rotulo, filhos); pai.appendChild(no); grupos.set(chave, filhos);
+        expandirGrupoLista(no, buscando || !lista.controle.estado.recolhidos.has(chave));
+      }
+      pai = grupos.get(chave);
+    });
+    const linha = controle.linha(item, agrupamento);
+    linha.dataset.id = controle.id(item);
+    linha.dataset.eqNo = `e:${linha.dataset.id}`;
+    linha.tabIndex = -1;
+    linha.setAttribute("role", papel);
+    linha.setAttribute("aria-selected", "false");
+    pai.appendChild(linha);
+  }
+  const nos = nosVisiveis(lista);
+  mostrarSelecao(lista, nos);
+  focoLista(lista, nos.find((no) => no.dataset.eqNo === lista.controle.estado.foco) || nos[0], restaurarFoco);
+  lista.onclick = (ev) => {
+    const no = ev.target.closest("[data-eq-no]");
+    if (!no) return;
+    if (no.dataset.id) selecionarLinha(lista, no, ev);
+    else { focoLista(lista, no, true); alternarGrupoLista(lista, no, buscando); }
   };
-  return c;
+  lista.ondblclick = (ev) => {
+    const id = ev.target.closest(".eq-linha")?.dataset.id;
+    if (id) controle.abrir(id);
+  };
+  lista.onkeydown = (ev) => tecladoLista(lista, ev, buscando);
+}
+function expandirGrupoLista(no, aberto) {
+  no.setAttribute("aria-expanded", aberto);
+  no.lastElementChild.hidden = !aberto;
+}
+function alternarGrupoLista(lista, no, buscando) {
+  if (buscando) return;
+  const abrir = no.getAttribute("aria-expanded") === "false";
+  if (abrir) lista.controle.estado.recolhidos.delete(no.dataset.eqNo); else lista.controle.estado.recolhidos.add(no.dataset.eqNo);
+  expandirGrupoLista(no, abrir);
+  lista.controle.cancelar?.();
+  mostrarSelecao(lista);
+}
+function tecladoLista(lista, ev, buscando) {
+  const estado = lista.controle.estado;
+  if (ev.altKey) return;
+  const atual = ev.target.closest("[data-eq-no]"), nos = nosVisiveis(lista), i = nos.indexOf(atual);
+  const id = atual?.dataset.id, grupo = atual?.hasAttribute("aria-expanded"), soma = ev.ctrlKey || ev.metaKey;
+  let destino;
+  switch (ev.key.toLowerCase()) {
+    case "arrowup": destino = nos[Math.max(0, i - 1)]; break;
+    case "arrowdown": destino = nos[Math.min(nos.length - 1, i + 1)]; break;
+    case "home": destino = nos[0]; break;
+    case "end": destino = nos[nos.length - 1]; break;
+    case "arrowright":
+      if (!grupo) return;
+      if (atual.getAttribute("aria-expanded") === "false") alternarGrupoLista(lista, atual, buscando);
+      else destino = atual.lastElementChild.firstElementChild;
+      break;
+    case "arrowleft":
+      if (grupo && !buscando && atual.getAttribute("aria-expanded") === "true") alternarGrupoLista(lista, atual, buscando);
+      else destino = atual?.parentElement.closest(".eq-ramo");
+      break;
+    case "enter":
+      if (grupo && !ev.repeat) alternarGrupoLista(lista, atual, buscando);
+      else if (id && !ev.repeat) lista.controle.abrir(id);
+      break;
+    case " ":
+      if (grupo && !ev.repeat) alternarGrupoLista(lista, atual, buscando);
+      else if (id && !ev.repeat) selecionarLinha(lista, atual, ev, true);
+      break;
+    case "delete": if (!ev.repeat) lista.controle.remover?.(); break;
+    case "a":
+      if (!soma) return;
+      lista.controle.cancelar?.();
+      estado.selecionados = new Set(nos.map((no) => no.dataset.id).filter(Boolean));
+      estado.ancora = id || null;
+      mostrarSelecao(lista, nos);
+      break;
+    default: return;
+  }
+  ev.preventDefault();
+  if (destino && destino !== atual) {
+    if (destino.dataset.id && (!soma || ev.shiftKey)) selecionarLinha(lista, destino, ev);
+    else focoLista(lista, destino, true);
+  }
+}
+function selecionadosEquip() {
+  const porId = new Map(EQ.map((e) => [e.id, e]));
+  return [...EQ_LISTA.selecionados].map((id) => porId.get(id)).filter(Boolean);
+}
+function atualizaBarraEquip() {
+  const itens = selecionadosEquip(), n = itens.length, origem = itens[0]?.origem;
+  const habilitados = { conectar: n === 1, editar: n === 1, duplicar: n === 1, mover: n > 0, copiar: n > 0,
+    remover: n > 0, desfazer: !!origem && itens.every((e) => e.origem === origem) };
+  const contagem = n === 1 ? "1 selecionado" : `${n} selecionados`;
+  if ($("#eq-selecao").textContent !== contagem) $("#eq-selecao").textContent = contagem;
+  $("#eq-acoes").querySelectorAll("[data-eq-acao]").forEach((b) => {
+    b.disabled = EQ_LISTA.ocupada || !habilitados[b.dataset.eqAcao];
+  });
+  $("#eq-acoes [data-desfazer-importacao]").classList.toggle("oculto", !itens.some((e) => e.origem));
+}
+function fecharLoteEquip() {
+  EQ_LISTA.pendente = null;
+  $("#eq-lote").classList.add("oculto");
+}
+function focarSelecaoEquip() {
+  if (BIB.sec !== "equipamentos" || $("#modal-bib").classList.contains("oculto")) return;
+  ($("#eq-linhas [data-eq-no][tabindex='0']") || $("#bib-busca")).focus();
+}
+async function acaoEquip(acao) {
+  const botao = $(`#eq-acoes [data-eq-acao="${acao}"]`);
+  if (botao.disabled) return;
+  const itens = selecionadosEquip(), [e] = itens;
+  fecharLoteEquip();
+  if (acao === "conectar") return conectarEquip(e);
+  if (acao === "editar") return formEquip(e);
+  if (acao === "duplicar") return formEquip({ nome: `${e.nome} (cópia)`, tipo: e.tipo, destino: e.destino, grupo: e.grupo, obs: e.obs });
+  if (acao === "copiar") {
+    try {
+      await navigator.clipboard.writeText(itens.map((item) => item.destino).join("\n"));
+      toast(itens.length === 1 ? "Destino copiado" : "Destinos copiados");
+    } catch (_) { toast("Não foi possível copiar o destino", "erro"); }
+    return;
+  }
+  $("#eq-form").classList.add("oculto");
+  const mover = acao === "mover", desfazer = acao === "desfazer";
+  const alvo = itens.length === 1 ? `“${e.nome}”` : `${itens.length} equipamentos`;
+  EQ_LISTA.pendente = { acao, itens };
+  $("#eq-lote-msg").textContent = mover ? `Mover ${alvo}`
+    : desfazer ? `Desfazer o lote de ${ferramentaEquip(e)}? Os equipamentos editados serão mantidos.` : `Remover ${alvo}?`;
+  $("#eq-lote-ok").textContent = mover ? "Mover" : desfazer ? "Desfazer importação" : "Confirmar remoção";
+  $("#eq-lote-grupo").classList.toggle("oculto", !mover);
+  $("#eq-grupo-destino").value = mover && itens.every((item) => item.grupo === e.grupo) ? e.grupo || "" : "";
+  $("#eq-lote").classList.remove("oculto");
+  $(mover ? "#eq-grupo-destino" : "#eq-lote-cancelar").focus();
+}
+async function executarLoteEquip(ev) {
+  ev.preventDefault();
+  const pendente = EQ_LISTA.pendente;
+  if (!pendente || EQ_LISTA.ocupada) return;
+  const { acao, itens } = pendente;
+  const grupo = partesGrupoEquip($("#eq-grupo-destino").value).join("/");
+  fecharLoteEquip();
+  EQ_LISTA.ocupada = true; atualizaBarraEquip();
+  focarSelecaoEquip();
+  try {
+    if (acao === "desfazer") {
+      const r = await api.equip_desfazer_importacao(itens[0].origem);
+      if (!r?.ok) return toast("Não foi possível desfazer a importação", "erro");
+      toast(`${r.removidos} removido(s) · ${r.editados} editado(s) mantido(s)`, r.editados ? "aviso" : "");
+    } else {
+      let sucesso = 0;
+      for (const e of itens) {
+        try {
+          const ok = acao === "remover" ? await api.equip_remover(e.id)
+            : (e.grupo || "") === grupo || (await api.equip_salvar({ ...e, grupo }))?.ok;
+          if (ok) sucesso++;
+        } catch (_) { /* atualiza a lista e informa quantos itens foram processados */ }
+      }
+      const resultado = acao === "remover" ? "removidos" : "movidos";
+      toast(`${sucesso} de ${itens.length} ${resultado}`, sucesso < itens.length ? "erro" : "");
+    }
+    await recarregarEquip();
+  } catch (_) {
+    toast("Não foi possível concluir a ação ou atualizar a lista", "erro");
+  } finally {
+    EQ_LISTA.ocupada = false; atualizaBarraEquip();
+  }
 }
 function formEquip(e) {
+  if (EQ_LISTA.ocupada) return;
+  fecharLoteEquip();
   eqEdit = e || {}; $("#eq-form").classList.remove("oculto");
   $("#eq-f-nome").value = eqEdit.nome || ""; $("#eq-f-tipo").value = eqEdit.tipo || "ssh"; $("#eq-f-destino").value = eqEdit.destino || "";
   $("#eq-f-grupo").value = eqEdit.grupo || ""; $("#eq-f-obs").value = eqEdit.obs || ""; $("#eq-f-nome").focus();
 }
 async function conectarEquip(e) {
+  if (!e || $("#modal-bib").classList.contains("oculto")) return;
+  let a = A(); if (!a || a.conectado) a = novaAba(e.tipo);
+  if (!a) return;
+  fecharLoteEquip();
   $("#modal-bib").classList.add("oculto");
-  let a = A(); if (a.conectado) a = novaAba(e.tipo);
   a.tipo = e.tipo; selecionarTipo(e.tipo);
   if (e.tipo === "serial") {
     const [porta, baud] = e.destino.split(":"); await carregarPortas();
@@ -2417,12 +3025,33 @@ async function conectarEquip(e) {
 function iniciarEquip() {
   $("#btn-equip").onclick = abrirEquip;
   $("#eq-novo").onclick = () => { importarUIModo(null); formEquip(null); };
-  $("#eq-f-cancelar").onclick = () => $("#eq-form").classList.add("oculto");
+  $("#eq-ocultar-origem").onchange = desenharBib;
+  $("#eq-acoes").querySelectorAll("[data-eq-acao]").forEach((b) => { b.onclick = () => acaoEquip(b.dataset.eqAcao); });
+  $("#eq-lote").onsubmit = executarLoteEquip;
+  $("#eq-lote-cancelar").onclick = () => { fecharLoteEquip(); focarSelecaoEquip(); };
+  $("#eq-lote").onkeydown = (ev) => {
+    if (ev.key === "Escape") { ev.stopPropagation(); fecharLoteEquip(); focarSelecaoEquip(); }
+  };
+  $("#eq-f-cancelar").onclick = () => { $("#eq-form").classList.add("oculto"); focarSelecaoEquip(); };
   $("#eq-f-ok").onclick = async () => {
+    if (EQ_LISTA.ocupada) return;
     const it = { ...eqEdit, nome: $("#eq-f-nome").value, tipo: $("#eq-f-tipo").value, destino: $("#eq-f-destino").value.trim(),
                  grupo: $("#eq-f-grupo").value, obs: $("#eq-f-obs").value };
-    if (!it.destino) return toast("Informe o destino (IP, usuario@ip, URL ou COM)", "aviso");
-    await api.equip_salvar(it); $("#eq-form").classList.add("oculto"); EQ = await api.equip_listar(); desenharEquip();
+    if (!it.destino && ["ssh", "serial", "web"].includes(it.tipo)) return toast("Informe o destino (IP, usuario@ip, URL ou COM)", "aviso");
+    EQ_LISTA.ocupada = true; atualizaBarraEquip();
+    $("#eq-f-ok").disabled = true;
+    try {
+      const r = await api.equip_salvar(it);
+      if (r?.ok === false) return toast(r.erro, "erro");
+      $("#eq-form").classList.add("oculto");
+      await recarregarEquip();
+      if (document.activeElement === document.body) focarSelecaoEquip();
+    } catch (_) {
+      toast("Não foi possível salvar o equipamento ou atualizar a lista", "erro");
+    } finally {
+      EQ_LISTA.ocupada = false; atualizaBarraEquip();
+      $("#eq-f-ok").disabled = false;
+    }
   };
   $("#eq-salvar-aba").onclick = () => {
     const a = A(), p = a.params || {};
@@ -2433,7 +3062,8 @@ function iniciarEquip() {
   $("#eq-importar").onclick = async () => {   // planilha CSV / backup JSON (as outras ferramentas têm cartão próprio)
     const r = await api.equip_importar("arquivo");
     if (!r || r.cancelado) return; if (!r.ok) return toast(r.erro, "erro");
-    toast(`Importado: ${r.novos} novo(s), ${r.atualizados} atualizado(s) — total ${r.total}`);
+    const avisos = (r.avisos || []).join(" · ");
+    toast(`Importado: ${r.novos} novo(s), ${r.atualizados} atualizado(s) — total ${r.total}${avisos ? ` · ${avisos}` : ""}`, avisos ? "aviso" : "");
     EQ = await api.equip_listar(); irBib("equipamentos");
   };
   $("#eq-exportar").onclick = async () => {
@@ -2456,7 +3086,7 @@ async function abrirPdf(caminho) {
   $("#pdf-tit").textContent = "📄 " + r.nome;
   const livre = r.quadros.find((q) => !q.assinado);
   $("#pdf-quadros").innerHTML = r.quadros.map((q) => `<div class="pdf-q ${q.assinado ? "ok" : ""}">
-      ${q.assinado ? "✅" : "⬜"} <b>${esc(q.rotulo)}</b><br><small>${q.assinado ? `assinado por ${esc(q.assinado.nome)} · ${esc(q.assinado.quando)}` : "aguardando assinatura"}</small></div>`).join("");
+      ${q.assinado ? "✅" : "⬜"} <b>${esc(q.rotulo)}</b><br><small>${q.assinado ? `assinado por ${esc(q.assinado.nome)} · ${esc(q.assinado.quando)} · documento íntegro (identidade declarada pelo assinante, certificado autoassinado)` : q.invalida ? `⚠ assinatura INVÁLIDA: ${esc(q.invalida.motivo)}` : "aguardando assinatura"}</small></div>`).join("");
   if (livre) $("#pdf-papel").value = livre.papel;
   $("#pdf-assinar").disabled = !livre;
   preencherNomePdf();
@@ -2508,11 +3138,24 @@ async function tocarGravacao(caminho, titulo) {
   // fonte calculada para o terminal 100x30 caber inteiro na janela (sem barra de rolagem)
   const alt = innerHeight * 0.94 - 130, larg = Math.min(innerWidth * 0.96, 1040) - 40;
   const fs = Math.max(9, Math.min(14, Math.floor(Math.min(alt / (30 * 1.2), larg / (100 * 0.62)))));
-  const term = new Terminal({ cols: 100, rows: 30, fontFamily: TEMAS[temaAtual].fonte + ", monospace", fontSize: fs, theme: TEMA, disableStdin: true });
+  const tamanho = (cols, rows) => [
+    Number.isInteger(cols) && cols >= 2 && cols <= 100 ? cols : 100,
+    Number.isInteger(rows) && rows >= 1 && rows <= 30 ? rows : 30
+  ];
+  const [cols, rows] = tamanho(g.cols, g.rows);
+  const term = new Terminal({ cols, rows, fontFamily: TEMAS[temaAtual].fonte + ", monospace", fontSize: fs, theme: TEMA, disableStdin: true });
   term.open($("#pl-term"));
+  const aplicar = ([, tipo, dados]) => {
+    if (tipo === "o") term.write(dados);
+    if (tipo === "r" && /^\d+x\d+$/.test(dados)) {
+      const grade = tamanho(...dados.split("x").map(Number));
+      term.write("", () => term.resize(...grade));
+    }
+  };
+  const reiniciar = () => term.write("", () => { term.reset(); term.resize(cols, rows); });
   // "Pular pausas": cada silêncio vira no máx. 2 s (uma sessão de 3 min parada não obriga a assistir 3 min)
   const limite = +$("#pl-pausa").value || Infinity, real = g.eventos.length ? g.eventos[g.eventos.length - 1][0] : 0;
-  let t = 0, ant = 0; const ev = g.eventos.map((e) => { t += Math.min(limite, Math.max(0, e[0] - ant)); ant = e[0]; return [t, e[2]]; });
+  let t = 0, ant = 0; const ev = g.eventos.map((e) => { t += Math.min(limite, Math.max(0, e[0] - ant)); ant = e[0]; return [t, e[1], e[2]]; });
   PL = { term, ev, i: 0, pos: 0, total: ev.length ? ev[ev.length - 1][0] : 0, tocando: true, tm: null };
   const mm = (s) => `${Math.floor(s / 60)}min ${pad2(Math.floor(s % 60))}s`;
   $("#pl-tit").textContent = `▶ ${titulo || g.titulo} — duração real ${mm(real)}${limite !== Infinity && real - PL.total > 5 ? ` (pausas encurtadas: assiste em ${mm(PL.total)})` : ""}`;
@@ -2522,15 +3165,15 @@ async function tocarGravacao(caminho, titulo) {
   const passo = () => {
     if (!PL.tocando) return;
     if (PL.i >= PL.ev.length) { PL.tocando = false; $("#pl-play").textContent = "▶"; return; }
-    const [tt, d] = PL.ev[PL.i++]; PL.term.write(d); PL.pos = tt; atual();
+    const ev = PL.ev[PL.i++], tt = ev[0]; aplicar(ev); PL.pos = tt; atual();
     const prox = PL.i < PL.ev.length ? (PL.ev[PL.i][0] - tt) * 1000 / +$("#pl-vel").value : 0;
     PL.tm = setTimeout(passo, Math.max(0, prox));
   };
   $("#pl-play").textContent = "⏸";
-  $("#pl-play").onclick = () => { PL.tocando = !PL.tocando; $("#pl-play").textContent = PL.tocando ? "⏸" : "▶"; if (PL.tocando) { if (PL.i >= PL.ev.length) { PL.i = 0; PL.term.reset(); } passo(); } };
+  $("#pl-play").onclick = () => { PL.tocando = !PL.tocando; $("#pl-play").textContent = PL.tocando ? "⏸" : "▶"; if (PL.tocando) { if (PL.i >= PL.ev.length) { PL.i = 0; reiniciar(); } passo(); } };
   $("#pl-pos").oninput = (e) => {   // pular para um ponto: redesenha tudo até lá
     clearTimeout(PL.tm); const alvo = (e.target.value / 1000) * PL.total;
-    PL.term.reset(); let i = 0; while (i < PL.ev.length && PL.ev[i][0] <= alvo) PL.term.write(PL.ev[i++][1]);
+    reiniciar(); let i = 0; while (i < PL.ev.length && PL.ev[i][0] <= alvo) aplicar(PL.ev[i++]);
     PL.i = i; PL.pos = alvo; atual(); if (PL.tocando) passo();
   };
   document.querySelector("#modal-player [data-fecha]").onclick = (e) => { PL.tocando = false; clearTimeout(PL.tm); fecharModal(e.target); };
@@ -2546,7 +3189,7 @@ const INFO = {
     <li>Nessa janela, <b>clique na conversa ou grupo</b> que vai receber as evidências.</li>
     <li>Volte aqui e clique em <b>Conectar conversa</b> — o nome aparece com a bolinha verde.</li>
     <li>Pronto: <b>Enviar evidência</b> (<kbd>Ctrl+Alt+E</kbd>) salva, copia e envia a foto com a legenda.</li></ol>
-    <p class="nota">Deixe a janela do WhatsApp aberta (pode minimizar). Antes de anexar e antes de enviar o app confere
+    <p class="nota">Deixe a janela do WhatsApp aberta: ela abre pequena e fica por trás do app, e só vem para a frente quando você precisa escolher a conversa. Antes de anexar e antes de enviar o app confere
     o nome da conversa — se não bater, cancela. Não afeta o WhatsApp do seu Chrome/celular (é só mais um aparelho conectado).</p>
     <p class="nota"><b>Por que não usa o WhatsApp que já está aberto no meu Chrome?</b> O login do WhatsApp Web fica preso ao perfil
     do navegador e não pode ser copiado nem controlado com o Chrome aberto. Por isso o app tem o próprio “aparelho conectado”:
@@ -2596,16 +3239,16 @@ const INFO = {
     <li><b>Azure</b> / <b>GCP</b>: abre o terminal da nuvem já logado — se o CLI não estiver instalado, o app instala sozinho.</li>
     <li><b>🌐 Web</b>: iDRAC, iLO, iBMC, firewalls — o navegador e o <b>console virtual</b> (HTML5 ou Java) abrem <b>dentro</b> do app,
       com <b>⤢ Tela cheia</b> e <b>↩ Voltar ao normal</b>.</li>
-    <li><b>📚 Equipamentos</b>: conexões salvas — 1 clique para conectar; importa CSV/JSON e as sessões do PuTTY; exporta CSV.</li>
+    <li><b>📚 Equipamentos</b>: selecione uma conexão salva e use a barra de ações, Enter ou duplo clique para conectar. Importa CSV/JSON e sessões do PuTTY, exporta CSV.</li>
     <li>O relógio na aba mostra há quanto tempo a sessão está aberta. <kbd>Enter</kbd> no campo de endereço já conecta.</li>
     <li><b>Barra da guia</b> (à direita das guias) — vale só para a guia ativa: <b>📡</b> compartilhar ao vivo · <b>⏺</b> gravar/parar ·
       <b>⏱</b> manter ativa · <b>🧹</b> limpar a tela após cada evidência · <b>🎨</b> tema · <b>⚡ Skills</b>.</li>
     <li><b>Barra de sistema</b> (no alto) — vale para o app inteiro: Sessões (🔗 Entrar, 📱 Celular) · Biblioteca (🗂, ⏺ Gravações) ·
       Ferramentas (📚 Equipamentos, 🔑 Cofre) · Sistema (🪪 Licença, versão/atualização).</li>
     <li>Selecionar texto = copiar · botão direito = colar.</li></ul>
-    <p><b>📡 Compartilhar</b> (ao vivo): gera um código <b>ABCD-EFGH-JKLM</b>. O colega abre o DASSH Console dele →
+    <p><b>📡 Compartilhar</b> (ao vivo): gera um código <b>ABCD-EFGH-JKLM</b>. O colega abre o DASSH Code dele →
       <b>🔗 Entrar</b> → digita o código → você <b>aprova</b>. Ele vê tudo ao vivo; pode <b>pedir o controle</b> para digitar.
-      <span style="color:#8df0cc">● verde = ATIVO (digitando)</span> · <span style="color:#ffd98a">● amarelo = observando</span>.
+      <span style="color:var(--participante-ativo)">● verde = ATIVO (digitando)</span> · <span style="color:var(--participante-passivo)">● amarelo = observando</span>.
       Você retoma o controle ou remove alguém a qualquer momento. <b>✉ Convidar</b> manda pelo WhatsApp (para qualquer contato ou
       grupo) a mensagem pronta com o link de download e o código.</p>
     <p class="nota">Ponta a ponta cifrado (AES-256 + X25519): só quem você aprova consegue ler. Se o cabo USB-serial mandar lixo,
@@ -2619,7 +3262,7 @@ const INFO = {
       minutos sem uso, ao trocar de seção ou fechar a Biblioteca. 5 erros seguidos bloqueiam por 30 s (o tempo dobra a cada novo erro).</li></ul>
     <p class="nota">Senhas cifradas pelo Windows (DPAPI) e, com a conta aberta, também pela chave da conta. Nunca aparecem na tela,
     em logs ou evidências.</p>`],
-  historico: ["Sessões gravadas", `<p>Toda conexão é <b>gravada automaticamente</b> (selo <b style="color:#ff6b6b">REC</b> na aba).</p>
+  historico: ["Sessões gravadas", `<p>Toda conexão é <b>gravada automaticamente</b> (selo <b style="color:var(--gravacao)">REC</b> na aba).</p>
     <ul><li><b>▶ Assistir a última sessão</b>: reproduz a mais recente.</li>
     <li><b>▶ Gravação</b> em cada linha: reproduz aquela sessão (1x/2x/4x/10x, barra para pular).</li>
     <li>Clicar no <b>REC</b> da aba: assiste a sessão atual até o momento.</li>
@@ -2649,7 +3292,7 @@ let VERSAO_INFO = null;
 function desenharVersao() {
   const b = $("#btn-versao"), t = $("#versao-txt"); if (!b || !t) return;
   const v = VERSAO_INFO || {}, atual = v.atual || VERSAO_INFO_ATUAL || "";
-  const quem = NA_WEB ? "DASSH Conector (a página web se atualiza sozinha)" : "DASSH Console";
+  const quem = NA_WEB ? "DASSH Conector (a página web se atualiza sozinha)" : "DASSH Code";
   b.classList.toggle("nova", !!v.tem);
   t.textContent = v.tem ? ` ${v.nova} disponível` : ` v${atual || "?"}`;
   b.firstChild.textContent = v.tem ? "⬆" : "ⓥ";
@@ -2670,7 +3313,7 @@ function avisarVersao(v) {
       `atualize o Conector para ter as mesmas funções — evidências, cofre e configurações são mantidos.`, "Baixar o Conector", "Depois",
       (ok) => ok && api.abrir_link(v.url), "atualizacao");
   else
-    pedido(`⬆️ <b>DASSH Console ${esc(v.nova)}</b> disponível (você usa a ${esc(v.atual)}). Baixe e instale por cima — evidências, cofre e configurações são mantidos.`,
+    pedido(`⬆️ <b>DASSH Code ${esc(v.nova)}</b> disponível (você usa a ${esc(v.atual)}). Baixe e instale por cima — evidências, cofre e configurações são mantidos.`,
       api.atualizar_app ? "Baixar e atualizar" : "Baixar agora", "Depois",
       (ok) => ok && (typeof api.atualizar_app === "function" && !NA_WEB ? api.atualizar_app(v.url) : api.abrir_link(v.url)), "atualizacao");
 }
@@ -2679,7 +3322,7 @@ async function abrirVersao() {
   const v = await verificarVersao();
   if (!v || !v.ok) return toast(`Versão ${VERSAO_INFO_ATUAL || "?"} — não consegui verificar agora (sem internet?)`, "aviso");
   if (v.tem) return avisarVersao(v);
-  toast(`✔ ${NA_WEB ? "Conector" : "DASSH Console"} ${v.atual}: é a versão mais recente`);
+  toast(`✔ ${NA_WEB ? "Conector" : "DASSH Code"} ${v.atual}: é a versão mais recente`);
 }
 // espaços reservados: aparecem só quando a função existe (outro módulo pode defini-las depois do app.js)
 function ligarReservados() {
@@ -2723,6 +3366,7 @@ function atalho(e) {
   if (e.__dasshAtalho) return true;
   e.__dasshAtalho = true;
   const k = e.key.toLowerCase();
+  if (k === "d" && A()) { dividirGuias(A()); return true; }
   if (k === "l") { limpar(); return true; }
   if (k === "p") { evidencia(false); return true; }
   if (k === "e") { evidencia(true); return true; }
@@ -2892,6 +3536,7 @@ window.addEventListener("pywebviewready", async () => {
     } else toast("Uma porta COM foi desconectada", "aviso");
   }, 3000);
   const sp = $("#splash"); sp.classList.add("sai"); setTimeout(() => sp.remove(), 300);   // pronto: some a abertura
+  digitarMarca();
   if (!ini.teste) setTimeout(async () => {   // WhatsApp já logado antes: abre sozinho, minimizado (fila funciona sem cliques)
     const w = await api.wa_auto();
     if (w.ok) { atualizarWa(await api.wa_status()); if (w.logado) toast("WhatsApp pronto (aberto minimizado)"); }
@@ -3064,7 +3709,7 @@ async function testeConvite() {
   const espera = (ms) => new Promise((r) => setTimeout(r, ms));
   selecionarTipo("powershell"); A().tipo = "powershell"; await conectar(); await espera(2500);
   await abrirConvite(); await espera(1500);
-  $("#cv-link").value = "https://github.com/dassh-it/dassh-console/releases/latest"; $("#cv-link").oninput(); $("#cv-para").value = "Cláudio";
+  $("#cv-link").value = "https://github.com/dassh-it/dassh-code/releases/latest"; $("#cv-link").oninput(); $("#cv-para").value = "Cláudio";
   api.teste_fim("CONVITE"); await espera(2500);
   $("#modal-convite").classList.add("oculto");
   await api.equip_salvar({ nome: "iDRAC R750 (simulador)", tipo: "web", destino: "https://127.0.0.1:8443", grupo: "Bancada" });
@@ -3164,7 +3809,7 @@ async function demoDono() {
   api.teste_fim("CODIGO " + codigo);
   const digitar = async (txt) => { for (const ch of txt) { api.escrever(A().id, ch); await espera(90 + Math.random() * 120); } api.escrever(A().id, "\r"); };
   await espera(12000);   // tempo para o convidado entrar e ser aprovado
-  const cmds = ["Write-Host 'Ola! Voce esta assistindo ao vivo a minha aba do DASSH Console' -ForegroundColor Green",
+  const cmds = ["Write-Host 'Ola! Voce esta assistindo ao vivo a minha aba do DASSH Code' -ForegroundColor Green",
     "Get-Date", "hostname", "Get-ComputerInfo -Property OsName, OsVersion, CsProcessors | Format-List",
     "Get-NetIPAddress -AddressFamily IPv4 | Select-Object InterfaceAlias, IPAddress | Format-Table",
     "Test-Connection 8.8.8.8 -Count 3 | Select-Object Address, Latency", "cls",
@@ -3256,7 +3901,7 @@ async function desenharLicenca() {
   const r = await api.licenca_estado(), el = $("#lic-estado");
   if (!r || !r.ok) { el.textContent = "Não foi possível ler a licença."; return; }
   const origem = r.origem === "licenca" ? `Convite/licença ativa${r.nome ? " de " + esc(r.nome) : ""}` : r.estado === "valida" ? "Teste gratuito" : "Plano Grátis";
-  const dias = r.dias == null ? "sem data de validade" : `${r.dias} dia(s) restante(s)`;
+  const dias = r.dias == null ? "sem data de validade" : (r.dias === 1 ? "1 dia restante" : `${r.dias} dias restantes`);
   el.innerHTML = `<div style="font-size:15px"><b>${origem}</b> — plano <b>${esc(String(r.plano || "grátis").toUpperCase())}</b></div>
     <div class="ajuda" style="margin-top:4px">${esc(r.motivo || "")} · ${r.estado === "valida" ? dias : "terminou"}</div>`;
 }
@@ -3265,13 +3910,96 @@ $("#lic-ativar").onclick = async () => {
   const t = $("#lic-token").value.trim(); if (!t) { $("#lic-msg").textContent = "Cole o código do convite."; return; }
   const r = await api.licenca_ativar(t);
   $("#lic-msg").textContent = r.ok ? "✔ Ativado!" : "✖ " + (r.motivo || r.erro || "código inválido");
-  $("#lic-msg").style.color = r.ok ? "var(--verde)" : "#ff8b8b";
+  $("#lic-msg").style.color = r.ok ? "var(--verde)" : "var(--erro-detalhe)";
   if (r.ok) { $("#lic-token").value = ""; desenharLicenca(); toast("Licença ativada"); }
 };
+
+// nome "DASSH Code" digitado letra a letra ao lado do logo (uma vez ao abrir; ~85 ms por letra). Sem animação com prefers-reduced-motion:
+// o texto já está completo no HTML. data-pronto="1" marca o fim (testes e leitores de tela não dependem disso: o aria-label é do .marca).
+function digitarMarca() {
+  const box = $("#marca-nome"), alvo = $("#mn-digitado"); if (!box || !alvo) return;
+  const texto = box.dataset.texto || "DASSH Code";
+  if (box.dataset.iniciado) return;   // uma vez só por abertura
+  box.dataset.iniciado = "1";
+  if (window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches) { alvo.textContent = texto; box.dataset.pronto = "1"; return; }
+  alvo.textContent = ""; let i = 0;
+  const passo = () => { i++; alvo.textContent = texto.slice(0, i); if (i < texto.length) setTimeout(passo, 85); else box.dataset.pronto = "1"; };
+  setTimeout(passo, 85);
+}
+
+// ---- botão "Mais ▾" (Nuvem e IA): lista (popover) com os tipos menos usados. Os itens continuam sendo botões data-tipo do
+// MESMO seletor (mesmo handler, mesmo selecionarTipo/instalação/confirmação). A lista mora dentro do grupo; só ao abrir vai para o
+// <body> com position: fixed (a barra de tipos tem overflow e máscara que cortariam o popover) e volta ao fechar. ----
+let maisAberto = null;   // { btn, lista, grupo }
+function atualizarMais() {   // o botão mostra o item ativo da sua lista ("Ollama ▾") e fica selecionado
+  document.querySelectorAll("#tipos .mais-btn").forEach((btn) => {
+    const lista = document.getElementById(btn.getAttribute("aria-controls")), at = lista && lista.querySelector("[data-tipo].ativa");
+    const nome = at ? at.querySelector("b").textContent : "Mais";
+    btn.classList.toggle("ativa", !!at);
+    btn.querySelector("b").textContent = nome;
+    btn.setAttribute("aria-label", at ? `${nome}, selecionado (mais opções)` : "Mais opções");
+    if (at) btn.dataset.ativo = at.dataset.tipo; else delete btn.dataset.ativo;
+  });
+}
+function posicionarMais() {
+  if (!maisAberto) return;
+  const { btn, lista } = maisAberto, r = btn.getBoundingClientRect(), vw = document.documentElement.clientWidth, vh = document.documentElement.clientHeight;
+  lista.style.maxHeight = ""; lista.style.left = "0px"; lista.style.top = "0px";
+  const w = lista.offsetWidth, h = lista.offsetHeight;
+  let x = Math.min(Math.max(8, r.left), Math.max(8, vw - w - 8)), y = r.bottom + 6;
+  if (y + h > vh - 8) { if (r.top - 6 - h >= 8) y = r.top - 6 - h; else lista.style.maxHeight = Math.max(120, vh - y - 8) + "px"; }
+  lista.style.left = x + "px"; lista.style.top = y + "px";
+}
+function abrirMais(btn, foco) {
+  if (maisAberto) fecharMais();
+  const lista = document.getElementById(btn.getAttribute("aria-controls")); if (!lista) return;
+  maisAberto = { btn, lista, grupo: lista.parentNode };
+  document.body.appendChild(lista);
+  lista.hidden = false; btn.setAttribute("aria-expanded", "true");
+  posicionarMais();
+  if (foco) { const it = [...lista.querySelectorAll("[role=menuitem]")], ativo = lista.querySelector(".ativa");
+    (ativo || (foco === "fim" ? it[it.length - 1] : it[0]))?.focus(); }
+}
+function fecharMais(devolverFoco) {
+  if (!maisAberto) return;
+  const { btn, lista, grupo } = maisAberto; maisAberto = null;
+  lista.hidden = true; lista.style.left = lista.style.top = lista.style.maxHeight = "";
+  grupo.appendChild(lista);   // volta ao grupo: o resto do app encontra os itens onde sempre estiveram
+  btn.setAttribute("aria-expanded", "false");
+  if (devolverFoco) btn.focus();
+}
+document.querySelectorAll("#tipos .mais-btn").forEach((btn) => {
+  btn.addEventListener("click", () => { if (maisAberto && maisAberto.btn === btn) fecharMais(true); else abrirMais(btn, null); });
+  btn.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); abrirMais(btn, e.key === "ArrowUp" ? "fim" : "inicio"); }
+    else if (e.key === "Escape" && maisAberto) { e.preventDefault(); fecharMais(true); }
+  });
+});
+document.querySelectorAll("#tipos .mais-lista").forEach((lista) => {
+  lista.addEventListener("click", () => fecharMais(false), true);   // captura: a lista volta ao grupo ANTES do handler do item rodar
+  lista.addEventListener("keydown", (e) => {
+    const it = [...lista.querySelectorAll("[role=menuitem]")], i = it.indexOf(document.activeElement);
+    if (e.key === "ArrowDown") { e.preventDefault(); it[(i + 1) % it.length].focus(); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); it[(i - 1 + it.length) % it.length].focus(); }
+    else if (e.key === "Home") { e.preventDefault(); it[0].focus(); }
+    else if (e.key === "End") { e.preventDefault(); it[it.length - 1].focus(); }
+    else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); fecharMais(true); }
+    else if (e.key === "Tab") fecharMais(true);
+  });
+});
+document.addEventListener("pointerdown", (e) => { if (maisAberto && !maisAberto.lista.contains(e.target) && !maisAberto.btn.contains(e.target)) fecharMais(); }, true);
+window.addEventListener("resize", () => fecharMais());
+window.addEventListener("blur", () => fecharMais());
+document.addEventListener("scroll", (e) => {   // a faixa dos tipos rolou (foco no botão): só reposiciona; qualquer outra rolagem fecha
+  if (!maisAberto || maisAberto.lista.contains(e.target)) return;
+  if (e.target === $("#tipos")) posicionarMais(); else fecharMais();
+}, true);
+atualizarMais();
 
 // clique nos tipos de conexão (ligado no carregamento: funciona antes mesmo do backend responder)
 document.querySelectorAll("#abas [data-tipo]").forEach((b) => b.addEventListener("click", async () => {
   const tipo = b.dataset.tipo;
+  if (b.getAttribute("aria-disabled") === "true") return;   // item "a confirmar" da lista Mais: listado, mas desligado
   if (!DIRETOS.includes(tipo)) {   // Serial / SSH / Web: escolhe o tipo e preenche o destino ao lado
     const a = A(); if (a && a.conectado) return toast("Desconecte esta aba ou abra uma nova (＋) para outro tipo", "aviso");
     return selecionarTipo(tipo);
@@ -3286,25 +4014,27 @@ document.querySelectorAll("#abas [data-tipo]").forEach((b) => b.addEventListener
 function desenharSelecaoSkill() {
   const cbs = [...$("#rot-cmds").querySelectorAll("[data-ci]")], n = cbs.filter((c) => c.checked).length;
   $("#rot-sel").innerHTML = cbs.length ? `<button class="btn mini" data-todos>☑ Marcar todos</button> <button class="btn mini" data-nenhum>☐ Desmarcar todos</button>
-    <span class="rot-cont">${n} de ${cbs.length} comando(s) selecionado(s)</span>` : "";
+    <span class="rot-cont">${n} de ${cbs.length} ${cbs.length === 1 ? "comando selecionado" : "comandos selecionados"}</span>` : "";
   const t = $("#rot-sel").querySelector("[data-todos]"), z = $("#rot-sel").querySelector("[data-nenhum]");
   if (t) t.onclick = () => { cbs.forEach((c) => (c.checked = true)); desenharSelecaoSkill(); };
   if (z) z.onclick = () => { cbs.forEach((c) => (c.checked = false)); desenharSelecaoSkill(); };
   const cfgS = ehConfig(rotSel), ciente = $("#rot-ciente") && $("#rot-ciente").checked;
   $("#rot-executar").disabled = !n || (cfgS && (!skillCfg || skillCfg.fase !== "previa" || !ciente));
-  $("#rot-executar").textContent = cfgS ? `⚠ Aplicar ${n} comando(s) na aba ativa` : n === cbs.length ? "▶ Executar na aba ativa" : `▶ Executar ${n} comando(s) na aba ativa`;
+  $("#rot-executar").textContent = cfgS ? `⚠ Aplicar ${pl(n, "comando")} na aba ativa` : n === cbs.length ? "▶ Executar na aba ativa" : `▶ Executar ${pl(n, "comando")} na aba ativa`;
   $("#rot-executar").classList.toggle("perigo", !!cfgS);
 }
 
 // ================= 🗂 BIBLIOTECA: o lugar único — sessões, gravações, evidências, logs, relatórios, equipamentos, cofre e Skills =================
-// TODAS as seções seguem o MESMO padrão: busca · filtros por tipo / cliente (quando fizer sentido) · "Ordenar por" (padrão: mais
-// recente primeiro; a escolha fica lembrada por seção) · cartões iguais com as ações embaixo. Os botões da tela principal
-// (Equipamentos, Cofre, Gravações, 🖼 Todas, Biblioteca) abrem direto a seção certa.
+const bibDesktop = matchMedia("(min-width: 761px) and (pointer: fine)");
 const BIB = { sec: "sessoes", hist: [], evs: [], rels: [], skills: [], log: null, filtroEv: null, ft: "", fc: "", tag: "", sel: null,
-              limite: 150, pinModo: null, pinEst: null };
+              selecao: novaSelecao(), limite: 150, pinModo: null, pinEst: null };
 const _dt = (iso) => { const [d, t] = String(iso || "").replace("T", " ").split(" "); const [y, m, dd] = (d || "").split("-"); return dd ? `${dd}/${m}/${y} ${String(t || "").slice(0, 5)}` : "—"; };
-const _hist = (r) => ({ data: r.inicio, nome: r.nome, tipo: nomeTipo(r.tipo), cliente: r.cliente || "",
-                        busca: `${r.nome} ${r.tipo} ${r.inicio} ${r.alvo || ""} ${r.cliente || ""}` });
+function nomeHistorico(r) {
+  const tipo = nomeTipo(r.tipo), nome = r.nome || tipo;
+  return bibDesktop.matches && nome.toLowerCase().startsWith(tipo.toLowerCase() + " ") ? nome.slice(tipo.length).trimStart() : nome;
+}
+const _hist = (r) => ({ data: r.inicio, nome: nomeHistorico(r), tipo: nomeTipo(r.tipo), cliente: r.cliente || "",
+                        busca: `${r.nome} ${r.tipo} ${r.inicio} ${r.alvo || ""} ${r.cliente || ""} ${r.etiqueta || ""}` });
 const BIB_SEC = {
   sessoes: { lista: () => BIB.hist, campos: _hist, unid: "sessão(ões)", vazio: "Nenhuma sessão registrada ainda.", cartao: (r) => cartaoSessao(r) },
   gravacoes: { lista: () => BIB.hist.filter((r) => r.grav_existe), campos: _hist, unid: "gravação(ões)",
@@ -3321,24 +4051,23 @@ const BIB_SEC = {
                 rot: { tipo: "Assinatura", cliente: "Visita" }, unid: "relatório(s) do cliente",
                 vazio: "Nenhum relatório gerado ainda (botão 📄 Relatório no cartão Evidência).", cartao: (r) => cartaoRelatorio(r) },
   equipamentos: { lista: () => EQ, campos: (e) => ({ data: e.ultima, nome: e.nome, tipo: nomeTipo(e.tipo), cliente: e.grupo || "",
-                                                     busca: `${e.nome} ${e.destino} ${e.grupo} ${e.obs}` }),
-                  rot: { cliente: "Grupo / cliente" }, novosNoFim: true, unid: "equipamento(s)", id: "eq-linhas",
-                  vazio: "Nenhum equipamento salvo ainda — conecte e use “＋ Salvar a aba atual”, ou ⬇ Importar / 📥 Importar de…",
-                  cartao: (e) => cartaoEquip(e) },
+                                                     origem: ferramentaEquip(e), busca: `${e.nome} ${e.destino} ${e.grupo} ${e.obs} ${ferramentaEquip(e)}` }),
+                  rot: { cliente: "Grupo" }, padrao: { g: "cliente" }, novosNoFim: true, unid: "equipamento(s)",
+                  vazio: "Nenhum equipamento salvo. Cadastre, salve a aba atual ou importe equipamentos." },
   cofre: { lista: () => cofre, campos: (c) => ({ data: c.atualizado || c.criado || "", nome: c.nome, tipo: "", cliente: c.alvo || "",
                                                  busca: `${c.nome} ${c.usuario} ${c.alvo} ${c.obs || ""}` }),
            rot: { cliente: "Vale para" }, novosNoFim: true, unid: "credencial(is)", vazio: "Nenhuma credencial ainda — ＋ Nova credencial.",
            cartao: (c) => cartaoCofre(c) },
-  skills: { lista: () => BIB.skills, campos: (r) => ({ data: "", nome: r.nome, tipo: ehConfig(r) ? "⚙ Configuração" : "🔎 Coleta",
+  skills: { lista: () => BIB.skills, campos: (r) => ({ data: r.alterado, nome: r.nome, tipo: ehConfig(r) ? "⚙ Configuração" : "🔎 Coleta",
                                                        cliente: r.fabricante || "Outros", tags: r.finalidade || [],
                                                        busca: `${r.nome} ${r.fabricante} ${r.descricao} ${(r.finalidade || []).join(" ")} ${(r.comandos || []).map((c) => c.cmd).join(" ")}` }),
-            rot: { tipo: "Tipo", cliente: "Fabricante", tags: "Finalidade" }, semData: true, padrao: { o: "nome", g: "cliente" },
+            rot: { tipo: "Tipo", cliente: "Fabricante", tags: "Finalidade" }, get semData() { return !bibDesktop.matches; }, padrao: { o: "nome", g: "cliente" },
             unid: "Skill(s)", vazio: "Nenhuma Skill encontrada.", cartao: (r) => cartaoSkill(r), detalhe: (r) => detalheSkill(r) },
   importar: { especial: true },
 };
 const BIB_TIT = { sessoes: "🕘 Sessões", gravacoes: "⏺ Gravações", evidencias: "🖼 Evidências", logs: "📜 Logs", relatorios: "📄 Relatórios",
                   equipamentos: "📚 Equipamentos", cofre: "🔑 Cofre de credenciais", skills: "⚡ Skills", importar: "⇅ Importar e exportar" };
-const BIB_DICA = { equipamentos: "Duplo clique ou ▶ conecta (na aba atual, se estiver livre). Senhas não ficam aqui — ficam no 🔑 Cofre.",
+const BIB_DICA = { equipamentos: "Use Ctrl ou Shift para selecionar mais itens. Use as setas para navegar e Enter ou duplo clique para conectar.",
                    cofre: "As senhas nunca aparecem na tela: são digitadas direto na conexão quando o equipamento pede.",
                    logs: "Clique num log para ler aqui mesmo, com busca e destaque." };
 const BIB_ORD = "dassh.bib.ordem.v2";   // { seção: {o: "data"|"nome", inv, g} } — conveniência deste navegador
@@ -3351,9 +4080,12 @@ function bibOrdemGravar(sec, v) {
 }
 async function abrirBiblioteca(sec = "sessoes", filtroEv = null) {
   BIB.filtroEv = filtroEv; BIB.log = null; $("#bib-busca").value = "";
+  $("#eq-acoes").classList.add("oculto"); fecharLoteEquip();
+  $("#bib-acoes").classList.add("oculto");
   abrirModal("#modal-bib"); $("#bib-lista").innerHTML = `<p class="vazio">Carregando…</p>`;
   const arr = (x) => (Array.isArray(x) ? x : []);
-  const [h, e, r, s, q] = await Promise.all([api.historico(), api.evid_lista(), api.biblioteca_relatorios(), api.roteiros(), api.equip_listar()]);
+  const historico = gravacaoEtiquetas.then(() => api.historico());
+  const [h, e, r, s, q] = await Promise.all([historico, api.evid_lista(), api.biblioteca_relatorios(), api.roteiros(), api.equip_listar()]);
   BIB.hist = arr(h); BIB.evs = arr(e && e.itens); BIB.rels = arr(r && r.itens); BIB.skills = arr(s); EQ = arr(q);
   $("#bib-sub").textContent = r && r.cliente ? "· " + r.cliente : "";
   irBib(sec, true);
@@ -3366,12 +4098,23 @@ function bibContagens() {
 }
 function irBib(sec, abrindo) {
   if (!abrindo && BIB.sec === "cofre" && sec !== "cofre" && COFRE.token) cofreTrancar();   // saiu da seção Cofre: tranca
-  if (sec !== BIB.sec || abrindo) { BIB.ft = ""; BIB.fc = ""; BIB.tag = ""; BIB.sel = null; }
+  if (sec !== BIB.sec || abrindo) {
+    BIB.ft = ""; BIB.fc = ""; BIB.tag = ""; BIB.sel = null; $("#eq-ocultar-origem").value = "";
+    EQ_LISTA.selecionados.clear(); EQ_LISTA.foco = EQ_LISTA.ancora = null;
+    BIB.selecao = novaSelecao();
+  }
+  fecharLoteEquip();
+  $("#eq-acoes").classList.toggle("oculto", sec !== "equipamentos");
+  $("#bib-acoes").classList.add("oculto");
   BIB.sec = sec; BIB.log = null; BIB.limite = 150; BIB.pinModo = null;
   $("#bib-nav").querySelectorAll("[data-sec]").forEach((b) => b.classList.toggle("ativa", b.dataset.sec === sec));
   document.querySelectorAll(".bib-ferr[data-ferr]").forEach((f) => f.classList.toggle("oculto", f.dataset.ferr !== sec));
   $("#bib-tit").textContent = BIB_TIT[sec] || ""; $("#bib-dica").textContent = BIB_DICA[sec] || "";
   $("#bib-dica").classList.toggle("oculto", !BIB_DICA[sec]);
+  if (bibDesktop.matches && ACOES_BIB[sec]) {
+    $("#bib-dica").textContent = "Selecione com as setas, Ctrl ou Shift. Enter abre a ação principal. Ctrl+A seleciona os itens visíveis.";
+    $("#bib-dica").classList.remove("oculto");
+  }
   importarUIModo(null); $("#eq-form").classList.add("oculto"); limparFormCofre();
   bibContagens();
   if (sec === "importar") { $("#bib-info").textContent = ""; return importarUIAbrir(); }
@@ -3410,7 +4153,7 @@ function bibChips(todos, rot) {   // filtros em chips: tipo (um por vez) e marca
   const mostraT = tipos.length >= 2 && tipos.length <= 12, mostraG = tags.length >= 2;
   if (!mostraT || !tipos.includes(BIB.ft)) BIB.ft = "";
   if (!mostraG || !tags.includes(BIB.tag)) BIB.tag = "";
-  const box = $("#bib-chips"), chip = (k, v, t, on) => `<button type="button" class="bib-fchip${on ? " ativo" : ""}" data-k="${k}" data-v="${esc(v)}">${esc(t)}</button>`;
+  const box = $("#bib-chips"), chip = (k, v, t, on) => `<button type="button" aria-pressed="${!!on}" class="bib-fchip${on ? " ativo" : ""}" data-k="${k}" data-v="${esc(v)}">${esc(t)}</button>`;
   box.classList.toggle("oculto", !mostraT && !mostraG);
   box.innerHTML = (mostraT ? `<div class="bib-fgrupo"><em>${esc(rot.tipo || "Tipo")}</em>${chip("ft", "", "Todos", !BIB.ft)}${tipos.map((v) => chip("ft", v, v, BIB.ft === v)).join("")}</div>` : "") +
     (mostraG ? `<div class="bib-fgrupo"><em>${esc(rot.tags || "Marcadores")}</em>${chip("tag", "", "Todas", !BIB.tag)}${tags.map((v) => chip("tag", v, v, BIB.tag === v)).join("")}</div>` : "");
@@ -3423,6 +4166,10 @@ function bibBarraOrdem(ord, S, rot, tem) {
   bd.setAttribute("aria-pressed", ord.o === "data"); bn.setAttribute("aria-pressed", ord.o === "nome");
   bd.textContent = ord.o === "data" && ord.inv ? "🕘 Mais antigos primeiro" : "🕘 Alterados por último";
   bn.textContent = ord.o === "nome" && ord.inv ? "Z→A Ordem alfabética" : "A→Z Ordem alfabética";
+  if (bibDesktop.matches) {
+    bn.textContent = ord.o === "nome" && ord.inv ? "Z→A" : "A→Z";
+    if (["sessoes", "gravacoes", "logs", "evidencias", "relatorios"].includes(BIB.sec) && !(ord.o === "data" && ord.inv)) bd.textContent = "Mais recentes";
+  }
   bd.title = bn.title = "Clique de novo para inverter a ordem";
   const g = $("#bib-grupo"), ops = [["", "Sem agrupar"]];
   if (tem("cliente")) ops.push(["cliente", `Agrupar por ${(rot.cliente || "cliente").toLowerCase()}`]);
@@ -3439,6 +4186,9 @@ function desenharBib() {
   $("#modal-bib").classList.toggle("bib-trancado", !!trancado);
   document.querySelector('.bib-ferr[data-ferr="cofre"]').classList.toggle("oculto", BIB.sec !== "cofre" || !!trancado);
   if (BIB.sec === "cofre") $("#bib-dica").textContent = COFRE.token ? `${BIB_DICA.cofre} Tranca sozinho após ${COFRE.min} min sem uso, ao trocar de seção ou fechar.` : BIB_DICA.cofre;
+  const equipamentos = BIB.sec === "equipamentos", acoes = bibDesktop.matches && ACOES_BIB[BIB.sec];
+  const tinhaFoco = L.contains(document.activeElement);
+  $("#bib-acoes").classList.toggle("oculto", !acoes || !!BIB.log);
   L.className = "bib-lista"; L.innerHTML = "";
   if (trancado) return desenharPinBib();
   const q = $("#bib-busca").value.trim().toLowerCase();
@@ -3447,26 +4197,66 @@ function desenharBib() {
   const tem = (k) => todos.some((x) => x.f[k]);
   bibChips(todos, rot);
   BIB.fc = bibFiltro($("#bib-f-cli"), todos, "cliente", rot.cliente || "Cliente", BIB.fc);
+  let ocultarOrigem = "";
+  if (equipamentos) {
+    const sel = $("#eq-ocultar-origem"), anterior = sel.value;
+    const ferramentas = [...new Set(todos.map((x) => x.f.origem).filter(Boolean))].sort(_pt);
+    sel.classList.toggle("oculto", !ferramentas.length);
+    sel.replaceChildren(new Option("Mostrar todas as origens", ""), ...ferramentas.map((f) => new Option(`Ocultar ${f}`, f)));
+    if (ferramentas.includes(anterior)) sel.value = ocultarOrigem = anterior;
+  }
   const ord = bibOrdemLer(BIB.sec); bibBarraOrdem(ord, S, rot, tem);
   const lista = todos.filter((x) => (!q || String(x.f.busca).toLowerCase().includes(q)) && (!BIB.ft || x.f.tipo === BIB.ft) &&
-                                    (!BIB.fc || x.f.cliente === BIB.fc) && (!BIB.tag || (x.f.tags || []).includes(BIB.tag)));
+                                    (!BIB.fc || x.f.cliente === BIB.fc) && (!BIB.tag || (x.f.tags || []).includes(BIB.tag)) &&
+                                    (!ocultarOrigem || x.f.origem !== ocultarOrigem));
   lista.sort(bibComparador(ord, S));
   info.innerHTML = `<b>${lista.length}</b> ${S.unid}` + (lista.length !== todos.length ? ` de ${todos.length}` : "") +
     (BIB.sec === "evidencias" && BIB.filtroEv ? ` da sessão · <a href="#" id="bib-tudo">ver todas</a>` : "");
   const t = $("#bib-tudo"); if (t) t.onclick = (ev) => { ev.preventDefault(); BIB.filtroEv = null; desenharBib(); };
   let alvo = L, det = null;
-  if (S.detalhe) {   // lista à esquerda, detalhe à direita
+  if (S.detalhe && !acoes) {
     L.className = "bib-lista bib-split";
     alvo = document.createElement("div"); alvo.className = "bib-col"; det = document.createElement("aside"); det.className = "bib-det";
     L.append(alvo, det);
   }
-  if (S.id) { const w = document.createElement("div"); w.id = S.id; w.className = "bib-sub"; alvo.appendChild(w); alvo = w; }
+  if (equipamentos) {
+    fecharLoteEquip();
+    const w = document.createElement("div"); w.id = "eq-linhas";
+    L.appendChild(w); alvo = w;
+    if (lista.length) {
+      if (bibDesktop.matches) {
+        const cab = document.createElement("div"); cab.className = "eq-linha bib-colunas";
+        cab.setAttribute("aria-hidden", "true");
+        cab.innerHTML = "<span>Tipo e nome</span><span>Destino</span><span>Grupo e origem</span><span>Último uso</span>";
+        L.insertBefore(cab, w);
+      }
+      return desenharListaSelecionavel(w, lista, ord.g, !!q, tinhaFoco, {
+        estado: EQ_LISTA, titulo: "Equipamentos salvos", id: ({ raw }) => raw.id,
+        grupos: ({ raw, f }, g) => g === "cliente" ? partesGrupoEquip(raw.grupo) : [f.tipo],
+        linha: ({ raw }, g) => linhaEquip(raw, g), atualizar: atualizaBarraEquip, cancelar: fecharLoteEquip,
+        abrir: (id) => { if (!EQ_LISTA.ocupada) conectarEquip(EQ.find((e) => e.id === id)); }, remover: () => acaoEquip("remover")
+      });
+    }
+    EQ_LISTA.selecionados.clear(); EQ_LISTA.ancora = null;
+    atualizaBarraEquip();
+    if (tinhaFoco) $("#bib-busca").focus();
+  }
+  if (acoes) {
+    desenharLinhasBib(L, lista, ord.g, !!q, tinhaFoco, acoes);
+    if (lista.length) return;
+  }
   if (!lista.length) {
     const filtrado = todos.length > 0;
-    alvo.innerHTML = `<div class="bib-vazio"><span>${filtrado ? "🔍" : "📭"}</span><b>${filtrado ? "Nada encontrado com essa busca / filtro" : esc(S.vazio)}</b>
+    alvo.innerHTML = `<div class="bib-vazio"><span>${filtrado ? "🔍" : "📭"}</span><b>${filtrado ? "Nada encontrado com essa busca / filtro" : esc(acoes ? VAZIO_BIB[BIB.sec] : S.vazio)}</b>
       ${filtrado ? `<button class="btn mini" data-limpar>Limpar busca e filtros</button>` : ""}</div>`;
     const lb = alvo.querySelector("[data-limpar]");
-    if (lb) lb.onclick = () => { $("#bib-busca").value = ""; BIB.ft = BIB.fc = BIB.tag = ""; desenharBib(); };
+    if (lb) lb.onclick = () => { $("#bib-busca").value = ""; $("#eq-ocultar-origem").value = ""; BIB.ft = BIB.fc = BIB.tag = ""; desenharBib(); };
+    if (acoes && !filtrado && !BIB.filtroEv && ["evidencias", "relatorios"].includes(BIB.sec)) {
+      const b = document.createElement("button"), captura = BIB.sec === "evidencias";
+      b.className = "btn mini"; b.textContent = captura ? "Ir para Salvar evidência" : "Ir para Relatório";
+      b.onclick = () => { $("#modal-bib").classList.add("oculto"); $(captura ? "#salvar" : "#btn-relatorio").focus(); };
+      alvo.querySelector(".bib-vazio").append(b);
+    }
     if (det) det.remove();
     return;
   }
@@ -3485,25 +4275,134 @@ function desenharBib() {
     }
     alvo.appendChild(c);
   });
-  if (lista.length > BIB.limite) {
-    const b = document.createElement("button"); b.className = "btn bib-mais"; b.textContent = `Mostrar mais ${Math.min(150, lista.length - BIB.limite)} de ${lista.length - BIB.limite}`;
-    b.onclick = () => { BIB.limite += 150; desenharBib(); }; alvo.appendChild(b);
-  }
+  bibMostrarMais(alvo, lista.length);
   if (det) det.appendChild(S.detalhe(lista.find((x) => x.f.nome === BIB.sel).raw));
 }
-// ---- cartões (mesmo estilo; ações sempre embaixo, a principal primeiro) ----
+function bibMostrarMais(alvo, total) {
+  const restantes = total - BIB.limite;
+  if (restantes <= 0) return;
+  const b = document.createElement("button"); b.className = "btn bib-mais"; b.textContent = `Mostrar mais ${Math.min(150, restantes)} de ${restantes}`;
+  b.onclick = () => { BIB.limite += 150; desenharBib(); }; alvo.appendChild(b);
+}
+const VAZIO_BIB = {
+  sessoes: "O histórico reúne as conexões deste PC. Abra uma conexão para registrar a primeira sessão.",
+  gravacoes: "Assista aqui às sessões gravadas. Ative Gravar no cartão Evidência antes de usar o terminal.",
+  logs: "Leia aqui a saída registrada do terminal. Abra uma sessão com gravação para guardar o primeiro log.",
+  evidencias: "As capturas deste atendimento aparecem aqui. Use Salvar evidência no terminal para guardar a primeira.",
+  relatorios: "Os PDFs gerados para este cliente aparecem aqui. Use Relatório no cartão Evidência para criar o primeiro.",
+  skills: "As Skills reúnem comandos por finalidade. Adicione uma Skill à pasta roteiros para começar."
+};
+const BIB_ACAO = {
+  assistir: { nome: "Assistir", pode: r => r.grav_existe, usar: r => tocarGravacao(r.gravacao, `${r.nome} — ${_dt(r.inicio)}`) },
+  log: { nome: "Ler o log", pode: r => r.log_existe, usar: verLogBib },
+  reconectar: { nome: "Reconectar", usar: r => { $("#modal-bib").classList.add("oculto"); reconectar(r); } },
+  capturas: { nome: "Ver evidências", pode: r => r.evidencias?.length, usar: r => {
+    BIB.filtroEv = r.evidencias.map(Number); $("#bib-busca").value = ""; irBib("evidencias");
+  } },
+  excluirSessao: { nome: "Excluir", varios: true, pode: r => !r.ativa,
+    usar: r => excluirSessao(r, async () => { BIB.hist = await api.historico(); bibContagens(); desenharBib(); }),
+    usarVarios: rs => excluirSessoes(rs, async () => { BIB.hist = await api.historico(); bibContagens(); desenharBib(); }) },
+  evidencia: { nome: "Ver evidência", usar: e => verEvidencia({ ...e, cmd: e.comando, mini: "" }, null) },
+  excluirEvidencia: { nome: "Excluir", varios: true, usar: e => excluirEvidencia(e), usarVarios: es => excluirEvidencias(es) },
+  pdf: { nome: "Abrir aqui", usar: r => { $("#modal-bib").classList.add("oculto"); abrirPdf(r.caminho); } },
+  leitor: { nome: "Abrir no leitor de PDF", usar: r => api.abrir_arquivo(r.caminho) },
+  nuvemEvidencia: { nome: "Enviar para minha nuvem", pode: e => !!e.caminho, usar: e => nuvEnviar(e.caminho, "evidencia") },
+  nuvemRelatorio: { nome: "Enviar para minha nuvem", pode: r => !!r.caminho, usar: r => nuvEnviar(r.caminho, "relatorio") },
+  nuvemGravacao: { nome: "Enviar gravação para minha nuvem", pode: r => !!(r.grav_existe && r.gravacao), usar: r => nuvEnviar(r.gravacao, "gravacao") },
+  skill: { nome: "Abrir para executar na aba ativa", usar: async r => {
+    $("#modal-bib").classList.add("oculto"); await abrirRoteiros();
+    const li = [...$("#rot-lista").querySelectorAll(".rot-item")].find(x =>
+      x.dataset.arquivo === String(r.arquivo) && x.dataset.origem === (r.origem || "") && x.querySelector("b").textContent === r.nome);
+    if (li) li.click();
+  } }
+};
+const ACOES_BIB = {
+  sessoes: ["reconectar", "assistir", "log", "capturas", "excluirSessao"],
+  gravacoes: ["assistir", "log", "reconectar", "capturas", "nuvemGravacao", "excluirSessao"], logs: ["log"],
+  evidencias: ["evidencia", "nuvemEvidencia", "excluirEvidencia"], relatorios: ["pdf", "leitor", "nuvemRelatorio"], skills: ["skill"]
+};
+function linhaAtendimento({ raw: r, f }, agrupamento) {
+  const linha = document.createElement("div"); linha.className = "eq-linha bib-linha";
+  const nome = f.nome || f.tipo;
+  const cliente = agrupamento === "cliente" ? "" : f.cliente;   // dentro do grupo o cliente já está no cabeçalho
+  let selo = "", meta = [cliente, _dt(f.data)], extra = "";
+  if (["sessoes", "gravacoes", "logs"].includes(BIB.sec)) {
+    if (nome.toLowerCase() !== f.tipo.toLowerCase()) selo = `<span class="eq-tipo">${esc(f.tipo)}</span>`;
+    else linha.classList.add("bib-so-tipo");
+    meta.push(duracao(r.inicio, r.fim), r.ativa && "Aberta agora");
+    if (BIB.sec !== "logs" && r.evidencias?.length) meta.push(r.evidencias.map(n => "Nº " + pad2(n)).join(", "));
+    if (Object.hasOwn(CORES_GUIA, r.etiqueta)) extra = `<span class="bib-etiqueta" style="--cor-etiqueta:${CORES_GUIA[r.etiqueta]}"><span aria-hidden="true">◆</span>${esc(r.etiqueta)}</span>`;
+  } else if (BIB.sec === "skills") {
+    selo = _selo(r); meta = [cliente, pl(r.comandos.length, "comando")];
+  } else if (BIB.sec === "evidencias") {
+    selo = `<span class="eq-tipo">Nº ${esc(pad2(r.num))}</span>`;
+  } else {
+    selo = `<span class="eq-tipo">${esc(f.tipo)}</span>`; meta.push(`${Math.max(1, Math.round(r.tamanho / 1024))} KB`);
+  }
+  linha.innerHTML = `<span class="eq-nome">${selo}<b>${esc(nome)}</b>${extra}</span><small class="bib-meta">${esc(meta.filter(Boolean).join(" · "))}</small>`;
+  if (BIB.sec === "evidencias") {
+    const img = document.createElement("img"); img.alt = ""; linha.prepend(img);
+    api.miniatura(r.caminho).then(m => { if (m) img.src = m; });
+  }
+  return linha;
+}
+function desenharLinhasBib(L, lista, grupo, buscando, tinhaFoco, acoes) {
+  const barra = $("#bib-acoes"), estado = BIB.selecao, sec = BIB.sec;
+  const itens = lista.slice(0, BIB.limite), chave = ({ raw, i }) => String(raw.caminho || raw.id || i);
+  const porId = new Map(itens.map(x => [chave(x), x.raw]));
+  const coluna = document.createElement("div"), linhas = document.createElement("div");
+  coluna.className = "bib-col"; coluna.append(linhas); L.append(coluna);
+  const det = sec === "skills" ? document.createElement("aside") : null;
+  if (det) det.className = "bib-det";
+  const escolhidos = () => [...estado.selecionados].map(id => porId.get(id)).filter(Boolean);
+  const unico = () => { const rs = escolhidos(); return rs.length === 1 ? rs[0] : null; };
+  const permitido = (acao, rs) => rs.length > 0 && (acao.varios || rs.length === 1) && rs.every(r => !acao.pode || acao.pode(r));
+  barra.replaceChildren();
+  const botoes = acoes.map((k, i) => {
+    const b = document.createElement("button"), acao = BIB_ACAO[k];
+    b.type = "button"; b.className = "btn mini" + (i === 0 ? " primario" : "") + (k.startsWith("excluir") ? " perigo" : "");
+    b.dataset.acao = k; b.textContent = acao.nome;
+    b.onclick = () => { const rs = escolhidos(); if (permitido(acao, rs)) (rs.length > 1 ? acao.usarVarios(rs) : acao.usar(rs[0])); };
+    barra.append(b); return b;
+  });
+  const contagem = document.createElement("span"); contagem.id = "bib-selecao"; contagem.setAttribute("role", "status"); contagem.setAttribute("aria-atomic", "true");
+  barra.append(contagem);
+  const atualizar = () => {
+    const rs = escolhidos(), r = rs.length === 1 ? rs[0] : null;
+    botoes.forEach((b, i) => { b.disabled = !permitido(BIB_ACAO[acoes[i]], rs); });
+    contagem.textContent = pl(estado.selecionados.size, "selecionado");
+    if (det) {
+      L.classList.toggle("bib-com-detalhe", !!r);
+      if (r) { det.replaceChildren(detalheSkill(r, false)); L.append(det); } else det.remove();
+    }
+  };
+  if (!itens.length) {
+    estado.selecionados.clear(); estado.ancora = estado.foco = null; atualizar();
+    if (tinhaFoco) $("#bib-busca").focus();
+    return;
+  }
+  desenharListaSelecionavel(linhas, itens, grupo, buscando, tinhaFoco, {
+    estado, titulo: BIB_TIT[sec], id: chave, grupos: ({ f }, g) => [f[g] || "Sem grupo"], linha: (x, g) => linhaAtendimento(x, g), atualizar,
+    abrir: id => { const r = porId.get(id), acao = BIB_ACAO[acoes[0]]; if (r && permitido(acao, [r])) acao.usar(r); },
+    remover: () => botoes.find(b => b.dataset.acao.startsWith("excluir"))?.click()
+  });
+  bibMostrarMais(coluna, lista.length);
+}
+// Cartões da interface de toque.
 function cartaoSessao(r) {
   const c = document.createElement("div"); c.className = "bib-item";
-  const evs = (r.evidencias || []).map((n) => `<button class="bib-chip" data-ev="${n}" title="Ver a evidência Nº ${pad2(n)}">Nº ${pad2(n)}</button>`).join("");
+  const etiqueta = Object.hasOwn(CORES_GUIA, r.etiqueta) ? r.etiqueta : "";
+  const evs = (r.evidencias || []).map((n) => `<button class="bib-chip" data-ev="${esc(n)}" title="Ver a evidência Nº ${pad2(n)}">Nº ${pad2(n)}</button>`).join("");
   c.innerHTML = `<div class="bib-l1"><span class="tipo">${esc(nomeTipo(r.tipo))}</span> <b>${esc(r.nome)}</b>
+      ${etiqueta ? `<span class="bib-etiqueta" style="--cor-etiqueta:${CORES_GUIA[etiqueta]}"><span aria-hidden="true">◆</span>${esc(etiqueta)}</span>` : ""}
       <span class="bib-meta">${_dt(r.inicio)} · ${duracao(r.inicio, r.fim)}${r.cliente ? " · " + esc(r.cliente) : ""}${r.ativa ? " · <b style='color:var(--verde)'>aberta agora</b>" : ""}</span></div>
     <div class="bib-l2">${evs || `<span class="bib-meta">sem evidências</span>`}</div>
     <div class="bib-acoes"><button class="btn mini" data-grav ${r.grav_existe ? "" : "disabled"}>▶ Assistir</button>
       <button class="btn mini" data-log ${r.log_existe ? "" : "disabled"}>📜 Ler o log</button>
       <button class="btn mini" data-rc>↻ Reconectar</button></div>`;
-  c.querySelector("[data-grav]").onclick = () => tocarGravacao(r.gravacao, `${r.nome} — ${_dt(r.inicio)}`);
+  c.querySelector("[data-grav]").onclick = () => BIB_ACAO.assistir.usar(r);
   c.querySelector("[data-log]").onclick = () => verLogBib(r);
-  c.querySelector("[data-rc]").onclick = () => { $("#modal-bib").classList.add("oculto"); reconectar(r); };
+  c.querySelector("[data-rc]").onclick = () => BIB_ACAO.reconectar.usar(r);
   c.querySelectorAll("[data-ev]").forEach((b) => (b.onclick = () => { BIB.filtroEv = (r.evidencias || []).map(Number); irBib("evidencias"); }));
   return c;
 }
@@ -3511,7 +4410,7 @@ function cartaoEvidencia(e) {
   const c = document.createElement("button"); c.className = "bib-ev";
   c.innerHTML = `<div class="bib-mini"><img alt=""></div><b>Nº ${pad2(e.num || 0)}</b><span>${esc(e.comando || e.host || e.arquivo)}</span><small>${_dt(e.data_hora)}${e.host ? " · " + esc(e.host) : ""}</small>`;
   api.miniatura(e.caminho).then((m) => { if (m) c.querySelector("img").src = m; });
-  c.onclick = () => verEvidencia({ ...e, cmd: e.comando, mini: "" }, null);
+  c.onclick = () => BIB_ACAO.evidencia.usar(e);
   return c;
 }
 function cartaoLog(r) {
@@ -3524,11 +4423,11 @@ function cartaoLog(r) {
 }
 function cartaoRelatorio(r) {
   const c = document.createElement("div"); c.className = "bib-item";
-  c.innerHTML = `<div class="bib-l1"><b>📄 ${esc(r.arquivo)}</b>${r.assinado ? ` <span class="bib-chip ok">✍ assinado</span>` : ""}
+  c.innerHTML = `<div class="bib-l1"><b>📄 ${esc(r.arquivo)}</b>${r.assinado ? ` <span class="bib-chip ok" title="Documento íntegro; identidade declarada pelo assinante">✍ assinado</span>` : r.assinatura_invalida ? ` <span class="bib-chip" title="O PDF foi alterado depois de assinado">⚠ assinatura inválida</span>` : ""}
       <span class="bib-meta">${esc(r.visita)} · ${_dt(r.data)} · ${Math.max(1, Math.round(r.tamanho / 1024))} KB</span></div>
     <div class="bib-acoes"><button class="btn mini" data-ver>Abrir aqui</button><button class="btn mini" data-ext>Abrir no leitor de PDF</button></div>`;
-  c.querySelector("[data-ver]").onclick = () => { $("#modal-bib").classList.add("oculto"); abrirPdf(r.caminho); };
-  c.querySelector("[data-ext]").onclick = () => api.abrir_arquivo(r.caminho);
+  c.querySelector("[data-ver]").onclick = () => BIB_ACAO.pdf.usar(r);
+  c.querySelector("[data-ext]").onclick = () => BIB_ACAO.leitor.usar(r);
   return c;
 }
 const _selo = (r) => ehConfig(r) ? `<span class="bib-selo cfg">⚙ configuração</span>` : `<span class="bib-selo col">🔎 coleta</span>`;
@@ -3538,21 +4437,18 @@ function cartaoSkill(r) {
     <div class="bib-meta">${esc(r.fabricante || "Outros")} · ${(r.comandos || []).length} comando(s)</div>`;
   return c;
 }
-function detalheSkill(r) {
+function detalheSkill(r, mostrarAcao = true) {
   const d = document.createElement("div"); d.className = "bib-det-in";
   const cmds = (r.comandos || []).slice(0, 40);
   d.innerHTML = `<div class="bib-det-cab">${_selo(r)}<h3>${esc(r.nome)}</h3>
-      <div class="bib-meta">${esc(r.fabricante || "Outros")} · ${(r.comandos || []).length} comando(s)${r.somente_leitura ? " · somente leitura" : ""}</div></div>
+      <div class="bib-meta">${esc(r.fabricante || "Outros")} · ${pl((r.comandos || []).length, "comando")}${r.somente_leitura ? " · somente leitura" : ""}</div></div>
     ${ehConfig(r) ? `<div class="bib-det-aviso">⚠ Altera a configuração do equipamento: o app mostra a prévia e pede autorização antes de aplicar.</div>` : ""}
     ${r.descricao ? `<p class="bib-det-desc">${esc(r.descricao)}</p>` : ""}
     ${(r.finalidade || []).length ? `<div class="bib-det-sec">Finalidade</div><div class="bib-l2">${r.finalidade.map((f) => `<span class="bib-chip">${esc(f)}</span>`).join("")}</div>` : ""}
     <div class="bib-det-sec">Comandos</div>
     <ol class="bib-det-cmds">${cmds.map((x) => `<li><code>${esc(x.cmd || "")}</code></li>`).join("")}${(r.comandos || []).length > cmds.length ? `<li class="bib-meta">… e mais ${(r.comandos || []).length - cmds.length}</li>` : ""}</ol>
-    <div class="bib-acoes"><button class="btn primario" data-usar>▶ Abrir para executar na aba ativa</button></div>`;
-  d.querySelector("[data-usar]").onclick = async () => {
-    $("#modal-bib").classList.add("oculto"); await abrirRoteiros();
-    const li = [...$("#rot-lista").querySelectorAll("li.rot-item")].find((x) => x.querySelector("b").textContent === r.nome); if (li) li.click();
-  };
+    ${mostrarAcao ? '<div class="bib-acoes"><button class="btn primario" data-usar>▶ Abrir para executar na aba ativa</button></div>' : ""}`;
+  if (mostrarAcao) d.querySelector("[data-usar]").onclick = () => BIB_ACAO.skill.usar(r);
   return d;
 }
 function cartaoCofre(c) {
@@ -3598,9 +4494,12 @@ document.querySelectorAll(".bib-ord [data-o]").forEach((b) => b.addEventListener
 }));
 $("#bib-grupo").addEventListener("change", (e) => { bibOrdemGravar(BIB.sec, { ...bibOrdemLer(BIB.sec), g: e.target.value }); desenharBib(); });
 async function verLogBib(r) {
-  if (BIB.sec !== "logs") { BIB.sec = "logs"; $("#bib-nav").querySelectorAll("[data-sec]").forEach((b) => b.classList.toggle("ativa", b.dataset.sec === "logs")); }
+  if (BIB.sec !== "logs") irBib("logs");
+  const selecao = BIB.selecao;
+  $("#bib-acoes").classList.add("oculto");
   $("#bib-lista").innerHTML = `<p class="vazio">Abrindo o log…</p>`;
   const x = await api.log_ler(r.id);
+  if (BIB.sec !== "logs" || BIB.selecao !== selecao) return;
   if (!x.ok) { toast(x.erro, "erro"); BIB.log = null; return desenharBib(); }
   BIB.log = { r, texto: x.texto, arquivo: x.arquivo, cortado: x.cortado }; $("#bib-busca").value = ""; desenharBib();
 }
@@ -3616,6 +4515,9 @@ function desenharLogBib(q) {
 }
 $("#bib-nav").querySelectorAll("[data-sec]").forEach((b) => (b.onclick = () => { BIB.filtroEv = null; irBib(b.dataset.sec); }));
 $("#bib-busca").addEventListener("input", () => desenharBib());
+bibDesktop.addEventListener("change", () => {
+  if (!$("#modal-bib").classList.contains("oculto") && BIB.sec !== "cofre" && BIB.sec !== "importar") irBib(BIB.sec);
+});
 // ================= 📨 Canais de envio (e-mail / Telegram) =================
 // Configura e testa os canais. Senha do e-mail e token do bot vão para o cofre DPAPI (Python) e NUNCA voltam
 // para a tela: o campo fica vazio e "vazio = manter". O seletor de destino por aba usa api.enviar_destino().
@@ -3680,12 +4582,20 @@ async function abrirCanais() {
   try { CANAIS.lista = api ? await api.envio_canais() : []; } catch (e) { CANAIS.lista = []; }
   canaisPreencher(); canaisMostrar(CANAIS.atual);
 }
+// Servidor/usuário/porta/API mudou sem o segredo: o backend não gravou nada; destaca o campo e pede de novo (o segredo só vive no campo)
+function canaisSegredoNecessario() {
+  const campo = $(CANAIS.atual === "email" ? "#cn-em-senha" : "#cn-tg-token");
+  document.querySelectorAll("#modal-canais .invalido").forEach((e) => e.classList.remove("invalido"));
+  campo.classList.add("invalido"); campo.value = ""; campo.focus();
+  canaisMsg("Você mudou o servidor: por segurança, digite a " + (CANAIS.atual === "email" ? "senha" : "token") + " de novo.", "erro");
+}
 async function canaisSalvar() {
   const d = canaisDados(), err = canaisValidar(d);
   if (err.length) { canaisMsg(err[0], "erro"); return false; }
   if (!api) { canaisMsg("Indisponível fora do aplicativo.", "erro"); return false; }
   canaisMsg("Salvando…");
   const r = await api.envio_configurar(CANAIS.atual, d);
+  if (r.segredo_necessario) { canaisSegredoNecessario(); return false; }   // servidor mudou: nada foi gravado
   if (!r.ok) { canaisMsg(r.erro || "Não foi possível salvar.", "erro"); return false; }
   CANAIS.lista = r.canais || CANAIS.lista; canaisPreencher(); canaisMostrar(CANAIS.atual);
   canaisMsg("✔ Salvo. Segredo guardado no cofre do Windows.", "ok"); return true;
@@ -3700,7 +4610,9 @@ async function canaisSalvar() {
   $("#cn-salvar").onclick = canaisSalvar;
   $("#cn-testar").onclick = async () => {
     const d = canaisDados();
-    const novo = CANAIS.atual === "email" ? !!(d.senha || d.servidor !== (canaisCfg("email").servidor || "")) : !!d.token;
+    const cf = canaisCfg("email");
+    const novo = CANAIS.atual === "email" ? !!(d.senha || d.servidor !== (cf.servidor || "") || d.usuario !== (cf.usuario || "")
+                                             || d.porta !== (cf.porta || d.porta) || d.seguranca !== (cf.seguranca || d.seguranca)) : !!d.token;
     if (novo && !(await canaisSalvar())) return;       // testa o que está na tela
     if (!api) return canaisMsg("Indisponível fora do aplicativo.", "erro");
     canaisMsg("Testando…");
@@ -3730,8 +4642,8 @@ async function canaisSalvar() {
 // ---------- importarUI: importar sessões de outras ferramentas (PuTTY, KiTTY, MobaXterm, SecureCRT, mRemoteNG, Termius…) ----------
 // Fluxo: lista das ferramentas (achadas neste PC / "escolher arquivo") -> prévia com caixas -> grava só as marcadas.
 // Nada de senha chega aqui: o backend devolve só nome, tipo, destino (usuario@host:porta / COMx:baud / URL), grupo e obs.
-const importarUI = { itens: [], ferr: null, ocupado: false };
-const importarUISit = { novo: "Novo", existe: "Já existe (atualiza)", repetido: "Repetido" };
+const importarUI = { itens: [], ferr: null, ocupado: false, mesclas: new Map() };
+const importarUISit = { novo: "Novo", existe: "Já existe — mantido", repetido: "Repetido" };
 function importarUIModo(fase) {
   $("#modal-bib").classList.toggle("importarUI-ativo", !!fase);
   $("#importarUI").classList.toggle("oculto", !fase);
@@ -3743,7 +4655,7 @@ async function importarUIAbrir() {
   if (!api) return toast("Disponível no aplicativo", "aviso");
   $("#eq-form").classList.add("oculto");
   if (BIB.sec !== "importar") return irBib("importar");   // a área própria da Biblioteca
-  $("#importarUI-titulo").textContent = "Importar e exportar equipamentos";
+  $("#importarUI-titulo").textContent = "Equipamentos";   // o título da seção já diz "Importar e exportar"
   $("#importarUI-cont").textContent = "";
   $("#importarUI-ferr").innerHTML = `<p class="importarUI-msg">Procurando as ferramentas neste computador…</p>`;
   importarUIModo("ferr");
@@ -3752,7 +4664,7 @@ async function importarUIAbrir() {
   const l = [...r.ferramentas].sort((a, b) => (b.encontrado - a.encontrado) || _pt(a.nome, b.nome));
   const achadas = l.filter((f) => f.encontrado).length;
   $("#importarUI-cont").innerHTML = `<b>${l.length}</b> ferramentas · <b>${achadas}</b> encontrada(s) neste computador · <b>${EQ.length}</b> equipamento(s) salvos`;
-  const cor = (s) => { let h = 0; for (const ch of s) h = (h * 31 + ch.charCodeAt(0)) % 360; return `hsl(${h} 55% 42%)`; };
+  const cor = (s) => { let h = 0; for (const ch of s) h = (h * 31 + ch.charCodeAt(0)) % 360; return `hsl(${h} 55% var(--importacao-luz))`; };
   const sigla = (n) => n.replace(/[^A-Za-z0-9 ]/g, "").split(/\s+/).filter(Boolean).map((p) => p[0]).join("").slice(0, 2).toUpperCase() || n.slice(0, 2).toUpperCase();
   $("#importarUI-ferr").innerHTML = l.map((f) => `<div class="importarUI-card${f.encontrado ? " achou" : ""}" data-f="${esc(f.id)}">
       <span class="importarUI-ic" style="--c:${cor(f.id)}">${esc(f.nome.length <= 6 ? f.nome.slice(0, 2) : sigla(f.nome))}</span>
@@ -3775,22 +4687,43 @@ async function importarUIPrevia(f, escolher) {
     if (r.cancelado) return;
     if (!r.ok) return toast(r.erro || "Não foi possível ler", "erro");
     importarUI.ferr = f;
+    importarUI.mesclas.clear();
     importarUI.itens = (r.itens || []).map((e, i) => ({ ...e, _i: i, _sel: e.situacao === "novo" }));
     $("#importarUI-titulo").textContent = `📥 ${f.nome}: ${importarUI.itens.length} sessão(ões) encontrada(s)`;
-    const av = [...(r.avisos || [])]; if (r.ignorados) av.unshift(`${r.ignorados} ignorada(s) (RDP, VNC, FTP… ou sem endereço)`);
+    const av = [...(r.avisos || [])]; if (r.ignorados) av.unshift(`${r.ignorados} sessão(ões) ignorada(s)`);
     $("#importarUI-avisos").textContent = av.join(" · ");
     importarUIModo("previa"); importarUIDesenhar();
   } finally { importarUI.ocupado = false; }
 }
 function importarUIDesenhar() {
   const l = importarUI.itens;
-  $("#importarUI-linhas").innerHTML = l.length ? l.map((e) => `<tr data-i="${e._i}" class="sit-${e.situacao}">
+  const porHost = new Map();
+  for (const e of l) {
+    const chave = e.host || e._i;
+    if (!porHost.has(chave)) porHost.set(chave, []);
+    porHost.get(chave).push(e);
+  }
+  const linha = (e) => `<tr data-i="${e._i}" class="sit-${e.situacao}">
       <td><input type="checkbox" data-sel ${e._sel ? "checked" : ""}></td><td><b>${esc(e.nome)}</b>${e.obs ? `<br><small>${esc(e.obs)}</small>` : ""}</td>
-      <td><span class="eq-tipo t-${e.tipo}">${esc(nomeTipo(e.tipo))}</span></td><td class="mono">${esc(e.destino)}</td>
-      <td>${esc(e.grupo)}</td><td><small class="importarUI-sit">${importarUISit[e.situacao] || ""}</small></td></tr>`).join("")
+      <td><span class="eq-tipo t-${esc(e.tipo)}">${esc(nomeTipo(e.tipo))}</span></td><td class="mono">${esc(e.destino)}</td>
+      <td>${esc(e.grupo)}</td><td><small class="importarUI-sit">${importarUISit[e.situacao] || ""}</small></td></tr>`;
+  $("#importarUI-linhas").innerHTML = l.length ? [...porHost.values()].map((sessoes) => {
+    const { host, host_total, grupos_host } = sessoes[0];
+    const opcoes = (grupos_host || []).map((g) => `<option value="${esc(g)}" ${importarUI.mesclas.get(host) === g ? "selected" : ""}>${esc(g || "Sem grupo")}</option>`).join("");
+    const aviso = host_total > 1 ? `<tr><td colspan="6"><b>${esc(host)}</b> · Este host aparece ${host_total} vezes
+      <select class="btn mini" data-mesclar-host="${esc(host)}" aria-label="Mesclar sessões de ${esc(host)}">
+        <option>Mesclar no grupo…</option>${opcoes}</select></td></tr>` : "";
+    return aviso + sessoes.map(linha).join("");
+  }).join("")
     : `<tr><td colspan="6" class="vazio">Nenhuma sessão SSH, Serial ou Web encontrada nesse arquivo.</td></tr>`;
+  $("#importarUI-linhas").querySelectorAll("[data-mesclar-host]").forEach((sel) => {
+    sel.onchange = () => {
+      if (sel.selectedIndex === 0) importarUI.mesclas.delete(sel.dataset.mesclarHost);
+      else importarUI.mesclas.set(sel.dataset.mesclarHost, sel.value);
+    };
+  });
   $("#importarUI-linhas").querySelectorAll("tr[data-i]").forEach((tr) => {
-    tr.querySelector("[data-sel]").onchange = (ev) => { l.find((x) => x._i === +tr.dataset.i)._sel = ev.target.checked; importarUIConta(); };
+    tr.querySelector("[data-sel]").onchange = (ev) => { l[+tr.dataset.i]._sel = ev.target.checked; importarUIConta(); };
   });
   importarUIConta();
 }
@@ -3801,13 +4734,16 @@ function importarUIConta() {
   $("#importarUI-ok").disabled = !n;
 }
 async function importarUIConfirmar() {
+  if (importarUI.ocupado) return;
   const sel = importarUI.itens.filter((e) => e._sel).map(({ nome, tipo, destino, grupo, obs }) => ({ nome, tipo, destino, grupo, obs }));
   if (!sel.length) return toast("Marque pelo menos uma sessão", "aviso");
-  const r = await api.equip_importar_itens(sel);
-  if (!r || !r.ok) return toast((r && r.erro) || "Falha ao importar", "erro");
-  toast(`Importado de ${importarUI.ferr ? importarUI.ferr.nome : "outra ferramenta"}: ${r.novos} novo(s), ${r.atualizados} atualizado(s) — total ${r.total}`);
-  importarUIModo(null);
-  EQ = await api.equip_listar(); irBib("equipamentos");   // volta à lista, já com os importados
+  importarUI.ocupado = true;
+  try {
+    const r = await api.equip_importar_itens(sel, importarUI.ferr.id, Object.fromEntries(importarUI.mesclas));
+    if (!r || !r.ok) return toast((r && r.erro) || "Falha ao importar", "erro");
+    toast(`Importado de ${importarUI.ferr.nome}: ${r.novos} novo(s), ${r.atualizados} atualizado(s) — total ${r.total}`);
+    EQ = await api.equip_listar(); irBib("equipamentos");
+  } finally { importarUI.ocupado = false; }
 }
 (function importarUIIniciar() {
   if (!$("#importarUI")) return;
@@ -4084,6 +5020,7 @@ async function envioUIEmSalvar(prov) {
   envioUIMsg("Conectando ao servidor de e-mail…");
   const r = await api.envio_configurar("email", d);
   $("#ev-em-senha").value = "";
+  if (r.segredo_necessario) { const c = $("#ev-em-senha"); c.classList.add("invalido"); c.focus(); return envioUIMsg("Você mudou o servidor: por segurança, digite a senha de novo.", "erro"); }
   if (!r.ok) return envioUIMsg(r.erro || "Não foi possível salvar.", "erro");
   const t = await api.envio_testar("email", "");
   await envioUIEstado();
@@ -4245,8 +5182,10 @@ function ctRecCampos() {
   const criar = CONTA.modo === "criar", rec = CONTA.modo === "recuperar", email = ctTemEmail($("#ct-usuario").value);
   $("#ct-l-senha").classList.toggle("oculto", rec && email);
   $("#ct-rot-senha").textContent = rec ? "Senha nova" : "Senha";
+  $('[data-gerar-senha="ct-senha"]').classList.toggle("oculto", !(criar || (rec && !email)));
   $("#ct-l-senha2").classList.toggle("oculto", !(criar || (rec && !email)));
   $("#ct-l-rec").classList.toggle("oculto", !(rec && !email));
+  if (CONTA.bloqueada) { $("#ct-ir").textContent = "Desbloquear"; return; }
   $("#ct-ir").textContent = criar ? "Criar conta" : rec ? (email ? "Enviar link para criar senha nova" : "Trocar a senha e entrar") : "Entrar";
 }
 $("#ct-usuario").addEventListener("input", ctRecCampos);
@@ -4298,10 +5237,27 @@ function contaMostrarTela(e, aviso) {
   $("#ct-usuario").value = lig || e.usuario || ""; $("#ct-senha").value = ""; $("#ct-senha2").value = ""; $("#ct-rec").value = "";
   $("#ct-oauth").innerHTML = contaOauthHtml(e); contaLigarOauth($("#ct-oauth"));
   ctRecCampos();
+  contaAjustarBloqueio(!!CONTA.bloqueada, !!aviso);
   $("#conta-tela").classList.remove("oculto");
   if (aviso) contaMsg(aviso, "aviso");
   if (e.travado_s > 0) contaTravar(e.travado_s);
-  setTimeout(() => ($("#ct-usuario").value ? $("#ct-senha") : $("#ct-usuario")).focus(), 30);
+  setTimeout(() => (CONTA.bloqueada || $("#ct-usuario").value ? $("#ct-senha") : $("#ct-usuario")).focus(), 30);
+}
+
+// Tela bloqueada por inatividade: só a senha destranca. Some o que não serve (criar conta, entrar com outra conta, e-mail, esqueci)
+// e o aviso vira destaque acima do formulário. Sessão encerrada: login normal, com o aviso também em destaque.
+function contaAjustarBloqueio(bloq, comAviso) {
+  $("#conta-tela").classList.toggle("ct-bloq", comAviso);
+  $(".ct-abas").classList.toggle("oculto", bloq);
+  $("#ct-usuario").closest("label").classList.toggle("oculto", bloq);
+  if (bloq) {
+    ["#ct-sociais", "#ct-linha", "#ct-l-senha2", "#ct-l-rec"].forEach((s) => $(s).classList.add("oculto"));
+    $('[data-gerar-senha="ct-senha"]').classList.add("oculto");
+    $("#ct-sub").textContent = CONTA.usuario ? `Tela bloqueada · ${CONTA.usuario}` : "Tela bloqueada";
+    $("#ct-ajuda").textContent = "";
+    $("#ct-ir").textContent = "Desbloquear";
+    $("#ct-senha").setAttribute("autocomplete", "current-password");
+  }
 }
 
 function contaTravar(s) {
@@ -4318,7 +5274,7 @@ function contaTravar(s) {
 
 async function contaEntrou(r) {
   CONTA.token = r.token; contaTok.gravar(r.token);
-  if (r.cofre_protegidas) toast(`🔐 ${r.cofre_protegidas} senha(s) do cofre agora também protegidas pela sua conta.`);
+  if (r.cofre_protegidas) toast(`🔐 ${r.cofre_protegidas === 1 ? "1 senha do cofre agora também protegida" : `${r.cofre_protegidas} senhas do cofre agora também protegidas`} pela sua conta.`);
   if (r.recuperacao) {   // conta local nova: mostra a chave de recuperação UMA vez
     $("#ct-form").classList.add("oculto"); $("#ct-rec-mostra").classList.remove("oculto");
     $("#ct-rec-cod").textContent = r.recuperacao; $("#ct-rec-ok").checked = false; $("#ct-rec-seguir").disabled = true;
@@ -4332,7 +5288,7 @@ function contaAberta() {
   $("#ct-senha").value = ""; $("#ct-senha2").value = ""; $("#ct-rec").value = ""; $("#ct-senha-local").value = "";
   if (!CONTA.liberada) return contaLiberar();
   $("#conta-tela").classList.add("oculto");   // desbloqueio: a plataforma já estava carregada por baixo
-  CONTA.trancada = false;
+  CONTA.trancada = false; CONTA.bloqueada = false;
   (CONTA.esperas || []).splice(0).forEach((ok) => ok());   // as chamadas que esperavam seguem agora
   contaVigiar();
 }
@@ -4351,7 +5307,7 @@ $("#ct-form").onsubmit = async (e) => {
     if (r && r.ok) { CONTA.ligando = false; return contaEntrou(r); }
     $("#ct-senha-local").value = ""; return contaMsg((r && r.erro) || "Senha incorreta.", "erro");
   }
-  if (!u) return contaMsg("Digite o seu e-mail.", "erro");
+  if (!u && !CONTA.bloqueada) return contaMsg("Digite o seu e-mail.", "erro");
   if (!(modo === "recuperar" && email) && !s) return contaMsg("Digite a senha.", "erro");
   if ((modo === "criar" || (modo === "recuperar" && !email)) && s !== s2) return contaMsg("As senhas não conferem.", "erro");
   if (modo === "criar" && s.length < 10) return contaMsg("A senha precisa ter pelo menos 10 caracteres.", "erro");
@@ -4359,7 +5315,8 @@ $("#ct-form").onsubmit = async (e) => {
   const api = contaApi();
   let r;
   try {
-    if (modo === "criar") r = email || !CONTA.nuvem ? (CONTA.nuvem ? await api.conta_nuvem_criar(u, s, lembrar, "", local) : await api.conta_criar(u, s))
+    if (CONTA.bloqueada) r = await api.conta_desbloquear(CONTA.token, s);   // tela bloqueada por inatividade: só a senha
+    else if (modo === "criar") r = email || !CONTA.nuvem ? (CONTA.nuvem ? await api.conta_nuvem_criar(u, s, lembrar, "", local) : await api.conta_criar(u, s))
       : { ok: false, erro: "Use o seu e-mail para criar a conta DASSH (a mesma no site, no app e no celular)." };
     else if (modo === "recuperar") r = email ? await api.conta_nuvem_recuperar(u) : await api.conta_recuperar(u, $("#ct-rec").value, s);
     else if (email) {
@@ -4368,6 +5325,7 @@ $("#ct-form").onsubmit = async (e) => {
     } else r = await api.conta_entrar(u, s);
   } catch (err) { r = { ok: false, erro: String(err.message || err) }; }
   b.disabled = false;
+  if (CONTA.bloqueada && r && !r.ok && /expirada/i.test(r.erro || "")) { CONTA.bloqueada = false; CONTA.token = ""; contaTok.gravar(""); }   // passou da idade máxima: login completo
   if (modo === "recuperar" && email) return contaMsg((r && (r.msg || r.erro)) || "", r && r.ok ? "aviso" : "erro");
   if (!(r && r.ok)) { $("#ct-senha").value = ""; if (!(r && r.precisa_senha_local)) $("#ct-senha").focus(); }
   ctResultado(r);
@@ -4378,24 +5336,30 @@ function contaVigiar() {
   if (CONTA.vigia || !CONTA.token) return;
   const tocar = () => {
     if (!CONTA.token || $("#conta-tela").classList.contains("oculto") === false) return;
-    if (Date.now() - CONTA.toque < 30000) return;
+    if (Date.now() - CONTA.toque < 30000 && !ilhaBloqueio.ativo) return;   // com o aviso do bloqueio na Ilha, o primeiro gesto já renova
     CONTA.toque = Date.now();
-    contaApi().conta_tocar(CONTA.token).then((r) => { if (r && r.ok === false) contaTrancar("expirou"); }).catch(() => {});
+    contaApi().conta_tocar(CONTA.token).then((r) => { if (r && r.ok === false) contaTrancar(r.bloqueada ? "bloqueada" : "expirou"); else ilhaBloqueio(0); }).catch(() => {});
   };
   ["keydown", "pointerdown", "wheel"].forEach((t) => document.addEventListener(t, tocar, { capture: true, passive: true }));
   CONTA.vigia = setInterval(async () => {
     if (!CONTA.token) return;
     const e = await contaApi().conta_estado(CONTA.token).catch(() => null);
-    if (e && !e.dispensa && !e.logado) contaTrancar("expirou", e);
+    if (e && !e.dispensa && !e.logado) contaTrancar(e.bloqueada ? "bloqueada" : "expirou", e);
+    else if (e && !e.dispensa && e.logado && e.sessao) ilhaBloqueio(e.sessao.expira_ociosa_s || 0);
   }, 20000);
 }
 
 async function contaTrancar(motivo, e) {
   if (!$("#conta-tela").classList.contains("oculto")) return;
-  contaTok.gravar(""); CONTA.token = ""; CONTA.trancada = true;
-  document.querySelectorAll(".modal:not(.oculto)").forEach((m) => m.classList.add("oculto"));
   e = e || (await contaApi().conta_estado(null).catch(() => null)) || { existe: true, usuario: CONTA.usuario };
-  contaMostrarTela(e, motivo === "expirou" ? "Sessão encerrada por inatividade. Entre de novo." : motivo === "bloqueio" ? "Tela bloqueada." : "");
+  if (e.existe === false) return;   // sem conta não há o que trancar nem senha para pedir: a tela de bloqueio nunca vira "Criar conta"
+  toastFechar();   // nenhum aviso (ex.: progresso do relatório) fica preso por cima da tela de bloqueio
+  if (ILHA_ON()) ["bloqueio", "relatorio", "nuvem", "evidencia"].forEach((i) => ilha.limpar(i));   // a Ilha também não fica por cima da tela de bloqueio
+  const bloq = motivo === "bloqueada";   // inatividade: a sessão e as conexões ficam; só a senha destranca
+  if (!bloq) { contaTok.gravar(""); CONTA.token = ""; }
+  CONTA.trancada = true; CONTA.bloqueada = bloq;
+  document.querySelectorAll(".modal:not(.oculto)").forEach((m) => m.classList.add("oculto"));
+  contaMostrarTela(e, bloq ? "Tela bloqueada por inatividade. Digite a senha para continuar: suas conexões seguem abertas." : motivo === "expirou" ? "Sessão encerrada por inatividade. Entre de novo." : motivo === "bloqueio" ? "Tela bloqueada." : "");
 }
 window.contaBloqueada = (motivo) => contaTrancar(motivo || "expirou");   // evento do Conector (agente.py)
 
@@ -4404,7 +5368,9 @@ async function abrirConta() {
   const e = await contaApi().conta_estado(CONTA.token || null).catch(() => null);
   if (!e) return toast("Conta indisponível nesta versão.", "aviso");
   const min = (s) => (s > 0 ? Math.max(1, Math.round(s / 60)) + " min" : "—");
-  $("#conta-info").innerHTML = !e.existe ? `<p>Nenhuma conta criada neste computador.</p>` : `
+  $("#conta-info").innerHTML = !e.existe ? `<p><b>Nenhuma conta criada neste computador.</b></p>
+    <p class="ajuda">Sem conta não há senha para pedir: bloquear a tela, encerrar sessões, definir a inatividade e trocar a senha só aparecem depois que você criar uma.</p>
+    <p><button type="button" class="btn primario" id="conta-criar">Criar conta</button></p>` : `
     <div class="conta-linha"><span>Usuário</span><b>${esc(e.usuario)}</b></div>
     <div class="conta-linha"><span>Sessão</span><b>${e.logado ? `ativa · expira após ${min(e.sessao.expira_ociosa_s)} sem uso (máx. ${min(e.sessao.expira_idade_s)})` : e.dispensa ? "modo de teste (sem login)" : "não iniciada"}</b></div>
     <div class="conta-linha"><span>Proteção</span><b>${esc(e.kdf)} · chave de dados AES-256-GCM só em memória</b></div>
@@ -4414,12 +5380,131 @@ async function abrirConta() {
       2ª camada cifrada com a chave da sua conta, por dentro da proteção do Windows.</p>`;
   $("#conta-bloquear").disabled = $("#conta-sair-todas").disabled = !e.logado;
   $("#conta-troca").classList.toggle("oculto", !e.logado);
+  // sem conta criada: nada que dependa de conta (bloquear, sair, inatividade, trocar senha, entrar com outra conta) é oferecido
+  $("#conta-tit").textContent = e.existe ? "👤 Conta" : "👤 Criar conta";
+  ["#conta-acoes", "#conta-politica", "#conta-metodos", "#conta-outra-tit", "#conta-oauth"].forEach((s) => $(s).classList.toggle("oculto", !e.existe));
+  if (!e.existe) { $("#conta-troca").classList.add("oculto"); $("#conta-criar").onclick = () => { fecharModal($("#conta-criar")); contaMostrarTela(e); }; }
   $("#cs-msg").textContent = ""; ["#cs-atual", "#cs-nova", "#cs-nova2"].forEach((s) => ($(s).value = ""));
   $("#conta-oauth").innerHTML = contaOauthHtml(e); contaLigarOauth($("#conta-oauth"));
+  const pol = e.politica || {};
+  $("#cp-ociosa").value = String(pol.ociosa_min ?? 30); $("#cp-idade").value = String(pol.idade_h ?? 12);
+  $("#cp-senha").value = ""; $("#cp-msg").textContent = ""; $("#cp-senha-bloco").classList.add("oculto");
+  $("#conta-politica").querySelectorAll("select, input, button").forEach((x) => { x.disabled = !e.logado; });
+  if (e.existe) cmCarregar(e.logado);
   abrirModal("#modal-conta");
 }
 window.abrirConta = abrirConta;
+
+// ---- 🔗 Métodos de login da conta ÚNICA: e-mail, Google, GitHub (docs/CONTA-UNICA.md) ----
+// Backend: nuvem.py (identidades) + app.py (conta_nuvem_identidades/vincular/desvincular). No portal as mesmas chamadas rodam no
+// navegador (ponte-agente.js). Nenhuma senha nem token fica aqui: a senha de confirmação vai direto na chamada e o campo é limpo.
+const CM = { dados: null, ocupado: new Set(), repetir: null };
+const cmCelular = () => !!window.__cel;   // celular pareado: o login abre o navegador do PC, então só vê e desvincula
+function cmMsg(t, tipo) { const m = $("#cm-msg"); if (m) { m.textContent = t || ""; m.className = "ajuda cm-msg" + (tipo ? " " + tipo : ""); } }
+async function cmChamar(nome, ...a) {
+  const f = contaApi()[nome];
+  if (typeof f !== "function") return { ok: false, erro: "Esta versão ainda não gerencia os métodos de login." };
+  return f.call(contaApi(), CONTA.token || null, ...a).catch((x) => ({ ok: false, erro: String(x.message || x) }));
+}
+async function cmCarregar(logado = true) {
+  const lista = $("#cm-lista"); if (!lista) return;
+  cmMsg(""); $("#cm-reaut").classList.add("oculto"); CM.repetir = null;
+  if (!logado) { CM.dados = null; lista.innerHTML = `<p class="ajuda">Entre na conta para ver e mudar os métodos de login.</p>`; return; }
+  lista.innerHTML = `<p class="ajuda">Carregando…</p>`;
+  const r = await cmChamar("conta_nuvem_identidades");
+  CM.dados = r && r.ok ? r : null;
+  cmDesenhar(r);
+  if (r && r.aviso) cmMsg(r.aviso, r.aviso_tipo || "");   // portal: resultado de um vínculo que voltou do provedor
+}
+function cmCartao(m, d) {
+  const ocup = CM.ocupado.has(m.id), cel = cmCelular(), unico = m.vinculado && d.total < 2;
+  const nome = esc(m.nome), quando = m.desde ? m.desde.split("-").reverse().join("/") : "";
+  let det, bot = "";
+  if (m.vinculado) {
+    det = `Login: <b>${esc(m.email || "—")}</b>${quando ? ` · vinculado em ${esc(quando)}` : ""}${unico ? "<br><small>Último método de login: não pode ser removido.</small>" : ""}`;
+    if (m.vinculavel || d.total > 1) bot = `<button class="btn" data-cm="desv" data-p="${esc(m.id)}" aria-label="Desvincular ${nome}"${ocup || unico ? " disabled" : ""}${unico ? ' title="Vincule outro método antes de remover o último."' : ""}>Desvincular</button>`;
+  } else if (m.vinculavel) {
+    det = `Vincule para entrar com ${nome} e cair nesta mesma conta.`;
+    bot = `<button class="btn primario" data-cm="vinc" data-p="${esc(m.id)}" aria-label="Vincular ${nome}"${ocup || cel ? " disabled" : ""}${cel ? ' title="Só no computador: o login abre o navegador do PC."' : ""}>${ocup ? "Aguardando…" : "Vincular"}</button>`;
+  } else {
+    det = "Este método nasce no cadastro. Para usá-lo, saia e crie a conta com o seu e-mail na tela de entrada.";
+  }
+  return `<article class="armaz-serv nuv-card cm-card" role="listitem" aria-labelledby="cm-t-${esc(m.id)}" data-cm-id="${esc(m.id)}">
+    <div class="armaz-cab"><span class="armaz-ic cm-ic" aria-hidden="true">${CT_ICONES[m.id] || "✉️"}</span><b id="cm-t-${esc(m.id)}">${nome}</b>
+      <span class="armaz-st nuv-st ${m.vinculado ? "ok" : ""}">${m.vinculado ? "Vinculado" : "Não vinculado"}</span></div>
+    <p class="nuv-det">${det}</p><div class="armaz-acoes">${bot}</div></article>`;
+}
+function cmDesenhar(r) {
+  const lista = $("#cm-lista"); if (!lista) return;
+  if (!r || !r.ok) { lista.innerHTML = `<p class="ajuda">${esc((r && r.erro) || "Métodos de login indisponíveis agora.")}</p>`; return; }
+  let metodos, d = r;
+  if (r.nuvem === false) {   // conta só local: vincular um login a ela é "associar à nuvem" (a mesma conta passa a abrir por ele)
+    $("#cm-ajuda").textContent = "Esta conta existe só neste computador. Vincule o Google ou o GitHub para ter uma conta única: depois, entrando por qualquer método, você cai no mesmo perfil e nos mesmos dados.";
+    metodos = [{ id: "email", nome: "E-mail e senha", vinculado: false, vinculavel: false }, ...(r.vinculaveis || []).map((v) => ({ id: v.id, nome: v.nome, vinculado: false, vinculavel: true }))];
+    d = { total: 0 };
+  } else {
+    $("#cm-ajuda").textContent = `Conta DASSH: ${r.email}. Entrando por qualquer método vinculado, você cai no mesmo perfil e nos mesmos dados. Para vincular ou remover, pode ser pedida a sua senha.`;
+    metodos = Array.isArray(r.metodos) ? r.metodos : [];
+  }
+  lista.innerHTML = metodos.map((m) => cmCartao(m, d)).join("");
+  lista.querySelectorAll("[data-cm]").forEach((b) => (b.onclick = () => (b.dataset.cm === "vinc" ? cmVincular(b.dataset.p) : cmDesvincular(b.dataset.p))));
+}
+function cmResultado(r, repetir, okMsg) {
+  if (r && r.ok) { CM.dados = r; cmDesenhar(r); cmMsg(okMsg, "ok"); toast("🔗 " + okMsg); return; }
+  if (r && r.reautenticar === "reautenticar") {   // sessão antiga: confirma a senha e repete a ação
+    CM.repetir = repetir; $("#cm-reaut").classList.remove("oculto"); $("#cm-senha").value = ""; $("#cm-senha").focus();
+    cmMsg(r.erro, "aviso"); return;
+  }
+  cmMsg((r && r.erro) || "Não foi possível concluir.", r && r.reautenticar ? "aviso" : "erro");
+  cmDesenhar(CM.dados || r);
+}
+async function cmVincular(id, senha = null) {
+  const m = ((CM.dados && CM.dados.metodos) || []).find((x) => x.id === id), nome = m ? m.nome : (id === "github" ? "GitHub" : "Google");
+  CM.ocupado.add(id); cmDesenhar(CM.dados || { ok: true, nuvem: false, vinculaveis: [{ id, nome }] });
+  cmMsg(`Abrimos o ${nome} no seu navegador. Conclua lá e volte para cá…`);
+  let r;
+  if (CM.dados && CM.dados.nuvem === false || !CM.dados) {   // só local: associa o login à conta local (vira a mesma identidade)
+    r = await contaApi().conta_nuvem_oauth(id, false, null, CONTA.token || null).catch((x) => ({ ok: false, erro: String(x.message || x) }));
+    CM.ocupado.delete(id);
+    if (r && r.ok) { cmMsg(`${nome} associado à sua conta (${r.email}).`, "ok"); toast(`🔗 ${nome} associado à sua conta`); return cmCarregar(true); }
+    cmMsg((r && r.erro) || "Não foi possível associar.", "erro"); return cmCarregar(true);
+  }
+  r = await cmChamar("conta_nuvem_vincular", id, senha);
+  CM.ocupado.delete(id);
+  cmResultado(r, (s) => cmVincular(id, s), `${nome} vinculado à sua conta.`);
+}
+function cmDesvincular(id) {
+  const m = ((CM.dados && CM.dados.metodos) || []).find((x) => x.id === id);
+  if (!m || !m.identity_id) return;
+  if (CM.dados.total < 2) return cmMsg("Este é o seu último método de login: vincule outro antes de remover.", "aviso");
+  const fazer = async (senha = null) => {
+    CM.ocupado.add(id); cmDesenhar(CM.dados); cmMsg("Desvinculando…");
+    const r = await cmChamar("conta_nuvem_desvincular", m.identity_id, senha);
+    CM.ocupado.delete(id);
+    cmResultado(r, fazer, `${m.nome} desvinculado.`);
+  };
+  pedido(`Desvincular <b>${esc(m.nome)}</b>?<br><small>Você deixa de entrar por ele. Seus dados continuam na conta, e dá para vincular de novo depois.</small>`,
+    "Desvincular", "Manter", (ok) => { if (ok) fazer(); }, "cm-desv-" + id);
+}
+$("#cm-reaut").onsubmit = (ev) => {
+  ev.preventDefault();
+  const s = $("#cm-senha").value, f = CM.repetir; $("#cm-senha").value = "";
+  if (!s) return cmMsg("Digite a sua senha.", "erro");
+  $("#cm-reaut").classList.add("oculto"); CM.repetir = null;
+  if (f) f(s);
+};
+$("#cm-reaut-cancelar").onclick = () => { $("#cm-senha").value = ""; $("#cm-reaut").classList.add("oculto"); CM.repetir = null; cmMsg(""); };
 $("#modal-conta [data-fecha]").onclick = (ev) => fecharModal(ev.target);
+const cpTrava = () => $("#cp-senha-bloco").classList.toggle("oculto", $("#cp-ociosa").value !== "0" && $("#cp-idade").value !== "0");
+$("#cp-ociosa").onchange = $("#cp-idade").onchange = cpTrava;
+$("#conta-politica").onsubmit = async (ev) => {
+  ev.preventDefault();
+  const m = $("#cp-msg"); m.textContent = "Salvando…";
+  const r = await contaApi().conta_definir_politica(CONTA.token, +$("#cp-ociosa").value, +$("#cp-idade").value, $("#cp-senha").value)
+    .catch((err) => ({ ok: false, erro: String(err.message || err) }));
+  $("#cp-senha").value = "";
+  m.textContent = r && r.ok ? "Salvo. Vale já para esta sessão." : ((r && r.erro) || "Não foi possível salvar.");
+};
 $("#conta-bloquear").onclick = async () => { await contaApi().conta_sair(CONTA.token).catch(() => {}); fecharModal($("#conta-bloquear")); contaTrancar("bloqueio"); };
 $("#conta-sair-todas").onclick = async () => { await contaApi().conta_sair(CONTA.token, true).catch(() => {}); fecharModal($("#conta-bloquear")); contaTrancar("bloqueio"); };
 $("#conta-troca").onsubmit = async (ev) => {
@@ -4469,8 +5554,114 @@ async function desenharArmaz(r) {
       ${s.existe && !ligado ? `<p class="ajuda">Conectar usa <code>${esc(e.sugeridas[s.id])}</code></p>` : ""}</div>`;
   }).join("");
   $("#armaz-lista").querySelectorAll("[data-a]").forEach((b) => (b.onclick = () => armazAcao(b.dataset.a, b.dataset.s)));
+  nuvAtualizar(true);
 }
 $("#armaz-so-aba").onchange = () => desenharArmaz(ARMAZ.estado);
+// ---- ☁ Nuvens por login (OAuth): Google Drive · OneDrive · Dropbox (+ iCloud só por pasta) — docs/NUVENS-OAUTH-UI.md ----
+// Backend: nuvem_oauth.py. Conectar/desconectar/testar/destino só na janela local do PC; celular e portal só veem o estado e pedem envio.
+// Nenhum token chega aqui: a interface só recebe estado, conta, espaço e mensagens.
+const NUV = { dados: null, timer: null, ocupado: new Set(), msg: "" };
+const NUV_IC = { gdrive: "🟢", onedrive: "🔵", dropbox: "🟦" };
+function nuvRemoto() { return NA_WEB || !!(window.__cel || window.__remoto || window.__portal); }
+const nuvBytes = (n) => (n >= 1073741824 ? (n / 1073741824).toFixed(1) + " GB" : n >= 1048576 ? (n / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1024)) + " KB");
+function nuvMsg(t) { NUV.msg = t || ""; const m = $("#nuv-msg"); if (m) m.textContent = NUV.msg; }
+async function nuvAtualizar(espaco = false) {
+  if (!api || typeof api.estado_nuvem !== "function") return;
+  const r = await api.estado_nuvem(null, !!espaco).catch((x) => ({ ok: false, erro: String(x.message || x) }));
+  NUV.dados = r && r.ok && Array.isArray(r.provedores) && r.icloud ? r : null;
+  nuvDesenhar(r);
+  clearTimeout(NUV.timer);
+  const aguarda = NUV.dados && NUV.dados.provedores.some((p) => p.estado === "aguardando");
+  if (aguarda && !$("#modal-armaz").classList.contains("oculto")) NUV.timer = setTimeout(() => nuvAtualizar(false), 1500);
+}
+function nuvCartao(p, remoto) {
+  const id = p.id, nome = p.nome, ocup = NUV.ocupado.has(id);
+  const st = { nao_conectado: ["Não conectado", ""], aguardando: ["Aguardando autorização…", "aviso"], conectado: [`Conectado como ${p.conta || p.nome_conta || "sua conta"}`, "ok"],
+               sem_cliente: ["Cliente OAuth não configurado", "aviso"], erro: ["Erro", "erro"] }[p.estado] || ["Não conectado", ""];
+  let det = "";
+  if (p.estado === "conectado" && p.espaco) det = `Espaço usado: ${nuvBytes(p.espaco.usado)}${p.espaco.total ? " de " + nuvBytes(p.espaco.total) : ""}`;
+  else if (p.estado === "aguardando") det = `Autorize no navegador que abriu. Tempo restante: ${Math.floor((p.expira_s || 0) / 60)} min ${String((p.expira_s || 0) % 60).padStart(2, "0")} s.`;
+  else if (p.estado === "sem_cliente") det = `${esc(p.falta || "Falta o client_id.")} Veja o passo a passo em <b>${esc(NUV.dados.doc)}</b>.`;
+  else if (p.estado === "erro") det = esc(p.erro || "Não foi possível conectar. Tente de novo.");
+  else if (p.estado === "nao_conectado") det = "Envie evidências, relatórios e gravações para a sua nuvem, sem instalar nada.";
+  if (p.aviso) det += ` <small>⚠ ${esc(p.aviso)}</small>`;
+  const dis = (cond) => (cond ? " disabled" : "");
+  const so = remoto ? ` title="Só no computador: a autorização abre o navegador do PC."` : "";
+  let bot = "";
+  if (p.estado === "aguardando") bot = `<button class="btn" data-n="cancelar" data-p="${id}" aria-label="Cancelar a conexão com ${esc(nome)}"${dis(remoto)}${so}>Cancelar</button>`;
+  else if (p.estado === "conectado") bot = `<button class="btn primario" data-n="sync" data-p="${id}" aria-label="Sincronizar atendimentos com ${esc(nome)}"${dis(ocup)}>Sincronizar atendimentos</button>
+      <button class="btn" data-n="testar" data-p="${id}" aria-label="Testar a conexão com ${esc(nome)}"${dis(ocup || remoto)}${so}>Testar</button>
+      <button class="btn" data-n="desc" data-p="${id}" aria-label="Desconectar ${esc(nome)}"${dis(ocup || remoto)}${so}>Desconectar</button>`;
+  else bot = `<button class="btn primario" data-n="con" data-p="${id}" aria-label="Conectar ${esc(nome)}"${dis(ocup || remoto)}${so}>Conectar</button>`;
+  return `<article class="armaz-serv nuv-card" role="listitem" aria-labelledby="nuv-t-${id}" data-nuv="${id}">
+    <div class="armaz-cab"><span class="armaz-ic" aria-hidden="true">${NUV_IC[id]}</span><b id="nuv-t-${id}">${esc(nome)}</b><span class="armaz-st nuv-st ${st[1]}">${esc(st[0])}</span></div>
+    <p class="nuv-det">${det}</p><div class="armaz-acoes">${bot}</div></article>`;
+}
+function nuvDesenhar(r) {
+  const lista = $("#nuv-lista"); if (!lista) return;
+  const rem = nuvRemoto();
+  if (!NUV.dados) { lista.innerHTML = `<p class="ajuda">${esc((r && r.erro) || "Nuvens indisponíveis agora.")}</p>`; $("#nuv-destino").innerHTML = ""; return; }
+  const d = NUV.dados;
+  $("#nuv-ajuda").textContent = rem ? "Você está pelo celular ou pelo portal: aqui dá para ver o estado e pedir envio. Para conectar ou desconectar uma nuvem, abra o DASSH Code no computador (a autorização acontece no navegador do PC)."
+                                    : "Conecte pelo login da sua conta (autorização oficial no navegador). O DASSH Code só acessa a pasta que ele mesmo cria; a senha nunca passa por aqui.";
+  lista.innerHTML = d.provedores.map((p) => nuvCartao(p, rem)).join("") + `<article class="armaz-serv nuv-card" role="listitem" aria-labelledby="nuv-t-icloud">
+    <div class="armaz-cab"><span class="armaz-ic" aria-hidden="true">⚪</span><b id="nuv-t-icloud">iCloud Drive</b><span class="armaz-st nuv-st">Só por pasta</span></div>
+    <p class="nuv-det">${esc(d.icloud.mensagem)} Escolha a pasta na lista de pastas sincronizadas logo abaixo.</p></article>`;
+  lista.querySelectorAll("[data-n]").forEach((b) => (b.onclick = () => nuvAcao(b.dataset.n, b.dataset.p)));
+  const con = d.provedores.filter((p) => p.estado === "conectado");
+  const op = [["", "Pasta local deste computador"], ...con.map((p) => [p.id, p.nome])];
+  $("#nuv-destino").innerHTML = con.length ? `<fieldset class="nuv-destino"><legend>Destino padrão dos envios</legend>${op.map(([v, t]) =>
+    `<label class="rot-opc"><input type="radio" name="nuv-dest" value="${v}" ${((d.destino || "") === v) ? "checked" : ""}${rem ? " disabled" : ""}> ${esc(t)}</label>`).join("")}</fieldset>` : "";
+  $("#nuv-destino").querySelectorAll("input[name=nuv-dest]").forEach((i) => (i.onchange = async () => {
+    const x = await api.definir_destino_nuvem(i.value).catch((e) => ({ ok: false, erro: String(e.message || e) }));
+    nuvMsg(x && x.ok ? (x.destino ? "Destino padrão: sua nuvem." : "Destino padrão: pasta local.") : (x && x.erro) || "Não foi possível mudar o destino.");
+    nuvAtualizar(false);
+  }));
+  $("#nuv-msg").textContent = NUV.msg;
+}
+async function nuvAcao(a, id) {
+  if (NUV.ocupado.has(id) || !NUV.dados) return;
+  const nome = (NUV.dados.provedores.find((p) => p.id === id) || {}).nome || id;
+  const exec = async (fn) => {
+    NUV.ocupado.add(id); nuvDesenhar({ ok: true });
+    try { return await fn(); } catch (x) { return { ok: false, erro: String(x.message || x) }; } finally { NUV.ocupado.delete(id); }
+  };
+  if (a === "con") {
+    const r = await exec(() => api.conectar_nuvem(id));
+    if (!r || !r.ok) { nuvMsg((r && r.erro) || "Não foi possível iniciar a conexão."); toast((r && r.erro) || "Falhou.", "aviso"); return nuvAtualizar(false); }
+    nuvMsg(`Autorize o ${nome} no navegador que abriu. Esta tela atualiza sozinha.`);
+  } else if (a === "cancelar") { await exec(() => api.cancelar_nuvem(id)); nuvMsg("Conexão cancelada."); }
+  else if (a === "desc") {
+    const sim = await new Promise((ok) => pedido(`☁ Desconectar o <b>${esc(nome)}</b>?<br><small>O DASSH Code deixa de enviar e apaga a autorização guardada neste computador. Os arquivos que já estão na sua nuvem não são apagados.</small>`,
+      "Desconectar", "Cancelar", ok, "excluir", true));
+    if (!sim) return;
+    const r = await exec(() => api.desconectar_nuvem(id));
+    nuvMsg(r && r.ok ? (r.aviso || `${nome} desconectado.`) : (r && r.erro) || "Não foi possível desconectar."); if (r && r.ok) toast(`${nome} desconectado.`);
+  } else if (a === "testar") {
+    nuvMsg(`Testando o ${nome}…`);
+    const r = await exec(() => api.testar_nuvem(id));
+    nuvMsg(r && r.ok ? `✔ ${nome}: enviou e apagou um arquivo de teste em ${r.ms} ms.` : `${nome}: ${(r && r.erro) || "o teste falhou."}`);
+  } else if (a === "sync") {
+    nuvMsg(`Enviando os atendimentos para o ${nome}…`);
+    const r = await exec(() => api.sincronizar_nuvem(id, ativa || null));
+    nuvMsg(r && r.ok ? `✔ ${r.enviados} arquivo(s) enviado(s) ao ${nome}${r.restantes ? `; faltam ${r.restantes} (clique de novo)` : ""}${r.ignorados && r.ignorados.length ? `; ${r.ignorados.length} ignorado(s)` : ""}.`
+                     : `${nome}: ${(r && r.erro) || "a sincronização falhou."}`);
+  }
+  nuvAtualizar(a === "testar" || a === "sync");
+}
+// "Enviar para minha nuvem" nos menus da Biblioteca (evidência, relatório, gravação): usa o destino padrão ou a única nuvem conectada
+async function nuvEnviar(caminho, tipo) {
+  if (!api || typeof api.estado_nuvem !== "function") return toast("A nuvem não está disponível aqui.", "aviso");
+  const e = await api.estado_nuvem().catch(() => null), con = e && e.ok ? e.provedores.filter((p) => p.estado === "conectado") : [];
+  const alvo = e && e.destino ? e.destino : con.length === 1 ? con[0].id : "";
+  if (!con.length) return toast("Nenhuma nuvem conectada: conecte em ☁ Armazenamento (no computador).", "aviso");
+  if (!alvo) return toast("Mais de uma nuvem conectada: escolha o destino padrão em ☁ Armazenamento.", "aviso");
+  toast("☁ Enviando para a sua nuvem…"); ilhaTarefa("nuvem", "Enviando para a nuvem", "Arquivo do atendimento");
+  const r = await api.enviar_para_nuvem(caminho, tipo, alvo).catch((x) => ({ ok: false, erro: String(x.message || x) }));
+  toast(r && r.ok ? "☁ Enviado para a sua nuvem." : (r && r.erro) || "Não foi possível enviar.", r && r.ok ? "" : "aviso");
+  ilhaTarefaFim("nuvem", !!(r && r.ok), "Enviado para a nuvem", "O arquivo já está na sua nuvem.");
+}
+
 
 async function armazAcao(a, s) {
   const sid = ativa || null, soAba = $("#armaz-so-aba").checked && !!sid;
@@ -4500,9 +5691,9 @@ async function armazAcao(a, s) {
 // Não entra na evidência: a evidência é desenhada do BUFFER do xterm (snapshot), não da tela. Digitar aqui não vai ao shell;
 // Esc volta ao terminal; os atalhos Ctrl+Alt (evidência etc.) continuam valendo.
 const CHAT_MAX = 1000, CHAT_GUARDA = 300;
-const CHAT_CORES = ["#7cc4ff", "#ffb86b", "#c3a6ff", "#ff8fb1", "#ffd866", "#6ee7f0", "#a3e635", "#f0abfc"];
+const CHAT_CORES = ["var(--tipo-ssh)", "var(--chat-laranja)", "var(--chat-lilas)", "var(--chat-rosa)", "var(--chat-amarelo)", "var(--chat-ciano)", "var(--chat-lima)", "var(--chat-orquidea)"];
 function chatCor(quem) {
-  if (quem === "host") return "#5ee0b5";
+  if (quem === "host") return "var(--verde-cl)";
   // cor pela ORDEM de entrada na sessão (nunca repete entre as primeiras 8 pessoas); fora da lista, pelo hash
   const ps = ((A() || {}).share || {}).participantes || [], i = ps.filter((p) => p.id !== "host").findIndex((p) => p.id === quem);
   if (i >= 0) return CHAT_CORES[i % CHAT_CORES.length];
@@ -4554,7 +5745,7 @@ function chatDesenhar() {
   chatMarcaAba(a);
   const cont = $("#chat-cont");
   cont.textContent = c.novas > 99 ? "99+" : String(c.novas); cont.classList.toggle("oculto", !c.novas);
-  $("#chat-bolha").title = c.novas ? `💬 ${c.novas} mensagem(ns) nova(s) nesta sessão` : "💬 Conversa desta sessão (só quem está nela vê)";
+  $("#chat-bolha").title = c.novas ? `💬 ${c.novas === 1 ? "1 mensagem nova" : `${c.novas} mensagens novas`} nesta sessão` : "💬 Conversa desta sessão (só quem está nela vê)";
   const ps = (a.share.participantes || []);
   $("#chat-quem").innerHTML = ps.map((p) => `<i style="--cor:${chatCor(p.id)}" title="${esc(p.nome)}${p.id === chatEu(a) ? " (você)" : ""}${p.id === "host" ? " · dono" : ""}"></i>`).join("")
     + `<span>${ps.length} ${ps.length === 1 ? "pessoa" : "pessoas"}</span>`;
@@ -4677,7 +5868,7 @@ if (document.querySelector('script[src*="ponte-agente"]')) {
 function chatPareceComando(t) {
   t = String(t || "").trim();
   if (!t || t.length > 300 || /\n/.test(t)) return false;
-  return /^(\$ |> |# )/.test(t) || /^[a-z][\w.-]*(\s+[-\/|\w.:@=$"'\\*]+)*$/i.test(t) && /[-|\/:.=]|\b(show|display|get-|set-|ping|ip|ls|cd|cat|grep|dir|ipconfig|netstat|systemctl|az|aws|gcloud|kubectl|docker|ssh|sudo)\b/i.test(t);
+  return CHAT_CMDS.mikrotik.includes(t.toLowerCase()) || /^(\$ |> |# )/.test(t) || /^[a-z][\w.-]*(\s+[-\/|\w.:@=$"'\\*]+)*$/i.test(t) && /[-|\/:.=]|\b(show|display|get-|set-|ping|ip|ls|cd|cat|grep|dir|ipconfig|netstat|systemctl|az|aws|gcloud|kubectl|docker|ssh|sudo)\b/i.test(t);
 }
 function chatTextoDe(mid) { const a = A(), c = a && chatEstado(a); const m = c && c.itens.find((x) => String(x.mid) === String(mid)); return m ? m.txt.replace(/^(\$ |> |# )/, "") : ""; }
 $("#chat-lista").addEventListener("click", (e) => {
@@ -4761,12 +5952,15 @@ function shareAbaInfo(s) {
 
 // ---------- chat inteligente: Tab completa comandos conforme o tipo da aba compartilhada (como no shell) ----------
 const CHAT_CMDS = {
-  rede: ["display version", "display interface brief", "display ip interface brief", "display current-configuration", "display stack",
+  huawei: ["display version", "display interface brief", "display ip interface brief", "display current-configuration", "display stack",
     "display lldp neighbor brief", "display eth-trunk", "display logbuffer", "display device", "display cpu-usage", "display memory-usage",
-    "display vlan", "display mac-address", "display arp", "display ip routing-table", "system-view", "save",
-    "show version", "show running-config", "show ip interface brief", "show interfaces status", "show vlan brief", "show cdp neighbors",
+    "display vlan", "display mac-address", "display arp", "display ip routing-table", "system-view", "save"],
+  ios: ["show version", "show running-config", "show ip interface brief", "show interfaces status", "show vlan brief", "show cdp neighbors",
     "show lldp neighbors", "show logging", "show inventory", "show spanning-tree", "show ip route", "show mac address-table",
     "configure terminal", "write memory", "ping", "traceroute"],
+  nxos: ["show version", "show interface brief", "show inventory", "show running-config", "show vlan brief", "show ip route"],
+  junos: ["show version", "show interfaces terse", "show chassis hardware", "show system alarms", "show route"],
+  mikrotik: ["/system resource print", "/system routerboard print", "/interface print", "/ip address print", "/ip route print", "/log print"],
   linux: ["ip a", "ip route", "ss -tulpn", "systemctl status", "journalctl -xe", "df -h", "free -m", "top", "uname -a", "hostnamectl",
     "cat /etc/os-release", "sudo", "tail -f /var/log/syslog", "ping", "traceroute"],
   powershell: ["Get-NetIPConfiguration", "Get-NetAdapter", "Get-NetIPAddress", "Get-Service", "Get-Process", "Test-NetConnection -ComputerName ",
@@ -4777,20 +5971,76 @@ const CHAT_CMDS = {
     "az network vnet list -o table", "az storage account list -o table"],
   aws: ["aws sts get-caller-identity", "aws ec2 describe-instances", "aws s3 ls", "aws iam list-users", "aws ec2 describe-vpcs", "aws configure list"],
   gcp: ["gcloud config list", "gcloud projects list", "gcloud compute instances list", "gcloud auth list", "gcloud container clusters list"],
+  oci: ["oci iam region list", "oci iam compartment list", "oci compute instance list", "oci os ns get"],
+  doctl: ["doctl account get", "doctl compute droplet list", "doctl kubernetes cluster list", "doctl compute domain list"],
+  ibmcloud: ["ibmcloud login", "ibmcloud target", "ibmcloud resource groups", "ibmcloud resource service-instances"],
+  wrangler: ["wrangler login", "wrangler whoami", "wrangler deploy", "wrangler tail"],
+  cloudflared: ["cloudflared tunnel login", "cloudflared tunnel list", "cloudflared --version"],
+  terraform: ["terraform init", "terraform validate", "terraform plan", "terraform apply", "terraform state list", "terraform version"],
+  kubectl: ["kubectl config current-context", "kubectl get nodes", "kubectl get pods -A", "kubectl get svc -A", "kubectl describe pod ", "kubectl logs "],
+  helm: ["helm list -A", "helm repo list", "helm repo update", "helm search repo ", "helm version"],
+  docker: ["docker ps", "docker ps -a", "docker images", "docker logs ", "docker compose ps", "docker version"],
+  ollama: ["ollama list", "ollama run ", "ollama pull ", "ollama ps"],
 };
-function chatFamilias(a) {
-  const t = String((a && a.share && a.share.aba && a.share.aba.tipo) || (a && a.tipo) || "").toLowerCase();
-  if (t === "powershell") return ["powershell"];
-  if (t === "cmd") return ["cmd"];
-  if (t === "azure" || t === "aws") return [t];
-  if (t === "gcp" || t === "gcloud") return ["gcp"];
-  return ["rede", "linux"];   // serial / ssh / desconhecido: equipamentos de rede e servidores
+const CHAT_BANNERS = [
+  ["nxos", /^(?:Cisco\s+(?:Nexus Operating System\s+\(NX-OS\)|NX-OS\b)|NX-OS Software\b)/i],
+  ["ios", /^Cisco\s+IOS(?:[\s-]|$)/i],
+  ["huawei", /^(?:Huawei\s+Versatile Routing Platform|Huawei\s+VRP\b|VRP\s+\(R\)\s+software)/i],
+  ["junos", /^(?:---\s*JUNOS\b|Junos:\s*\S|Juniper Networks,\s*Inc\.\s+junos\b)/i],
+  ["mikrotik", /^(?:MikroTik\s+RouterOS|RouterOS\s+v?\d)/i],
+  ["linux", /^(?:Linux\s+\S+\s+\d|(?:Welcome to )?Ubuntu\s+\d|Debian GNU\/Linux\b|Red Hat Enterprise Linux\b)/i],
+  ["windows", /^(?:Microsoft Windows\s+\[Version\b|Windows PowerShell\b)/i],
+];
+const CHAT_PROMPTS = [
+  ["huawei", /^(?:<HUAWEI>|\[[~*]?HUAWEI\])$/i],
+  ["junos", /^[\w.-]+@[\w.-]+>$/],
+  ["mikrotik", /^\[[\w.-]+@[^@\]]+\]\s+(?:\/[\w /-]*\s+)?>$/],
+  ["linux", /^(?:[\w.-]+@[\w.-]+:[^\r\n]*|\[[\w.-]+@[\w.-]+\s+[^@\]]+\])[$#]$/],
+  ["windows", /^(?:PS )?[A-Z]:\\[^>\r\n]*>$/i],
+];
+const CHAT_SKILL_FAMILIA = {
+  ios: /\bCisco\b.*\bIOS\b/i, nxos: /\bCisco\b.*\bNX-OS\b/i, huawei: /\bHuawei\b/i,
+  junos: /\b(?:Juniper|Junos)\b/i, mikrotik: /\b(?:MikroTik|RouterOS)\b/i,
+  linux: /\bLinux\b/i, windows: /\bWindows\b/i,
+};
+function chatTipo(a) {
+  return String(a?.share?.aba?.tipo || a?.tipo || "").toLowerCase();
 }
-function chatSugestoes(a) {
-  const l = chatFamilias(a).flatMap((f) => CHAT_CMDS[f] || []);
-  try {   // + comandos das Skills (quando a Biblioteca já carregou no PC de quem digita)
-    (BIB.skills || []).forEach((sk) => (sk.comandos || []).forEach((c) => { const x = typeof c === "string" ? c : c && (c.cmd || c.comando); if (x) l.push(String(x)); }));
-  } catch (_) {}
+function chatFamiliaDetectada(a, tipo = chatTipo(a)) {
+  if (!a?.conectado || a.demo || !["serial", "ssh", "remoto"].includes(tipo)) return null;
+  if (a.chatFamiliaBanner) return a.chatFamiliaBanner;
+  const b = a.term.buffer.active, y = b.baseY + b.cursorY;
+  // O buffer já interpretou as sequências ANSI e reuniu as escritas parciais.
+  for (let i = y; i >= Math.max(0, y - a.term.rows); i--) {
+    const linha = b.getLine(i)?.translateToString(true).trim() || "";
+    const banner = CHAT_BANNERS.find(([, re]) => re.test(linha));
+    if (banner) {
+      a.chatFamiliaBanner = banner[0];
+      return a.chatFamiliaBanner;
+    }
+  }
+  const prompt = CHAT_PROMPTS.find(([, re]) => re.test(linhaCursor(a.term).trim()));
+  if (prompt) a.chatFamiliaPrompt = prompt[0];
+  return a.chatFamiliaPrompt || null;
+}
+function chatFamilias(tipo, familia) {
+  if (familia === "windows") return ["powershell", "cmd"];
+  if (familia) return [familia];
+  if (["powershell", "cmd", "azure", "aws", "oci", "doctl", "ibmcloud", "wrangler", "cloudflared", "terraform", "kubectl", "helm", "docker", "ollama"].includes(tipo)) return [tipo];
+  if (tipo === "pwsh") return ["powershell"];
+  if (tipo === "gcp" || tipo === "gcloud") return ["gcp"];
+  return ["huawei", "ios", "linux"];   // lista genérica, na mesma ordem
+}
+function chatSugestoes(a, familia = chatFamiliaDetectada(a)) {
+  const l = chatFamilias(chatTipo(a), familia).flatMap((f) => CHAT_CMDS[f]);
+  const filtro = CHAT_SKILL_FAMILIA[familia];
+  for (const sk of BIB.skills || []) {
+    if (!Array.isArray(sk?.comandos) || (filtro && !filtro.test(sk.fabricante + " " + sk.nome))) continue;
+    for (const c of sk.comandos) {
+      const x = typeof c === "string" ? c : c && (c.cmd || c.comando);
+      if (x) l.push(String(x));
+    }
+  }
   return [...new Set(l)];
 }
 (function chatTab() {
@@ -4798,9 +6048,12 @@ function chatSugestoes(a) {
   const dica = document.createElement("div"); dica.id = "chat-dica"; dica.className = "chat-dica oculto";
   $("#chat-form").before(dica);
   let ciclo = null;
-  const achar = (pre) => { const p = pre.toLowerCase(); return chatSugestoes(A()).filter((c) => c.toLowerCase().startsWith(p) && c.length > pre.length); };
+  const achar = (pre, a, familia) => {
+    const p = pre.toLowerCase();
+    return chatSugestoes(a, familia).filter((c) => c.toLowerCase().startsWith(p) && c.length > pre.length);
+  };
   const mostrar = () => {
-    const v = inp.value, m = v.trim() && !/\s$/.test(v) ? achar(v) : [];
+    const v = inp.value, m = v.trim() && !/\s$/.test(v) ? achar(v, A()) : [];
     dica.classList.toggle("oculto", !m.length);
     if (m.length) dica.innerHTML = `<kbd>Tab</kbd> ${m.slice(0, 3).map((c) => `<span>${esc(c)}</span>`).join("")}${m.length > 3 ? `<em>+${m.length - 3}</em>` : ""}`;
   };
@@ -4808,8 +6061,13 @@ function chatSugestoes(a) {
   inp.addEventListener("keydown", (e) => {
     if (e.key !== "Tab") return;
     e.preventDefault();
-    if (!ciclo) { const m = achar(inp.value); if (!m.length) return; ciclo = { base: inp.value, lista: m, i: 0 }; }
-    else ciclo.i = (ciclo.i + 1) % ciclo.lista.length;   // Tab de novo: próxima sugestão
+    const a = A(), familia = chatFamiliaDetectada(a), tipo = chatTipo(a);
+    if (!ciclo || ciclo.a !== a || ciclo.familia !== familia || ciclo.tipo !== tipo) {
+      const lista = achar(inp.value, a, familia);
+      ciclo = null;
+      if (!lista.length) { dica.classList.add("oculto"); return; }
+      ciclo = { a, familia, tipo, lista, i: 0 };
+    } else ciclo.i = (ciclo.i + 1) % ciclo.lista.length;   // Tab de novo: próxima sugestão
     inp.value = ciclo.lista[ciclo.i];
     dica.innerHTML = `<kbd>Tab</kbd> ${ciclo.lista.length > 1 ? `${ciclo.i + 1} de ${ciclo.lista.length} · Tab de novo para a próxima` : "completo"}`;
     dica.classList.remove("oculto");
@@ -4822,15 +6080,12 @@ const ADM = { ult: null };
 async function admAtualizar() {
   if (!api || !api.conta_nuvem_admin || !CONTA.token) return;
   const r = await api.conta_nuvem_admin().catch(() => null);
-  let el = document.getElementById("adm-selo");
-  if (!r || !r.admin) { if (el) el.remove(); return; }
-  if (!el) {
-    el = document.createElement("div"); el.id = "adm-selo"; el.title = "Só você vê isto (dono da plataforma)";
-    document.body.appendChild(el);
-  }
-  el.innerHTML = `<b>👤 ${r.contas}</b> contas <span>·</span> <b class="on">● ${r.online}</b> online <span>·</span> <b>${r.ativos_24h}</b> ativos 24 h <span>·</span> <b>+${r.novas_hoje}</b> hoje`;
-  if (ADM.ult && r.contas > ADM.ult.contas) toast(`🎉 ${r.contas - ADM.ult.contas} nova(s) conta(s) criada(s) — agora são ${r.contas}`);
-  if (ADM.ult && r.online > ADM.ult.online) toast(`🟢 ${r.online} pessoa(s) usando a plataforma agora`);
+  const antigo = document.getElementById("adm-selo"); if (antigo) antigo.remove();   // os números do dono rodam na Ilha (repouso)
+  window.__admIlha = r && r.admin ? r : null;
+  if (typeof ilhaSync === "function") ilhaSync();
+  if (!r || !r.admin) return;
+  if (ADM.ult && r.contas > ADM.ult.contas) toast(`🎉 ${r.contas - ADM.ult.contas === 1 ? "1 nova conta criada" : `${r.contas - ADM.ult.contas} novas contas criadas`} — agora são ${r.contas}`);
+  if (ADM.ult && r.online > ADM.ult.online) toast(`🟢 ${pl(r.online, "pessoa")} usando a plataforma agora`);
   ADM.ult = r;
 }
 setTimeout(admAtualizar, 8000);
@@ -4857,3 +6112,133 @@ setInterval(admAtualizar, 60000);
   }
   addEventListener("orientationchange", () => setTimeout(() => { if (typeof ajustarFonte === "function") ajustarFonte(); }, 250));
 })();
+
+
+// ================= 🏝 Ilha DASSH: alimentação (ui/ilha.js · docs/ILHA-DASSH.md) =================
+// A Ilha é só a vitrine: aqui os eventos que já existem (gravação, compartilhamento, IA, celular, envio, bloqueio, conexão) viram estados.
+// ilhaSync() reconstrói os estados ambiente (gravando, compartilhando, IA, celular) a partir do estado real das abas; os eventos pontuais
+// (envio, evidência, bloqueio, queda) chamam ilha.publicar direto. Nada aqui cria timer: o relógio é da própria Ilha.
+function ILHA_ON() { return typeof ilha !== "undefined" && ilha; }
+function ilhaSync() {
+  if (!ILHA_ON() || ilhaSync.p) return;
+  ilhaSync.p = true;
+  Promise.resolve().then(() => { ilhaSync.p = false; try { ilhaSyncAgora(); } catch (err) { console.error("ilha", err); } });
+}
+// um único timer leve: só gira a presença quando ela é o que está na tela, a Ilha está recolhida e a janela visível
+setInterval(() => { const e = ILHA_ON() && !document.hidden && ilha.estado(); if (e && e.topo === "presenca" && !e.expandida) { (window.__ilhaPres = window.__ilhaPres || { i: 0, ult: "" }).i++; ilhaSync(); } }, 5000);
+function ilhaSyncAgora() {
+  const todas = [...abas.values()], vivas = todas.filter((a) => a.conectado);
+  // presença: a Ilha nunca some. Em repouso alterna (a cada 5 s) entre sessões ativas e os números do dono; qualquer outro estado passa por cima
+  const P = (window.__ilhaPres = window.__ilhaPres || { i: 0, ult: "" }), adm = window.__admIlha;
+  const slides = [vivas.length ? { t: "Sessões", d: pl(vivas.length, "sessão ativa", "sessões ativas"), x: "Conexões abertas neste momento." }
+    : { t: "Sessões", d: "Nenhuma sessão", x: "Escolha um tipo de conexão para começar." }];
+  // celular, IA (com saldo) e fila de envio já têm estado próprio na Ilha (prioridade maior que a presença): aparecem por cima quando existem
+  if (adm) slides.push({ t: "Plataforma", d: pl(adm.contas, "conta", "contas"), x: "Contas criadas na plataforma (só você vê)." },
+    { t: "Plataforma", d: `${adm.online} online agora`, x: "Pessoas usando a plataforma neste momento." },
+    { t: "Plataforma", d: `${adm.ativos_24h} ativos em 24 h`, x: "Contas com atividade nas últimas 24 horas." },
+    { t: "Plataforma", d: `+${adm.novas_hoje} novas hoje`, x: "Contas criadas hoje." });
+  const sl = slides[P.i % slides.length];
+  ilha.publicar("presenca", { tipo: "presenca", titulo: sl.t, dado: sl.d, detalhe: sl.x, acoes: [] });
+  if (P.ult !== sl.d) { P.ult = sl.d; const e = document.querySelector("#ilha .ilha-dado"); if (e) { e.classList.remove("troca"); void e.offsetWidth; e.classList.add("troca"); } }
+  // gravando
+  const gr = vivas.filter((a) => a.gravando && a.tipo !== "web");
+  if (gr.length) {
+    const a = gr.find((x) => x.id === ativa) || gr[0], inicio = Math.min(...gr.map((x) => x.inicio || Date.now()));
+    ilha.publicar("gravacao", { tipo: "gravando", titulo: gr.length === 1 ? "Gravando a sessão" : `Gravando ${gr.length} sessões`,
+      dado: gr.length === 1 ? "REC {t}" : `REC {t} · ${gr.length}`, inicio,
+      detalhe: gr.length === 1 ? `${a.nome}: a gravação fica na Biblioteca.` : "As gravações ficam na Biblioteca.",
+      acoes: [{ id: "parar", rotulo: "Parar gravação", icone: "parar", perigo: true, aoClicar: () => ilhaPararGravacao(a) }] });
+  } else ilha.limpar("gravacao");
+  // compartilhando (só o dono)
+  const sh = vivas.filter((a) => a.share && a.share.papel === "dono");
+  if (sh.length) {
+    const a = sh.find((x) => x.id === ativa) || sh[0];
+    const obs = (a.share.participantes || []).filter((p) => p.id !== "host").length;
+    ilha.publicar("compartilhando", { tipo: "compartilhando", titulo: "Sessão ao vivo", dado: obs ? pl(obs, "observador", "observadores") : "Ao vivo",
+      detalhe: `${a.nome} · código ${a.share.codigo || ""}`.trim(),
+      acoes: [{ id: "encerrar", rotulo: "Encerrar compartilhamento", icone: "parar", perigo: true,
+        aoClicar: async () => { await api.share_encerrar(a.id); a.share = null; desenharShare(a); toast("Compartilhamento encerrado"); } },
+        { id: "copiar", rotulo: "Copiar código", icone: "copiar", fechar: false, aoClicar: () => navigator.clipboard.writeText(String(a.share && a.share.codigo || "")).then(() => toast("Código copiado"), () => {}) },
+        { id: "ver", rotulo: "Ver a guia", icone: "olho", aoClicar: () => ativar(a.id) }] });
+  } else ilha.limpar("compartilhando");
+  // IA (nome da CLI e cota)
+  const ia = vivas.filter((a) => TIPOS_IA.includes(a.tipo));
+  if (ia.length) {
+    const a = ia.find((x) => x.id === ativa) || ia[0], nome = nomeTipo(a.tipo);
+    const fazendo = Date.now() - (a.ultimaEscrita || 0) < 4000 && a.estadoSessao !== "login";
+    const cota = a.saldoSessao ? ` · ${a.saldoSessao}` : "";
+    ilha.publicar("ia", { tipo: "ia", titulo: `${nome} ${fazendo ? "executando" : "aguardando"}`, dado: `${nome}${cota}`,
+      detalhe: `${fazendo ? "Trabalhando agora" : "Esperando você"}` + (a.saldoSessao ? ` · sessão ${a.saldoSessao} disponível` : "") + (a.saldoSemana ? ` · semana ${a.saldoSemana}` : ""),
+      progresso: fazendo ? "indeterminado" : null,
+      acoes: [{ id: "ir", rotulo: "Ir para a guia", icone: "olho", aoClicar: () => ativar(a.id) },
+        { id: "evidencia", rotulo: "Salvar evidência", icone: "evidencia", aoClicar: () => { ativar(a.id); evidencia(false); } }] });
+    if (fazendo) { clearTimeout(ilhaSync.t); ilhaSync.t = setTimeout(ilhaSync, 4200); }
+  } else ilha.limpar("ia");
+  // celular conectado
+  const cel = (CEL && CEL.conectados) || [];
+  if (cel.length) {
+    ilha.publicar("celular", { tipo: "celular", titulo: "Celular conectado", dado: cel.length === 1 ? cel[0].nome : `${cel.length} celulares`,
+      detalhe: "Este PC pode ser operado pelo celular pareado.",
+      acoes: [{ id: "abrir", rotulo: "Abrir Celular", icone: "celular", aoClicar: () => abrirCelular() },
+        { id: "desconectar", rotulo: "Desconectar", icone: "parar", perigo: true, aoClicar: () => cel.forEach((c) => api.cel_desconectar(c.id)) }] });
+  } else ilha.limpar("celular");
+  // queda de conexão: some quando a guia reconecta ou fecha
+  for (const id of ilhaSync.quedas || []) {
+    const a = abas.get(id.slice(8));
+    if (!a || a.conectado) { ilha.limpar(id); ilhaSync.quedas.delete(id); }
+  }
+}
+async function ilhaPararGravacao(a) {
+  if (!a || !api || a.mudandoRec) return;
+  a.mudandoRec = true; a.gravando = false; desenharRec(a);
+  toast("⏸ Gravação parada — daqui em diante só o log em texto (leve)");
+  try { const r = await api.gravacao_ligar(a.id, false); a.gravando = !!(r.ok ? r.gravando : true); desenharRec(a); if (!r.ok) toast(r.erro, "erro"); }
+  finally { a.mudandoRec = false; ilhaSync(); }
+}
+function ilhaQueda(a, motivo) {
+  if (!ILHA_ON() || !a) return;
+  const id = "conexao:" + a.id; (ilhaSync.quedas = ilhaSync.quedas || new Set()).add(id);
+  ilha.publicar(id, { tipo: "conexao", titulo: `${a.nome}: conexão encerrada`, dado: "Conexão caiu", detalhe: String(motivo || "").replace(/\s+/g, " ").slice(0, 120),
+    acoes: [{ id: "ver", rotulo: "Ver a guia", icone: "olho", aoClicar: () => ativar(a.id) },
+      ...(a.params ? [{ id: "reabrir", rotulo: "Reconectar", icone: "refazer", aoClicar: () => { ativar(a.id); reabrirGuia(a); } }] : []),
+      { id: "gravacoes", rotulo: "Ver gravações", icone: "pasta", aoClicar: () => $("#btn-historico").click() }] });
+}
+function ilhaFila(f) {
+  if (!ILHA_ON()) return;
+  const a = f.atual, L = f.lote || { total: 0, feitos: 0 }, falhas = f.falhas || [];
+  const verFila = { id: "fila", rotulo: "Ver a fila", icone: "envio", aoClicar: () => abrirFila() };
+  if (a && a.estado === "enviando") {
+    ilhaFila.ativo = true;
+    ilha.publicar("envio", { tipo: "envio", titulo: "Enviando", dado: L.total > 1 ? `Enviando ${Math.min(L.feitos + 1, L.total)} de ${L.total}` : "Enviando…",
+      detalhe: rotuloJob(a), progresso: L.total > 1 ? L.feitos / L.total : "indeterminado", acoes: [verFila] });
+  } else if (a && a.estado === "aguardando") {
+    ilhaFila.ativo = true;
+    ilha.publicar("envio", { tipo: "envio", tom: "aviso", titulo: "Envio aguardando", dado: `${f.pendentes} na fila`,
+      detalhe: CANAL_ROT[a.canal] ? `Configure o canal ${CANAL_ROT[a.canal]} para enviar.` : "Abra o WhatsApp para continuar o envio.", progresso: null, acoes: [verFila] });
+  } else if (f.pendentes) {
+    ilha.publicar("envio", { tipo: "envio", titulo: "Envio na fila", dado: `${f.pendentes} na fila`, detalhe: "Preparando o próximo envio.", progresso: "indeterminado", acoes: [verFila] });
+  } else {
+    ilha.limpar("envio");
+    if (ilhaFila.ativo && !falhas.length) ilha.publicar("conclusao", { tipo: "conclusao", titulo: "Envio concluído", dado: "Enviado", detalhe: "Tudo o que estava na fila foi enviado.", acoes: [verFila] });
+    ilhaFila.ativo = false;
+  }
+  if (falhas.length) ilha.publicar("envio-falha", { tipo: "envio", tom: "erro", prioridade: 75, persistente: true, dispensavel: true, titulo: "Falha no envio",
+    dado: falhas.length === 1 ? "1 envio falhou" : `${falhas.length} envios falharam`, detalhe: "Abra a fila para reenviar.", progresso: null, acoes: [verFila] });
+  else ilha.limpar("envio-falha");
+}
+// progresso sem número (relatório, nuvem): barra animada até acabar; na conclusão, aviso curto com atalho para a Biblioteca
+function ilhaTarefa(id, titulo, detalhe) { if (ILHA_ON()) ilha.publicar(id, { tipo: "envio", titulo, dado: titulo, detalhe, progresso: "indeterminado" }); }
+function ilhaTarefaFim(id, ok, titulo, detalhe, acoes) {
+  if (!ILHA_ON()) return; ilha.limpar(id);
+  if (ok) ilha.publicar("conclusao", { tipo: "conclusao", titulo, dado: titulo, detalhe: detalhe || "", acoes: acoes || [] });
+}
+function ilhaBloqueio(segundos) {
+  if (!ILHA_ON()) return;
+  if (segundos > 0 && segundos <= 90) {
+    ilhaBloqueio.ativo = true;
+    ilha.publicar("bloqueio", { tipo: "bloqueio", titulo: "Bloqueio por inatividade", dado: "Bloqueia em {t}", fim: Date.now() + segundos * 1000,
+      detalhe: "Mexa no teclado ou no mouse para continuar com a sessão aberta.",
+      acoes: [{ id: "continuar", rotulo: "Continuar usando", icone: "check", aoClicar: () => { CONTA.toque = 0; contaApi().conta_tocar(CONTA.token).catch(() => {}); ilhaBloqueio(0); } },
+        { id: "bloquear", rotulo: "Bloquear agora", icone: "bloqueio", aoClicar: () => { const b = $("#conta-bloquear"); if (b) b.click(); } }] });
+  } else { ilhaBloqueio.ativo = false; ilha.limpar("bloqueio"); }
+}

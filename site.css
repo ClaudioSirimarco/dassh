@@ -1,4 +1,4 @@
-/* DASSH Console — camada "app" para celular (compartilhada pelas páginas institucionais).
+/* DASSH Code — camada "app" para celular (compartilhada pelas páginas institucionais).
    Carregada DEPOIS do <style> de cada página: no desktop só acrescenta detalhes neutros;
    no celular (≤ 860 px, ou telefone deitado) compacta o cabeçalho e liga a navegação inferior. */
 
@@ -136,3 +136,5 @@ nav.bnav, .bn-folha, .bn-veu { display: none; }
 /* downloads do app (instalador/portátil) temporariamente desativados */
 .btn.desativado { opacity: .45; cursor: not-allowed; pointer-events: none; filter: grayscale(.6); }
 .desativado-txt { color: var(--suave, #8b949e); }
+
+.btn.desligado { opacity: .55; cursor: not-allowed; pointer-events: none; }

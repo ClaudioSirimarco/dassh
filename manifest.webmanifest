@@ -1,6 +1,6 @@
 {
   "id": "/dassh/",
-  "name": "DASSH Console",
+  "name": "DASSH Code",
   "short_name": "DASSH",
   "description": "Shell multiprotocolo com cofre de credenciais, sessão ao vivo cifrada de ponta a ponta e evidências auditáveis.",
   "lang": "pt-BR",
@@ -20,7 +20,7 @@
   ],
   "shortcuts": [
     { "name": "Assistir ao vivo", "short_name": "Ao vivo", "url": "ao-vivo.html", "icons": [{ "src": "img/icone-192.png", "sizes": "192x192", "type": "image/png" }] },
-    { "name": "Baixar o DASSH Console", "short_name": "Baixar", "url": "baixar/", "icons": [{ "src": "img/icone-192.png", "sizes": "192x192", "type": "image/png" }] },
+    { "name": "Baixar o DASSH Code", "short_name": "Baixar", "url": "baixar/", "icons": [{ "src": "img/icone-192.png", "sizes": "192x192", "type": "image/png" }] },
     { "name": "Documentação", "short_name": "Docs", "url": "docs/", "icons": [{ "src": "img/icone-192.png", "sizes": "192x192", "type": "image/png" }] }
   ]
 }

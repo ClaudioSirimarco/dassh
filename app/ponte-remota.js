@@ -11,6 +11,7 @@ import { hkdf } from "./vendor/noble/hashes/hkdf.js";
 import { sha256 } from "./vendor/noble/hashes/sha256.js";
 
 const SERVIDORES = ["wss://broker.emqx.io:8084/mqtt", "wss://test.mosquitto.org:8081/mqtt"];
+const RECUOS = [1000, 2000, 4000, 8000, 15000, 30000];
 const CHAVE_LS = "dassh-cel-v1";
 const te = new TextEncoder(), td = new TextDecoder();
 const b64 = (u) => { let s = ""; for (const x of u) s += String.fromCharCode(x); return btoa(s); };
@@ -92,24 +93,69 @@ async function sas(pcEd, ed, x) {
 }
 
 // ---------------- armazenamento local do aparelho ----------------
-export const ler = () => { try { return JSON.parse(localStorage.getItem(CHAVE_LS) || "null"); } catch { return null; } };
-export const gravar = (d) => { try { d ? localStorage.setItem(CHAVE_LS, JSON.stringify(d)) : localStorage.removeItem(CHAVE_LS); } catch {} };
+// Vários PCs pareados: {pcs:[{dev, nome, ed, x, pc:{nome,ed,x,topico,srv}, sas, criado, visto?, apelido?, revogado?}], ativo:"<dev>"}.
+// Cada PC tem as suas próprias chaves e o seu tópico. O formato antigo (um objeto só) vira lista de 1 na primeira leitura.
+const gravarArm = (a) => { try { a.pcs.length ? localStorage.setItem(CHAVE_LS, JSON.stringify(a)) : localStorage.removeItem(CHAVE_LS); } catch {} };
+function lerArm() {
+  try {
+    const d = JSON.parse(localStorage.getItem(CHAVE_LS) || "null");
+    if (d && typeof d === "object") {
+      if (Array.isArray(d.pcs)) return { pcs: d.pcs.filter((p) => p && p.dev && p.pc), ativo: d.ativo || null };
+      if (d.pc && d.dev) { const a = { pcs: [d], ativo: d.dev }; gravarArm(a); return a; }   // migração do formato antigo
+    }
+  } catch {}
+  return { pcs: [], ativo: null };
+}
+export const listar = () => lerArm().pcs;
+export const ler = () => { const a = lerArm(); return a.pcs.find((p) => p.dev === a.ativo) || null; }   // o PC ativo
+export const nomeDe = (p) => limpa(p?.apelido, 40) || p?.pc?.nome || "PC";
+export function gravar(d) {   // atualiza o PC (pelo dev); um PC novo entra na lista e vira o ativo; null esquece o ativo
+  const a = lerArm();
+  if (!d) { a.pcs = a.pcs.filter((p) => p.dev !== a.ativo); a.ativo = null; return gravarArm(a); }
+  const i = a.pcs.findIndex((p) => p.dev === d.dev);
+  if (i >= 0) a.pcs[i] = d;
+  else { a.pcs = a.pcs.filter((p) => p.pc?.ed !== d.pc?.ed).concat([d]); a.ativo = d.dev; }   // parear de novo o MESMO PC troca o registro dele
+  gravarArm(a);
+}
 export const pareado = () => { const d = ler(); return !!(d && d.pc && !d.revogado); };
+function alterar(dev, f) { const a = lerArm(), p = a.pcs.find((x) => x.dev === dev); if (!p) return false; f(p); gravarArm(a); return true; }
+export const renomear = (dev, nome) => alterar(dev, (p) => { const n = limpa(nome, 40).trim(); if (n) p.apelido = n; else delete p.apelido; });
+let vistoEm = 0;
+const marcarVisto = (dev, forcar) => { if (!forcar && Date.now() - vistoEm < 30000) return; vistoEm = Date.now(); alterar(dev, (p) => { p.visto = Date.now(); }); };
 
 // ---------------- relé (MQTT) ----------------
 class Rele {
-  constructor(servidores, aoReceber) { this.servidores = servidores; this.aoReceber = aoReceber; this.c = null; this.subs = new Set(); }
+  constructor(servidores, aoReceber, aoCair) {
+    this.servidores = servidores; this.aoReceber = aoReceber; this.aoCair = aoCair;
+    this.c = null; this.subs = new Set(); this.fechado = false; this.cancelar = null;
+  }
   async abrir() {
-    if (this.c && this.c.connected) return;
     let ultimo;
     for (const url of this.servidores) {
+      if (this.fechado) break;
       try {
         await new Promise((ok, falha) => {
-          const c = mqtt.connect(url, { clientId: "dassh-cel-" + hex(rnd(6)), reconnectPeriod: 3000, connectTimeout: 10000 });
-          const t = setTimeout(() => { c.end(true); falha(new Error("tempo")); }, 11000);
-          c.on("connect", () => { clearTimeout(t); this.subs.forEach((s) => c.subscribe(s, { qos: 1 })); this.c = c; ok(); });
-          c.on("message", (top, m) => this.aoReceber(top, new Uint8Array(m)));
-          c.on("error", (e) => { if (!this.c) { clearTimeout(t); c.end(true); falha(e); } });
+          const c = this.c = mqtt.connect(url, { clientId: "dassh-cel-" + hex(rnd(6)), reconnectPeriod: 0, connectTimeout: 10000 });
+          const falhou = (e) => {
+            if (this.c !== c) return;
+            clearTimeout(t); this.cancelar = null; this.c = null;
+            try { c.end(true); } catch {}
+            falha(e);
+          };
+          const t = setTimeout(() => falhou(new Error("tempo")), 11000);
+          this.cancelar = falhou;
+          c.once("connect", () => {
+            if (this.c !== c) return;
+            clearTimeout(t); this.cancelar = null;
+            this.subs.forEach((s) => c.subscribe(s, { qos: 1 })); ok();
+          });
+          c.on("message", (top, m) => { if (this.c === c) this.aoReceber(top, new Uint8Array(m)); });
+          c.on("error", (e) => { if (this.cancelar === falhou) falhou(e); });
+          c.once("close", () => {
+            if (this.c !== c) return;
+            if (this.cancelar === falhou) falhou(new Error("Relé desconectado."));
+            else if (this.aoCair) this.aoCair();
+          });
         });
         return;
       } catch (e) { ultimo = e; }
@@ -118,7 +164,12 @@ class Rele {
   }
   assinar(t) { this.subs.add(t); if (this.c) this.c.subscribe(t, { qos: 1 }); }
   publicar(t, blob) { if (this.c && this.c.connected) this.c.publish(t, blob, { qos: 1, retain: false }); }
-  fechar() { try { this.c && this.c.end(true); } catch {} this.c = null; this.subs.clear(); }
+  fechar() {
+    this.fechado = true;
+    if (this.cancelar) this.cancelar(new Error("Conexão cancelada."));
+    const c = this.c; this.c = null; this.subs.clear();
+    try { c?.end(true); } catch {}
+  }
 }
 
 // ---------------- protocolo do aparelho ----------------
@@ -129,58 +180,133 @@ export const cel = {
   rx: [], estado: "desconectado", ultimoRx: 0, filaTx: Promise.resolve(), filaRx: Promise.resolve(),
   aoMsg: null, aoEstado: null, aoFim: null, aoConectado: null, aviso: null,
 };
-window.__cel = cel;   // (testes) estado visível — nenhuma chave fica aqui
+window.__cel = cel;   // estado inspecionado pelos testes de navegador
 const setEstado = (cls, t) => { cel.estado = t; if (cel.aoEstado) cel.aoEstado(cls, t); };
+let automatico = false, emCurso = null, retomada = null, releEmSaida = null;
+let falhas = 0, indiceRele = 0, pcIndisponivel = false, recuoLongo = false;
 
-function novoRele(srv) {
+function novoRele(srv, aoCair) {
   if (cel.rele) cel.rele.fechar();
+  if (releEmSaida) { releEmSaida.fechar(); releEmSaida = null; }
   // recepção EM ORDEM (a decifragem é assíncrona: sem a fila, pedaços do terminal podiam chegar trocados)
-  cel.rele = new Rele(srv && srv.length ? srv : SERVIDORES, (t, m) => { cel.filaRx = cel.filaRx.then(() => receber(t, m)).catch(() => {}); });
-  return cel.rele;
+  const rele = new Rele(srv, (t, m) => {
+    cel.filaRx = cel.filaRx.then(() => { if (cel.rele === rele) return receber(t, m); }).catch(() => {});
+  }, () => { if (cel.rele === rele && aoCair) aoCair(); });
+  return cel.rele = rele;
 }
 
 export async function parear(codigo, nome) {
+  if (normalizar(codigo).length !== 12) throw new Error("O código tem 12 caracteres (ex.: ABCD-EFGH-JKLM).");
+  const retomar = automatico && ler()?.dev;
+  if (automatico || cel.sess || emCurso) await soltar();   // o relé é um só: o PC atual sai de forma limpa antes de parear outro
+  try { return await parearNovo(codigo, nome); }
+  catch (e) { if (retomar && ler()?.dev === retomar && pareado()) conectar().catch(() => {}); throw e; }
+}
+async function parearNovo(codigo, nome) {
   const cod = normalizar(codigo);
-  if (cod.length !== 12) throw new Error("O código tem 12 caracteres (ex.: ABCD-EFGH-JKLM).");
   const P = await scryptAsync(te.encode(cod), te.encode("dassh-parear-v1"), { N: 2 ** 15, r: 8, p: 1, dkLen: 32 });
   const topico = topicoDe(P, "dassh-parear-topico");
   const edPriv = ed25519.utils.randomPrivateKey(), xPriv = x25519.utils.randomPrivateKey();
   const ed = b64(ed25519.getPublicKey(edPriv)), x = b64(x25519.getPublicKey(xPriv)), dev = hex(rnd(8)), ts = Date.now();
   const msg = { t: "parear", id: dev, nome, ed, x, ts };
   msg.sig = assinar(`dassh-parear|${topico}|${dev}|${ed}|${x}|${ts}`, edPriv);
-  const rele = novoRele();
-  const resposta = new Promise((ok, falha) => {
-    cel.aoParear = async (blob) => {
-      try {
-        if (blob[0] !== 0) return;
-        const r = await decifrar(P, blob.slice(1), aad(topico, "pc", "h"));
-        if (r.t !== "pareado" || r.para !== dev) return;
-        const pcEd = unb64(r.pc_ed), pcX = unb64(r.pc_x);
-        if (pcEd.length !== 32 || pcX.length !== 32 || !/^dassh\/v2\/[0-9a-f]{40}$/.test(r.topico)) return;
-        if (!confere(r.sig, `dassh-pareado|${topico}|${dev}|${ed}|${x}|${r.topico}|${r.pc_ed}|${r.pc_x}`, pcEd)) return;
-        ok(r);
-      } catch {}
-    };
-    setTimeout(() => falha(new Error("O PC não respondeu. Confira o código (vale 5 min, uma vez só) e se o PC está com a janela de pareamento aberta.")), 30000);
-  });
-  cel.topicoPar = topico + "/h";
-  rele.assinar(cel.topicoPar);
-  await rele.abrir();
-  rele.publicar(topico + "/c", juntar([0], await cifrar(P, msg, aad(topico, "-", "c"))));
+  const pacote = juntar([0], await cifrar(P, msg, aad(topico, "-", "c")));
+  const rele = novoRele(SERVIDORES);
+  let prazo;
   try {
+    cel.topicoPar = topico + "/h";
+    rele.assinar(cel.topicoPar);
+    await rele.abrir();
+    const resposta = new Promise((ok, falha) => {
+      cel.aoParear = async (blob) => {
+        try {
+          if (blob[0] !== 0) return;
+          const r = await decifrar(P, blob.slice(1), aad(topico, "pc", "h"));
+          if (r.t !== "pareado" || r.para !== dev) return;
+          const pcEd = unb64(r.pc_ed), pcX = unb64(r.pc_x);
+          if (pcEd.length !== 32 || pcX.length !== 32 || !/^dassh\/v2\/[0-9a-f]{40}$/.test(r.topico)) return;
+          if (!confere(r.sig, `dassh-pareado|${topico}|${dev}|${ed}|${x}|${r.topico}|${r.pc_ed}|${r.pc_x}`, pcEd)) return;
+          ok(r);
+        } catch {}
+      };
+      prazo = setTimeout(() => falha(new Error("O PC não respondeu. Confira o código (vale 5 min, uma vez só) e se o PC está com a janela de pareamento aberta.")), 30000);
+    });
+    rele.publicar(topico + "/c", pacote);
     const r = await resposta;
     const srv = Array.isArray(r.srv) ? r.srv.filter((s) => typeof s === "string" && /^wss?:\/\//.test(s)).slice(0, 4) : [];
     const d = { dev, nome, ed: b64(edPriv), x: b64(xPriv), pc: { nome: String(r.pc_nome || "PC").slice(0, 40), ed: r.pc_ed, x: r.pc_x, topico: r.topico, srv },
                 sas: await sas(unb64(r.pc_ed), unb64(ed), unb64(x)), criado: Date.now() };
-    gravar(d);
+    gravar(d);   // ACRESCENTA à lista de PCs e passa a ser o ativo
     return d;
-  } finally { cel.aoParear = null; cel.topicoPar = null; rele.fechar(); }
+  } finally {
+    clearTimeout(prazo);
+    cel.aoParear = null; cel.topicoPar = null;
+    if (cel.rele === rele) cel.rele = null;
+    rele.fechar();
+  }
 }
 
-export async function conectar() {
-  const d = ler(); if (!d) throw new Error("Aparelho não pareado.");
-  desconectar(true);
-  setEstado("meio", "Conectando…");
+export function conectar() {
+  const d = ler();
+  if (!d?.pc || d.revogado) return Promise.reject(new Error(d?.revogado ? "Este aparelho foi revogado no PC." : "Aparelho não pareado."));
+  if (emCurso) return emCurso.promessa;
+  if (!automatico) zerarRecuo();
+  automatico = true;
+  if (cel.sess) limparCanal("Reconectando");
+  return tentar();
+}
+
+// Troca o PC ativo: o atual sai de forma limpa (aviso "sair" ao PC) e só então o escolhido conecta.
+export async function trocar(dev, { reconectar = true } = {}) {
+  const p = listar().find((x) => x.dev === dev);
+  if (!p) throw new Error("PC não encontrado.");
+  if (p.revogado) throw new Error("Este aparelho foi revogado nesse PC.");
+  if (ler()?.dev === dev && cel.sess?.dev === dev) return cel.sess;
+  await soltar();
+  const a = lerArm();
+  if (!a.pcs.some((x) => x.dev === dev && !x.revogado)) throw new Error("Este PC não está mais disponível na lista.");
+  a.ativo = dev; gravarArm(a);
+  if (reconectar) return conectar();
+}
+async function soltar() {
+  const tinha = !!cel.sess;
+  await desconectar();
+  if (tinha) await new Promise((r) => setTimeout(r, 350));   // deixa o "sair" ir ao relé antes de abrir outro
+}
+// Esquece um PC (só ele): se for o ativo, desconecta antes. Os outros PCs não são afetados.
+export async function esquecer(dev) {
+  if (ler()?.dev === dev) await soltar();
+  const a = lerArm();
+  a.pcs = a.pcs.filter((p) => p.dev !== dev);
+  if (a.ativo === dev) a.ativo = null;
+  gravarArm(a);
+}
+export const indisponivel = () => pcIndisponivel && !cel.sess;
+
+function tentar(reconectando = false) {
+  clearTimeout(retomada); retomada = null;
+  if (emCurso) return emCurso.promessa;
+  const d = ler();
+  if (!automatico || !d?.pc || d.revogado) return Promise.reject(new Error("Conexão pausada."));
+  if (!navigator.onLine) {
+    mostrarEspera("Sem internet — reconexão pausada");
+    return Promise.reject(new Error("Sem internet."));
+  }
+  const tentativa = emCurso = {};
+  tentativa.promessa = abrirSessao(d, tentativa).catch((e) => {
+    if (emCurso === tentativa) {
+      limparCanal(e.message);
+      if (tentativa.semResposta) pcIndisponivel = true;
+      planejarRetomada();
+    }
+    throw e;
+  }).finally(() => { if (emCurso === tentativa) emCurso = null; });
+  if (falhas || reconectando) mostrarEspera(estadoRetomada());
+  else setEstado("meio", "Conectando…");
+  return tentativa.promessa;
+}
+
+async function abrirSessao(d, tentativa) {
   const topico = d.pc.topico, dev = d.dev;
   const xPriv = unb64(d.x), edPriv = unb64(d.ed), pcX = unb64(d.pc.x), pcEd = unb64(d.pc.ed);
   const segEst = x25519.getSharedSecret(xPriv, pcX);
@@ -188,8 +314,15 @@ export async function conectar() {
   const eph = x25519.utils.randomPrivateKey(), e = b64(x25519.getPublicKey(eph)), ts = Date.now(), n = b64(rnd(16));
   const ola = { t: "ola", id: dev, e, ts, n };
   ola.sig = assinar(`dassh-ola|${topico}|${dev}|${e}|${ts}|${n}`, edPriv);
-  const rele = novoRele(d.pc.srv);
+  const servidores = d.pc.srv?.length ? d.pc.srv : SERVIDORES;
+  const rele = novoRele([servidores[indiceRele % servidores.length]], () => caiu("Relé desconectado."));
+  const pacote = juntar([2], await cifrar(kEst, ola, aad(topico, dev, "ola")));
+  rele.assinar(topico + "/h");
+  await rele.abrir();
+  if (emCurso !== tentativa) throw new Error("Conexão cancelada.");
+  let prazo;
   const bemvindo = new Promise((ok, falha) => {
+    tentativa.cancelar = falha;
     cel.aoOla = async (blob) => {
       try {
         const r = await decifrar(kEst, blob.slice(1), aad(topico, "pc", "bemvindo"));
@@ -198,51 +331,64 @@ export async function conectar() {
         ok(r);
       } catch {}
     };
-    cel.tOla = setTimeout(() => falha(new Error("O PC não respondeu. Ele precisa estar ligado, com o DASSH Console aberto e “disponível para meus aparelhos”.")), 15000);
+    prazo = setTimeout(() => {
+      tentativa.semResposta = true;
+      falha(new Error("O PC não respondeu. Ele precisa estar ligado, com o DASSH Code aberto e “disponível para meus aparelhos”."));
+    }, 15000);
   });
-  rele.assinar(topico + "/h");
-  await rele.abrir();
-  rele.publicar(topico + "/c", juntar([2], await cifrar(kEst, ola, aad(topico, dev, "ola"))));
   let r;
-  try { r = await bemvindo; } finally { cel.aoOla = null; clearTimeout(cel.tOla); }
+  try {
+    rele.publicar(topico + "/c", pacote);
+    r = await bemvindo;
+  } finally {
+    clearTimeout(prazo); tentativa.cancelar = null;
+    if (cel.rele === rele) cel.aoOla = null;
+  }
+  if (emCurso !== tentativa) throw new Error("Conexão cancelada.");
   const ePc = unb64(r.e);
   const transcr = sha256(te.encode(`${topico}|${dev}|${e}|${r.e}|${r.s}|${n}`));
   const k = hkdf(sha256, juntar(x25519.getSharedSecret(eph, ePc), segEst), transcr, te.encode("dassh-conectado-sessao"), 64);
-  cel.sess = { topico, dev, id: r.s, sidb: te.encode(r.s), kc: k.slice(0, 32), kh: k.slice(32) };
+  const s = cel.sess = { topico, dev, id: r.s, sidb: te.encode(r.s), kc: k.slice(0, 32), kh: k.slice(32) };
   cel.seq = 0; cel.rastro = new Janela(); cel.pc = r.pc_nome || d.pc.nome; cel.ultimoRx = Date.now(); cel.partes.clear();
+  zerarRecuo();
+  marcarVisto(dev, true);
   setEstado("on", "Conectado · " + cel.pc);
   cel.ping = setInterval(() => {
+    if (Date.now() - cel.ultimoRx >= 40000) return caiu("Sem sinal do PC.");
+    marcarVisto(dev);
     enviar({ t: "ping" });
-    if (Date.now() - cel.ultimoRx > 40000) {
-      if (cel.aviso) cel.aviso("Sem sinal do PC — reconectando…", true);
-      conectar().catch((e) => fimSessao(e.message));
-    }
   }, 10000);
   if (cel.aoConectado) { try { await cel.aoConectado(r); } catch {} }
+  if (cel.sess !== s) throw new Error("Conexão interrompida.");
   return r;
 }
 
-export function enviar(obj) {   // em fila: a cifra é assíncrona e a ordem importa (digitação)
-  const s = cel.sess; if (!s) return Promise.resolve();
+export function enviar(obj) { return transmitir(obj); }
+function transmitir(obj, saindo = false) {   // em fila: a cifra é assíncrona e a ordem importa (digitação)
+  const s = cel.sess, rele = cel.rele;
+  if (!s || !rele) return Promise.resolve();
   const m = { ...obj, v: 2, de: s.dev, seq: ++cel.seq, ts: Date.now() };
   cel.filaTx = cel.filaTx.then(async () => {
-    if (cel.sess !== s) return;
-    cel.rele.publicar(s.topico + "/c", juntar([3], s.sidb, await cifrar(s.kc, m, aad(s.topico, s.id, "c"))));
+    if (!saindo && cel.sess !== s) return;
+    const pacote = juntar([3], s.sidb, await cifrar(s.kc, m, aad(s.topico, s.id, "c")));
+    if (saindo || cel.sess === s) rele.publicar(s.topico + "/c", pacote);
   }).catch(() => {});
   return cel.filaTx;
 }
 export function pedir(obj, ms = 20000) {   // ação com resposta (res)
+  if (!cel.sess) return Promise.resolve({ ok: false, erro: "Desconectado do PC", desconectado: true });
   const rid = ++cel.rid;
   return new Promise((ok) => {
-    cel.espera.set(rid, ok); enviar({ ...obj, rid });
-    setTimeout(() => { if (cel.espera.delete(rid)) ok({ ok: false, erro: "O PC não respondeu.", e: "O PC não respondeu." }); }, ms);
+    const prazo = setTimeout(() => { if (cel.espera.delete(rid)) ok({ ok: false, erro: "O PC não respondeu.", e: "O PC não respondeu." }); }, ms);
+    cel.espera.set(rid, (r) => { clearTimeout(prazo); ok(r); });
+    enviar({ ...obj, rid });
   });
 }
 // a MESMA chamada `api.<m>(...a)` da plataforma web, executada no Api real do PC
 export async function rpc(m, a) {
   if (!cel.sess) throw new Error("Desconectado do PC");
   const r = await pedir({ t: "rpc", m, a }, 180000);
-  // a sessão caiu com a chamada no ar: a tela de reconexão já está à frente; não vira erro solto na interface
+  // uma chamada interrompida pela queda fica pendente enquanto a interface sinaliza a reconexão
   if (!r.ok && r.desconectado) return new Promise(() => {});
   if (!r.ok) throw new Error(r.e || r.erro || "falhou");
   return r.r;
@@ -257,7 +403,7 @@ async function receber(topico, blob) {
   const s = cel.sess;
   if (!s || blob[0] !== 3 || topico !== s.topico + "/h" || !iguais(blob.subarray(1, 9), s.sidb)) return;
   const msg = await decifrar(s.kh, blob.slice(9), aad(s.topico, s.id, "h")).catch(() => null);
-  if (!msg || typeof msg !== "object" || msg.de !== "pc" || !tsOk(msg.ts) || !cel.rastro.aceitar(msg.seq)) return;
+  if (cel.sess !== s || !msg || typeof msg !== "object" || msg.de !== "pc" || !tsOk(msg.ts) || !cel.rastro.aceitar(msg.seq)) return;
   cel.vistos.add(chave); if (cel.vistos.size > 5000) cel.vistos.delete(cel.vistos.values().next().value);
   cel.ultimoRx = Date.now();
   tratar(msg);
@@ -280,27 +426,169 @@ function tratar(m) {
   if (cel.aoMsg) cel.aoMsg(m);
 }
 
-export function desconectar(silencioso) {
-  clearInterval(cel.ping);
-  if (cel.sess && !silencioso) enviar({ t: "sair" });
-  const r = cel.rele;
-  cel.sess = null;
-  falharPendentes("Desconectado do PC");
-  if (r) setTimeout(() => r.fechar(), silencioso ? 0 : 300);
-  if (!silencioso) setEstado("", "Desconectado");
+function limparCanal(motivo, saida) {
+  clearTimeout(retomada); retomada = null;
+  clearInterval(cel.ping); cel.ping = null;
+  if (cel.sess) marcarVisto(cel.sess.dev, true);
+  const tentativa = emCurso, rele = cel.rele;
+  emCurso = cel.sess = cel.rele = cel.aoOla = null;
+  if (tentativa?.cancelar) tentativa.cancelar(new Error(motivo));
+  cel.espera.forEach((f) => f({ ok: false, erro: motivo, e: motivo, desconectado: true }));
+  cel.espera.clear();
+  if (!rele) return;
+  if (!saida) return rele.fechar();
+  releEmSaida = rele;
+  saida.then(() => setTimeout(() => {
+    if (releEmSaida !== rele) return;
+    releEmSaida = null;
+    rele.fechar();
+  }, 300));
 }
-function falharPendentes(motivo) {
-  cel.espera.forEach((f) => f({ ok: false, erro: motivo, e: motivo, desconectado: true })); cel.espera.clear();
+
+export function desconectar() {
+  automatico = false;
+  const saida = cel.sess && transmitir({ t: "sair" }, true);
+  limparCanal("Desconectado do PC", saida);
+  setEstado("", "Desconectado");
+  return Promise.resolve(saida).then(() => {});
+}
+
+function zerarRecuo() {
+  falhas = 0;
+  pcIndisponivel = recuoLongo = false;
+}
+function estadoRetomada() {
+  return pcIndisponivel ? "PC indisponível — tentando de novo" : `Reconectando… (tentativa ${falhas || 1})`;
+}
+function mostrarEspera(texto) {
+  setEstado("meio", texto);
+  if (cel.aviso) cel.aviso(texto);
+}
+function planejarRetomada(alternar = true) {
+  if (!automatico || !pareado()) return;
+  if (!navigator.onLine) return mostrarEspera("Sem internet — reconexão pausada");
+  const base = RECUOS[Math.min(falhas, RECUOS.length - 1)];
+  const atraso = Math.min(30000, Math.round(Math.max(base, recuoLongo ? 15000 : 0) * (0.9 + Math.random() * 0.2)));
+  falhas++;
+  if (alternar) indiceRele++;
+  mostrarEspera(estadoRetomada());
+  retomada = setTimeout(() => tentar().catch(() => {}), atraso);
+}
+function caiu(motivo) {
+  const duranteAperto = !cel.sess;
+  limparCanal(motivo);
+  planejarRetomada(duranteAperto);
 }
 function fimSessao(motivo) {
-  clearInterval(cel.ping); cel.sess = null; if (cel.rele) cel.rele.fechar();
-  falharPendentes(motivo || "Desconectado do PC");
-  const revogado = /revogado/i.test(motivo || "");
-  setEstado("", revogado ? "Revogado" : "Desconectado");
-  if (revogado) { const d = ler(); if (d) { d.revogado = true; gravar(d); } }
-  if (cel.aoFim) cel.aoFim(motivo, revogado);
+  if (!/revogado/i.test(motivo)) {
+    if (/fechado no PC|indisponível|deixou de estar disponível|sem resposta/i.test(motivo)) pcIndisponivel = recuoLongo = true;
+    return caiu(motivo || "Conexão perdida.");
+  }
+  automatico = false;
+  const dev = cel.sess?.dev || ler()?.dev;   // revoga SÓ o PC dessa sessão; os outros continuam valendo
+  const d = listar().find((p) => p.dev === dev); if (d) { d.revogado = true; gravar(d); }
+  limparCanal(motivo);
+  setEstado("", "Revogado");
+  if (cel.aoFim) cel.aoFim(motivo, true);
 }
+
+function voltarAoCanal() {
+  if (!automatico || !pareado() || !navigator.onLine) return;
+  if (cel.sess && Date.now() - cel.ultimoRx <= 15000) return;
+  if (!cel.sess && emCurso) return;
+  limparCanal("Reconectando");
+  zerarRecuo();
+  tentar(true).catch(() => {});
+}
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") voltarAoCanal(); });
+for (const evento of ["pageshow", "online", "focus"]) addEventListener(evento, voltarAoCanal);
+addEventListener("offline", () => {
+  if (!automatico || !pareado()) return;
+  limparCanal("Sem internet.");
+  mostrarEspera("Sem internet — reconexão pausada");
+});
 export const limpa = (s, n) => String(s ?? "").replace(/[\u0000-\u001f\u007f-\u009f‎‏‪-‮⁦-⁩]/g, "").slice(0, n);
+
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+function haQuanto(t) {
+  const s = Math.max(0, Math.round((Date.now() - t) / 1000));
+  return s < 60 ? "há instantes" : s < 3600 ? `há ${Math.floor(s / 60)} min` : s < 86400 ? `há ${Math.floor(s / 3600)} h` : `há ${Math.floor(s / 86400)} d`;
+}
+function estadoDoPc(p, ativo) {
+  if (p.revogado) return { cls: "erro", t: "Revogado nesse PC" };
+  if (cel.sess?.dev === p.dev) return { cls: "", t: "Conectado" };
+  if (ativo && automatico) return indisponivel() ? { cls: "aviso", t: "Indisponível — tentando de novo" } : { cls: "aviso", t: "Conectando…" };
+  return { cls: "aviso", t: p.visto ? "Desconectado" : "Ainda não conectou" };
+}
+
+// A mesma lista atende o modo simples e a plataforma completa. Cada tela decide o que abrir após uma ação.
+export function criarListaPcs(lista, { conectarPc, aposAlterar, aoErro, focoVazio }) {
+  let renomeando = null, ocupada = false;
+
+  function desenhar() {
+    const ativo = ler()?.dev, pcs = listar(), foco = document.activeElement;
+    const focado = lista.contains(foco) && foco.closest(".pc-card")?.dataset.dev;
+    const acao = focado && foco.dataset.acao;
+    lista.innerHTML = pcs.map((p) => {
+      const atual = p.dev === ativo, estado = estadoDoPc(p, atual), conectado = cel.sess?.dev === p.dev;
+      const visto = p.visto && !conectado ? " · Visto " + haQuanto(p.visto) : "";
+      const editando = renomeando === p.dev, nome = esc(nomeDe(p));
+      const campo = editando ? `<input class="pc-nome-campo" maxlength="40" value="${nome}" aria-label="Novo nome do PC">` : "";
+      const acoes = editando
+        ? '<button class="primario" data-acao="salvar">Salvar</button><button data-acao="cancelar">Cancelar</button>'
+        : `${conectado ? "" : `<button class="primario" data-acao="conectar"${p.revogado ? " disabled" : ""}>Conectar</button>`}<button data-acao="renomear">Renomear</button><button class="perigo" data-acao="esquecer">Esquecer</button>`;
+      return `<div class="pc-card${atual ? " ativo" : ""}" role="listitem" aria-label="${nome}" data-dev="${esc(p.dev)}"><div class="pc-cabecalho"><span class="ic" aria-hidden="true">🖥</span>
+        <div class="txt"><b>${nome}</b><small class="estado-pc"><span class="selo ${estado.cls}" style="margin-left:0">${esc(estado.t)}</span>${visto}</small></div></div>${campo}<div class="acoes">${acoes}</div></div>`;
+    }).join("");
+    if (!pcs.length) lista.innerHTML = '<div class="vazio" role="listitem">Nenhum PC pareado neste celular.</div>';
+    lista.querySelectorAll(".pc-card").forEach((c) => c.querySelectorAll("button").forEach((b) => {
+      b.onclick = () => agir(c, b.dataset.acao);
+    }));
+    const campo = lista.querySelector(".pc-nome-campo");
+    if (campo) {
+      campo.focus(); campo.select();
+      campo.onkeydown = (ev) => {
+        if (ev.key !== "Enter" && ev.key !== "Escape") return;
+        ev.preventDefault(); ev.stopPropagation();
+        agir(campo.closest(".pc-card"), ev.key === "Enter" ? "salvar" : "cancelar");
+      };
+    } else if (focado) focarAcao(focado, acao);
+  }
+
+  function focarAcao(dev, acao) {
+    const cartao = [...lista.querySelectorAll(".pc-card")].find((c) => c.dataset.dev === dev);
+    const botao = cartao?.querySelector(`[data-acao="${acao}"]:enabled`) || lista.querySelector("button:enabled") || focoVazio;
+    botao?.focus();
+  }
+
+  async function agir(cartao, acao) {
+    if (ocupada) return;
+    const dev = cartao.dataset.dev, p = listar().find((x) => x.dev === dev);
+    if (!p) return desenhar();
+    if (acao === "renomear") { renomeando = dev; return desenhar(); }
+    if (acao === "salvar" || acao === "cancelar") {
+      if (acao === "salvar") { renomear(dev, cartao.querySelector(".pc-nome-campo").value); aposAlterar(false); }
+      renomeando = null; desenhar(); return focarAcao(dev, "renomear");
+    }
+    if (acao === "esquecer" && !confirm(`Esquecer “${nomeDe(p)}”? Para voltar a usar este PC, será preciso parear de novo e revogar o pareamento antigo no PC.`)) return;
+    ocupada = true;
+    try {
+      if (acao === "conectar") await conectarPc(dev);
+      if (acao === "esquecer") {
+        const eraAtivo = ler()?.dev === dev;
+        await esquecer(dev);
+        renomeando = null; aposAlterar(eraAtivo); desenhar(); focarAcao(dev, "esquecer");
+      }
+    } catch (e) { aoErro(e); }
+    finally { ocupada = false; }
+  }
+
+  return {
+    abrir() { renomeando = null; desenhar(); },
+    atualizar() { if (!renomeando && !ocupada) desenhar(); },
+    get ocupada() { return ocupada; },
+  };
+}
 
 // =====================================================================================================================
 // Página conectar.html (pareamento + modo simples). Só roda se a página tiver a tela de pareamento.
@@ -309,20 +597,39 @@ if (document.getElementById("tela-parear")) paginaConectar();
 
 function paginaConectar() {
   const $ = (s) => document.querySelector(s);
-  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const msg = (sel, t, erro) => { const el = $(sel); el.textContent = t || ""; el.className = "msg" + (t ? (erro ? " erro" : " ok") : ""); };
   function toast(t, cls = "") { const el = $("#toast"); el.textContent = t; el.className = "toast on " + cls; clearTimeout(toast.t); toast.t = setTimeout(() => (el.className = "toast " + cls), 3200); }
-  const pag = { abas: [], portas: [], atual: null, meu: false };
-  cel.aoEstado = (cls, t) => { $("#estado").className = "pilula " + cls; $("#estado-txt").textContent = t; };
-  cel.aviso = (t, erro) => toast(t, erro ? "erro" : "");
-  cel.aoFim = (motivo) => { mostrar("sessoes"); desenharPc(); msg("#con-msg", motivo, true); };
-  cel.aoConectado = () => { enviar({ t: "listar" }); };
+  const pag = { abas: [], portas: [], atual: null, meu: false, abrindo: false };
+  cel.aoEstado = (cls, t) => { $("#estado").className = "pilula " + cls; $("#estado-txt").textContent = t; desenharPc(); if ($("#tela-pcs").classList.contains("ativa")) listaPcs.atualizar(); };
+  cel.aoFim = (motivo) => {   // revogado: se sobrou outro PC valido, volta para a lista; senao, para o pareamento
+    if (listar().some((p) => !p.revogado)) { mostrar("pcs"); toast(limpa(motivo, 200), "erro"); }
+    else { mostrar("parear"); msg("#par-msg", motivo, true); }
+  };
+  cel.aoConectado = () => {
+    enviar({ t: "listar" });
+    if (pag.atual) {
+      pag.meu = false; desenharPapel();
+      enviar({ t: "assistir", sid: pag.atual });
+    }
+  };
   cel.aoMsg = tratarPagina;
   // a interface completa (plataforma web) fica ao lado desta página: no site /dassh/app/, na pasta ui/ index.html
   const URL_APP = /conectar\.html$/.test(location.pathname) ? "index.html" : "../app/";
   $("#btn-completa").href = URL_APP + "#celular";
 
-  function mostrar(nome) { document.querySelectorAll(".tela").forEach((t) => t.classList.toggle("ativa", t.id === "tela-" + nome)); if (nome !== "term") pag.atual = null; }
+  function mostrar(nome) {
+    document.querySelectorAll(".tela").forEach((t) => t.classList.toggle("ativa", t.id === "tela-" + nome));
+    if (nome !== "term") pag.atual = null;
+    if (nome === "pcs") {
+      $("#btn-pcs-voltar").hidden = !pareado();
+      listaPcs.abrir();
+    }
+    if (nome === "parear") {   // "Parear outro PC" acrescenta; com PCs na lista, dá para cancelar
+      const n = listar().length;
+      $("#par-titulo").textContent = n ? "📱 Parear outro PC" : "📱 Parear este celular";
+      $("#par-cancelar").hidden = !n;
+    }
+  }
   function tratarPagina(m) {
     if (m.t === "abas") {
       pag.abas = (Array.isArray(m.lista) ? m.lista : []).slice(0, 16).filter((a) => a && /^[A-Za-z0-9_-]{1,32}$/.test(a.sid))
@@ -341,14 +648,17 @@ function paginaConectar() {
 
   const ICONES = { serial: "🔌", powershell: "⚡", cmd: "⌨️", ssh: "🔐" };
   function desenharPc() {
-    const d = ler(), on = !!cel.sess;
-    $("#pc-nome").textContent = "🖥 " + (d ? d.pc.nome : "PC");
+    const d = ler(), on = !!cel.sess, valido = !!d?.pc && !d.revogado;
+    $("#pc-nome").textContent = "🖥 " + nomeDe(d);
+    $("#btn-meus").textContent = "🖥 Meus PCs" + (listar().length > 1 ? ` (${listar().length})` : "");
     $("#pc-info").textContent = d ? (d.revogado ? "Este aparelho foi revogado no PC." : `Pareado como “${d.nome}”`) : "";
-    $("#btn-conectar").style.display = on ? "none" : "";
-    $("#btn-desconectar").style.display = on ? "" : "none";
-    $("#cartao-abas").style.display = on ? "" : "none";
-    $("#cartao-nova").style.display = on ? "" : "none";
-    $("#btn-completa").style.display = d && !d.revogado ? "" : "none";
+    $("#btn-conectar").hidden = !valido || automatico;
+    $("#btn-desconectar").hidden = !valido || !automatico;
+    $("#cartao-abas").hidden = !valido || !automatico;
+    document.querySelectorAll("#lista-abas button").forEach((b) => { b.disabled = !on; });
+    $("#cartao-nova").style.display = valido && automatico ? "" : "none";
+    $("#nova-btn").disabled = !on || pag.abrindo;
+    $("#btn-completa").style.display = valido ? "" : "none";
   }
   function desenharAbas() {
     const l = $("#lista-abas");
@@ -365,10 +675,11 @@ function paginaConectar() {
     desenharPc();
   }
   async function abrirAba(sid, assumir) {
-    const a = pag.abas.find((x) => x.sid === sid); if (!a) return;
+    const a = pag.abas.find((x) => x.sid === sid); if (!a || !cel.sess) return;
     pag.meu = a.meu;
     mostrar("term"); pag.atual = sid; $("#term-nome").textContent = a.nome; term.reset(); desenharPapel(); ajustarTerm();
     const r = await pedir({ t: assumir ? "assumir" : "assistir", sid });
+    if (r.desconectado) return;
     if (!r.ok) { toast(r.erro || "Falhou", "erro"); return mostrar("sessoes"); }
     if (assumir) { pag.meu = true; desenharPapel(); toast("Você está com o controle desta aba"); }
   }
@@ -378,9 +689,34 @@ function paginaConectar() {
     $("#cmd-linha").placeholder = pag.meu ? "digite o comando…" : "toque em Assumir para digitar";
   }
 
+  // ---- Meus PCs ----
+  const listaPcs = criarListaPcs($("#lista-pcs"), {
+    conectarPc(dev) {
+      try { sessionStorage.removeItem(chavePausa); } catch {}
+      if (cel.sess?.dev === dev) return mostrar("sessoes");
+      pag.abas = []; desenharAbas(); $("#sas-caixa").style.display = "none";
+      mostrar("sessoes");
+      trocar(dev).catch(() => {});
+    },
+    aposAlterar(eraAtivo) {
+      if (eraAtivo) { pag.abas = []; desenharAbas(); }
+      desenharPc();
+      $("#btn-pcs-voltar").hidden = !pareado();
+      if (!listar().length) { msg("#par-msg", ""); mostrar("parear"); }
+    },
+    aoErro: () => toast("Não foi possível atualizar a lista de PCs.", "erro"),
+    focoVazio: $("#btn-parear-outro"),
+  });
+  $("#btn-meus").onclick = () => mostrar("pcs");
+  $("#btn-pcs-voltar").onclick = () => mostrar("sessoes");
+  $("#btn-parear-outro").onclick = () => { msg("#par-msg", ""); $("#par-codigo").value = ""; mostrar("parear"); };
+  $("#par-cancelar").onclick = () => { msg("#par-msg", ""); mostrar(pareado() ? "sessoes" : "pcs"); };
+
   // terminal (xterm): mesmo tamanho do PC (100x30); a fonte encolhe para caber na largura e "A±" alterna o zoom
+  const cores = getComputedStyle(document.documentElement);
   const term = new Terminal({ cols: 100, rows: 30, fontSize: 7, fontFamily: "Consolas, 'Courier New', monospace", scrollback: 3000, cursorBlink: true,
-    theme: { background: "#000000", foreground: "#d8dee9", cursor: "#00dc78" } });
+    theme: { background: cores.getPropertyValue("--midia-fundo").trim(), foreground: cores.getPropertyValue("--terminal-remoto-texto").trim(),
+      cursor: cores.getPropertyValue("--terminal-remoto-cursor").trim() } });
   term.open($("#term"));
   let zoom = false;
   function ajustarTerm() {
@@ -401,15 +737,15 @@ function paginaConectar() {
     if (b.dataset.tecla === "zoom") { zoom = !zoom; return ajustarTerm(); }
     digitar(TECLAS[b.dataset.tecla]);
   }));
-  const enviarLinha = () => { const i = $("#cmd-linha"); if (!pag.meu) return digitar(""); digitar(i.value + "\r"); i.value = ""; };
+  const enviarLinha = () => { const i = $("#cmd-linha"); if (!cel.sess || !pag.meu) return digitar(""); digitar(i.value + "\r"); i.value = ""; };
   $("#cmd-enviar").onclick = enviarLinha;
   $("#cmd-linha").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); enviarLinha(); } });
   $("#btn-voltar").onclick = () => { mostrar("sessoes"); enviar({ t: "listar" }); };
   $("#btn-controle").onclick = async () => {
-    if (!pag.atual) return;
+    if (!pag.atual || !cel.sess) return;
     if (pag.meu) { enviar({ t: "devolver", sid: pag.atual }); pag.meu = false; desenharPapel(); return; }
     const r = await pedir({ t: "assumir", sid: pag.atual });
-    if (r.ok) { pag.meu = true; desenharPapel(); } else toast(r.erro || "Falhou", "erro");
+    if (r.ok) { pag.meu = true; desenharPapel(); } else if (!r.desconectado) toast(r.erro || "Falhou", "erro");
   };
 
   // abrir aba nova
@@ -421,12 +757,15 @@ function paginaConectar() {
     $("#nova-ssh").style.display = tipoNovo === "ssh" ? "" : "none";
   }));
   $("#nova-btn").onclick = async () => {
+    if (!cel.sess || pag.abrindo) return;
     const p = { t: "abrir", tipo: tipoNovo };
     if (tipoNovo === "serial") { p.porta = $("#nova-porta").value; p.baud = +$("#nova-baud").value; if (!p.porta) return msg("#nova-msg", "Nenhuma porta COM no PC.", true); }
     if (tipoNovo === "ssh") { p.destino = $("#nova-destino").value.trim(); if (!p.destino) return msg("#nova-msg", "Informe usuario@ip.", true); }
-    $("#nova-btn").disabled = true; msg("#nova-msg", "Abrindo no PC…");
+    pag.abrindo = $("#nova-btn").disabled = true; msg("#nova-msg", "Abrindo no PC…");
     const r = await pedir(p);
-    $("#nova-btn").disabled = false;
+    pag.abrindo = false;
+    $("#nova-btn").disabled = !cel.sess;
+    if (r.desconectado) return msg("#nova-msg", "");
     if (!r.ok) return msg("#nova-msg", r.erro || "Falhou", true);
     msg("#nova-msg", "");
     const sid = limpa(r.sid, 32);
@@ -437,30 +776,35 @@ function paginaConectar() {
   };
 
   // pareamento / conexão
+  const chavePausa = "dassh-cel-pausa";
+  function iniciarConexao() {
+    try { sessionStorage.removeItem(chavePausa); } catch {}
+    conectar().catch(() => {});
+  }
   $("#par-btn").onclick = async () => {
     const nome = $("#par-nome").value.trim().slice(0, 40) || "Celular";
     $("#par-btn").disabled = true; msg("#par-msg", "Pareando com segurança…");
     try {
       const d = await parear($("#par-codigo").value, nome);
       msg("#par-msg", "");
-      mostrar("sessoes"); desenharPc();
+      pag.abas = []; desenharAbas();
+      mostrar("sessoes");
       $("#sas").textContent = d.sas; $("#sas-caixa").style.display = "";
-      msg("#con-msg", `Pareado com ${d.pc.nome}. Toque em “Abrir o DASSH” para usar a interface completa operando o PC.`);
+      iniciarConexao();
     } catch (e) { msg("#par-msg", e.message, true); }
     $("#par-btn").disabled = false;
   };
-  $("#btn-conectar").onclick = async () => {
-    $("#btn-conectar").disabled = true; msg("#con-msg", "");
-    try { await conectar(); desenharPc(); $("#sas-caixa").style.display = "none"; }
-    catch (e) { setEstado("", "Desconectado"); msg("#con-msg", e.message, true); }
-    $("#btn-conectar").disabled = false;
+  $("#btn-conectar").onclick = iniciarConexao;
+  $("#btn-desconectar").onclick = () => {
+    try { sessionStorage.setItem(chavePausa, ler()?.dev); } catch {}
+    desconectar(); mostrar("sessoes");
   };
-  $("#btn-desconectar").onclick = () => { desconectar(); desenharPc(); mostrar("sessoes"); };
-  $("#btn-esquecer").onclick = () => {
+  $("#btn-esquecer").onclick = async () => {
+    const d = ler(); if (!d) return;
     if (!confirm("Esquecer este PC? Para voltar a usar, será preciso parear de novo (e revogar o antigo no PC).")) return;
-    desconectar(true); gravar(null); setEstado("", "Desconectado"); mostrar("parear");
+    await esquecer(d.dev); pag.abas = []; desenharAbas(); msg("#par-msg", "");
+    mostrar(listar().length ? "pcs" : "parear");
   };
-  addEventListener("beforeunload", () => { if (cel.sess) enviar({ t: "sair" }); });
 
   // início: código do #fragmento (nunca vai a servidor) é lido e apagado da barra de endereços e do histórico
   let cod = "";
@@ -469,6 +813,20 @@ function paginaConectar() {
   if (location.hash) try { history.replaceState(null, "", location.pathname + location.search); } catch {}
   $("#par-codigo").value = cod;
   $("#par-nome").value = /iPhone/.test(navigator.userAgent) ? "iPhone" : /Android/.test(navigator.userAgent) ? "Android" : "Celular";
-  if (ler() && !cod) { mostrar("sessoes"); desenharPc(); } else mostrar("parear");
+  const d = ler();
+  if (d?.pc && !d.revogado && !cod) {
+    mostrar("sessoes");
+    let pausado = false;
+    try { pausado = sessionStorage.getItem(chavePausa) === d.dev; } catch {}
+    if (pausado) desenharPc(); else iniciarConexao();
+  } else if (!cod && listar().some((p) => !p.revogado)) {
+    mostrar("pcs");   // sem PC ativo valido, mas ha outros pareados: escolher onde conectar
+  } else {
+    mostrar("parear");
+    if (d?.revogado) {
+      setEstado("", "Revogado");
+      msg("#par-msg", "Este aparelho foi revogado no PC.", true);
+    }
+  }
   cel.pronto = true;
 }

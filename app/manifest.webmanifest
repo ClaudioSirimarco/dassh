@@ -1,0 +1,20 @@
+{
+  "name": "DASSH Code",
+  "short_name": "DASSH",
+  "description": "Opere o seu computador pelo celular com a mesma conta e o mesmo pareamento.",
+  "lang": "pt-BR",
+  "dir": "ltr",
+  "id": "./conectar.html",
+  "start_url": "./conectar.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "theme_color": "#0b0f14",
+  "background_color": "#0b0f14",
+  "icons": [
+    { "src": "icone-celular-180.png", "sizes": "180x180", "type": "image/png", "purpose": "any" },
+    { "src": "icone-celular-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icone-celular-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icone-celular-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

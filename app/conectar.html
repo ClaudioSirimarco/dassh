@@ -2,101 +2,127 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src wss://broker.emqx.io:8084 wss://test.mosquitto.org:8081; worker-src 'self' blob:; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; manifest-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src wss://broker.emqx.io:8084 wss://test.mosquitto.org:8081; worker-src 'self' blob:; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#0b0f14">
+<meta name="theme-color" content="">
+<link rel="manifest" href="manifest.webmanifest"><link rel="apple-touch-icon" href="icone-celular-180.png">
 <meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="DASSH">
 <title>DASSH Conectado</title>
 <link rel="stylesheet" href="vendor/xterm.css">
+<link rel="stylesheet" href="cores-conectado.css">
 <style>
-  :root { --fundo: #0b0f14; --cartao: #131a22; --borda: #233041; --texto: #e6edf3; --suave: #8b98a8; --verde: #00dc78; --verde2: #5ee0b5;
-          --amarelo: #f0c674; --vermelho: #ff6b6b; --azul: #6cb6ff; --raio: 14px; }
+  :root { --raio: 14px; --cor-navegacao: var(--superficie-recuada); color-scheme: dark; }
+  :root[data-tema="claro"] { color-scheme: light; }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  html, body { margin: 0; height: 100%; background: var(--fundo); color: var(--texto);
+  html, body { margin: 0; height: 100%; background: var(--superficie-recuada); color: var(--texto);
                font: 15px/1.4 -apple-system, "Segoe UI", Roboto, sans-serif; }
   body { display: flex; flex-direction: column; min-height: 100dvh; padding-bottom: env(safe-area-inset-bottom); }
   header { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 10px; padding: calc(10px + env(safe-area-inset-top)) 16px 10px;
-           background: rgba(11, 15, 20, .94); border-bottom: 1px solid var(--borda); backdrop-filter: blur(8px); }
+           background: var(--cel-vidro-94); border-bottom: 1px solid var(--cel-borda); backdrop-filter: blur(8px); }
   .marca { font-weight: 800; letter-spacing: .5px; }
-  .marca span { color: var(--verde); }
+  .marca span { color: var(--cel-acento); }
   .pilula { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-radius: 99px; font-size: 13px;
-            background: #1c2430; color: var(--suave); border: 1px solid var(--borda); max-width: 62vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+            background: var(--cel-estado); color: var(--cel-suave); border: 1px solid var(--cel-borda); max-width: 62vw; overflow-wrap: anywhere; }
   .pilula .bola { width: 8px; height: 8px; border-radius: 50%; background: currentColor; flex: none; }
-  .pilula.on { color: var(--verde); border-color: #1d5f45; background: #0f2a20; }
-  .pilula.meio { color: var(--amarelo); border-color: #5f4f1d; background: #2a240f; }
+  .pilula.on { color: var(--cel-acento); border-color: var(--cel-sucesso-borda); background: var(--cel-sucesso-fundo); }
+  .pilula.meio { color: var(--cel-aviso); border-color: var(--cel-aviso-borda); background: var(--cel-aviso-fundo); }
   main { flex: 1; padding: 16px; display: flex; flex-direction: column; gap: 14px; max-width: 720px; width: 100%; margin: 0 auto; }
   .tela { display: none; flex-direction: column; gap: 14px; }
   .tela.ativa { display: flex; }
-  .cartao { background: var(--cartao); border: 1px solid var(--borda); border-radius: var(--raio); padding: 16px; }
-  h1 { font-size: 20px; margin: 0 0 4px; } h2 { font-size: 16px; margin: 0 0 10px; color: var(--suave); font-weight: 600; }
-  p { margin: 6px 0; color: var(--suave); }
-  label { display: block; font-size: 13px; color: var(--suave); margin: 10px 0 4px; }
-  input, select { width: 100%; font: inherit; font-size: 16px; color: var(--texto); background: #0e141b; border: 1px solid var(--borda);
+  .cartao { background: var(--cel-painel); border: 1px solid var(--cel-borda); border-radius: var(--raio); padding: 16px; }
+  h1 { font-size: 20px; margin: 0 0 4px; } h2 { font-size: 16px; margin: 0 0 10px; color: var(--cel-suave); font-weight: 600; }
+  p { margin: 6px 0; color: var(--cel-suave); }
+  label { display: block; font-size: 13px; color: var(--cel-suave); margin: 10px 0 4px; }
+  input, select { width: 100%; font: inherit; font-size: 16px; color: var(--texto); background: var(--cel-campo); border: 1px solid var(--cel-borda);
                   border-radius: 10px; padding: 12px; }
   #par-codigo { font: 600 20px Consolas, monospace; letter-spacing: 2px; text-transform: uppercase; text-align: center; }
-  button { font: inherit; border: 0; cursor: pointer; border-radius: 12px; padding: 12px 16px; color: var(--texto); background: #223041; }
+  button { font: inherit; border: 0; cursor: pointer; border-radius: 12px; padding: 12px 16px; color: var(--texto); background: var(--cel-botao); }
   button:disabled { opacity: .5; }
-  .primario { background: var(--verde); color: #04140d; font-weight: 700; }
-  .perigo { background: #3a1d22; color: var(--vermelho); }
+  .primario { background: var(--cel-acento); color: var(--cel-sobre-acento); font-weight: 700; }
+  .perigo { background: var(--cel-perigo-fundo); color: var(--gravacao); }
   .largo { width: 100%; margin-top: 14px; padding: 14px; font-size: 16px; }
   a.botao { display: block; text-align: center; text-decoration: none; border-radius: 12px; box-sizing: border-box; }
   .linha { display: flex; gap: 8px; align-items: center; }
   .linha > * { flex: 1; }
-  .msg { min-height: 20px; font-size: 14px; } .msg.erro { color: var(--vermelho); } .msg.ok { color: var(--verde2); }
-  .sas { font: 700 26px Consolas, monospace; letter-spacing: 4px; color: var(--verde2); text-align: center; margin: 8px 0; }
-  .aba-card { display: flex; align-items: center; gap: 12px; padding: 12px; border: 1px solid var(--borda); border-radius: 12px; background: #0f151c; }
+  .msg { min-height: 20px; font-size: 14px; } .msg.erro { color: var(--gravacao); } .msg.ok { color: var(--verde-cl); }
+  .sas { font: 700 26px Consolas, monospace; letter-spacing: 4px; color: var(--verde-cl); text-align: center; margin: 8px 0; }
+  .aba-card { display: flex; align-items: center; gap: 12px; padding: 12px; border: 1px solid var(--cel-borda); border-radius: 12px; background: var(--campo-fundo); }
   .aba-card + .aba-card { margin-top: 10px; }
   .aba-card .ic { font-size: 22px; width: 34px; text-align: center; }
   .aba-card .txt { flex: 1; min-width: 0; }
   .aba-card b { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .aba-card small { color: var(--suave); display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .aba-card small { color: var(--cel-suave); display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .aba-card .acoes { display: flex; gap: 6px; } .aba-card .acoes button { padding: 10px 12px; font-size: 14px; }
-  .selo { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 99px; background: #0f2a20; color: var(--verde); margin-left: 4px; }
-  .selo.pc { background: #1c2430; color: var(--suave); }
-  .vazio { text-align: center; color: var(--suave); padding: 18px 0; }
-  .seg { display: flex; background: #0e141b; border: 1px solid var(--borda); border-radius: 12px; padding: 3px; gap: 3px; }
-  .seg button { flex: 1; padding: 10px 4px; background: transparent; color: var(--suave); font-size: 14px; }
-  .seg button.sel { background: #223041; color: var(--texto); font-weight: 600; }
+  .selo { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 99px; background: var(--cel-sucesso-fundo); color: var(--cel-acento); margin-left: 4px; }
+  .selo.pc { background: var(--cel-estado); color: var(--cel-suave); }
+  .vazio { text-align: center; color: var(--cel-suave); padding: 18px 0; }
+  .seg { display: flex; background: var(--cel-campo); border: 1px solid var(--cel-borda); border-radius: 12px; padding: 3px; gap: 3px; }
+  .seg button { flex: 1; padding: 10px 4px; background: transparent; color: var(--cel-suave); font-size: 14px; }
+  .seg button.sel { background: var(--cel-botao); color: var(--texto); font-weight: 600; }
   /* terminal */
   #tela-term { flex: 1; gap: 8px; margin: -16px; }
   .term-topo { display: flex; align-items: center; gap: 8px; padding: 10px 12px 0; }
   .term-topo b { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .term-topo button { padding: 9px 12px; font-size: 14px; }
-  .papel { font-size: 12px; padding: 3px 9px; border-radius: 99px; background: #2a240f; color: var(--amarelo); white-space: nowrap; }
-  .papel.ativo { background: #0f2a20; color: var(--verde); }
-  #term-caixa { margin: 0 8px; border: 1px solid var(--borda); border-radius: 10px; background: #000; overflow: auto; -webkit-overflow-scrolling: touch;
+  .papel { font-size: 12px; padding: 3px 9px; border-radius: 99px; background: var(--cel-aviso-fundo); color: var(--cel-aviso); white-space: nowrap; }
+  .papel.ativo { background: var(--cel-sucesso-fundo); color: var(--cel-acento); }
+  #term-caixa { margin: 0 8px; border: 1px solid var(--cel-borda); border-radius: 10px; background: var(--midia-fundo); overflow: auto; -webkit-overflow-scrolling: touch;
                 padding: 4px; min-height: 40vh; }
   .teclas { display: flex; gap: 6px; overflow-x: auto; padding: 0 8px 2px; scrollbar-width: none; }
-  .teclas button { flex: none; padding: 10px 12px; font: 600 14px Consolas, monospace; background: #1a2330; border: 1px solid var(--borda); }
+  .teclas button { flex: none; padding: 10px 12px; font: 600 14px Consolas, monospace; background: var(--cel-tecla); border: 1px solid var(--cel-borda); }
   .entrada { display: flex; gap: 8px; padding: 0 8px 10px; }
   .entrada input { flex: 1; font-family: Consolas, monospace; }
   .entrada button { flex: none; }
   .toast { position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom)); transform: translateX(-50%) translateY(120px);
-           background: #223041; color: var(--texto); padding: 11px 16px; border-radius: 12px; max-width: 92vw; transition: transform .25s; z-index: 9;
-           box-shadow: 0 6px 24px rgba(0, 0, 0, .5); font-size: 14px; }
-  .toast.on { transform: translateX(-50%) translateY(0); } .toast.erro { background: #3a1d22; }
-  .rodape { text-align: center; font-size: 12px; color: var(--suave); }
+           background: var(--cel-botao); color: var(--texto); padding: 11px 16px; border-radius: 12px; max-width: 92vw; transition: transform .25s; z-index: 9;
+           box-shadow: 0 6px 24px var(--sombreado-50); font-size: 14px; }
+  .toast.on { transform: translateX(-50%) translateY(0); } .toast.erro { background: var(--cel-perigo-fundo); }
+  .pc-card { padding: 12px; border: 1px solid var(--cel-borda); border-radius: 12px; background: var(--campo-fundo); }
+  .pc-card + .pc-card { margin-top: 10px; }
+  .pc-card.ativo { border-color: var(--cel-sucesso-borda); }
+  .pc-card .pc-cabecalho { display: flex; align-items: center; gap: 10px; }
+  .pc-card .ic { font-size: 22px; width: 34px; text-align: center; }
+  .pc-card .txt { flex: 1; min-width: 0; }
+  .pc-card b { display: block; overflow-wrap: anywhere; }
+  .pc-card small { color: var(--cel-suave); display: block; }
+  .pc-card .acoes { display: flex; gap: 6px; margin-top: 10px; }
+  .pc-card .acoes button { flex: 1; padding: 10px 8px; font-size: 14px; }
+  .pc-card input { margin-top: 10px; }
+  .selo.aviso { background: var(--cel-aviso-fundo); color: var(--cel-aviso); } .selo.erro { background: var(--cel-perigo-fundo); color: var(--gravacao); }
+  .rodape { text-align: center; font-size: 12px; color: var(--cel-suave); }
+  /* === celular (tarefa 10): todo alvo de toque >= 44 x 44 px === */
+  button, a.botao, select, input:not([type=checkbox]):not([type=radio]) { min-height: 44px; }
+  button { min-width: 44px; }
+  a.botao { display: flex; align-items: center; justify-content: center; }
+  .pc-card .acoes { flex-wrap: wrap; }
+  .pc-card .acoes button { min-height: 44px; }
+  .estado-pc .selo { margin-left: 0; }
+  .conta-aparencia { display: flex; gap: 12px; align-items: center; justify-content: flex-end; margin: 0; }
+  .conta-aparencia select { width: auto; }
+  .conta-aparencia select:focus-visible { outline: 2px solid var(--cel-acento); }
 </style>
+<script src="aparencia.js"></script>
 </head>
 <body>
 <header>
-  <div class="marca">D<span>A</span>SSH <small style="font-weight:500;color:var(--suave)">Conectado</small></div>
-  <div class="pilula" id="estado"><span class="bola"></span><span id="estado-txt">Desconectado</span></div>
+  <div class="marca">D<span>A</span>SSH <small style="font-weight:500;color:var(--cel-suave)">Conectado</small></div>
+  <div class="pilula" id="estado" role="status"><span class="bola" aria-hidden="true"></span><span id="estado-txt">Desconectado</span></div>
 </header>
 <main>
   <!-- 1) pareamento -->
   <section class="tela" id="tela-parear">
     <div class="cartao">
-      <h1>📱 Parear este celular</h1>
-      <p>No PC, abra o DASSH Console e toque em <b>📱 Celular → Parear celular</b>. Escaneie o QR ou digite o código (vale 5 minutos, uma vez só).</p>
+      <h1 id="par-titulo">📱 Parear este celular</h1>
+      <p>No PC, abra o DASSH Code e toque em <b>📱 Celular → Parear celular</b>. Escaneie o QR ou digite o código (vale 5 minutos, uma vez só).</p>
       <label for="par-codigo">Código de pareamento</label>
       <input id="par-codigo" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="16" placeholder="ABCD-EFGH-JKLM">
       <label for="par-nome">Nome deste aparelho</label>
       <input id="par-nome" maxlength="40" placeholder="ex.: iPhone do Claudio">
       <button class="primario largo" id="par-btn">Parear</button>
-      <div class="msg" id="par-msg"></div>
+      <div class="msg" id="par-msg" role="status"></div>
+      <button class="largo" id="par-cancelar" hidden>Cancelar</button>
     </div>
     <p class="rodape">🔒 As chaves deste aparelho são criadas aqui e nunca saem dele. O servidor de retransmissão só vê dados cifrados.</p>
   </section>
@@ -106,16 +132,15 @@
     <div class="cartao" id="cartao-pc">
       <div class="linha" style="align-items:flex-start">
         <div><h1 id="pc-nome">PC</h1><p id="pc-info">Pareado</p></div>
-        <button class="primario" id="btn-conectar" style="flex:none">Conectar</button>
+        <button class="primario" id="btn-conectar" style="flex:none" hidden>Conectar</button>
       </div>
-      <div class="msg" id="con-msg"></div>
       <div id="sas-caixa" style="display:none"><p>Confira no PC (lista de aparelhos) este número:</p><div class="sas" id="sas"></div></div>
       <a class="botao primario largo" id="btn-completa" href="../app/#celular">📱 Abrir o DASSH (interface completa)</a>
       <p class="rodape" style="margin-top:8px">A plataforma inteira (abas, shell, serial, evidências, Biblioteca) operando o PC. Abaixo, o modo simples.</p>
     </div>
-    <div class="cartao" id="cartao-abas" style="display:none">
+    <div class="cartao" id="cartao-abas" hidden>
       <h2>Sessões abertas no PC</h2>
-      <div id="lista-abas"><div class="vazio">Nenhuma aba de terminal aberta.</div></div>
+      <div id="lista-abas"><div class="vazio">Aguardando o PC…</div></div>
     </div>
     <div class="cartao" id="cartao-nova" style="display:none">
       <h2>Abrir uma aba nova no PC</h2>
@@ -126,7 +151,19 @@
       <button class="primario largo" id="nova-btn">Abrir no PC</button>
       <div class="msg" id="nova-msg"></div>
     </div>
-    <div class="linha"><button class="perigo" id="btn-desconectar" style="display:none">Desconectar</button><button id="btn-esquecer">Esquecer este PC</button></div>
+    <div class="linha" style="flex-wrap:wrap"><button class="perigo" id="btn-desconectar" hidden>Desconectar</button><button id="btn-esquecer">Esquecer este PC</button>
+      <button id="btn-meus" style="flex-basis:100%">🖥 Meus PCs</button></div>
+  </section>
+
+  <!-- 2b) Meus PCs: todos os PCs pareados neste celular -->
+  <section class="tela" id="tela-pcs">
+    <div class="cartao">
+      <h1>🖥 Meus PCs</h1>
+      <p>Escolha onde conectar. Cada PC tem as suas próprias chaves; esquecer um não afeta os outros.</p>
+      <div id="lista-pcs" role="list" aria-label="PCs pareados" style="margin-top:10px"></div>
+      <button class="primario largo" id="btn-parear-outro">➕ Parear outro PC</button>
+      <button class="largo" id="btn-pcs-voltar" hidden>‹ Voltar</button>
+    </div>
   </section>
 
   <!-- 3) terminal -->
@@ -149,10 +186,12 @@
       <button class="primario" id="cmd-enviar">Enviar ⏎</button>
     </div>
   </section>
+  <label class="conta-aparencia">Aparência <select data-aparencia><option value="automatico">Automático</option><option value="escuro" selected>Escuro</option><option value="claro">Claro</option></select></label>
 </main>
 <div class="toast" id="toast"></div>
 <script src="vendor/mqtt.min.js"></script>
 <script src="vendor/xterm.js"></script>
+<script src="pwa-celular.js" defer></script>
 <script type="module" src="ponte-remota.js"></script>
 </body>
 </html>
