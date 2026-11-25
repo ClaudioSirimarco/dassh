@@ -837,15 +837,28 @@
     if (!confirm("Desconectar do computador? As abas continuam abertas no PC.")) return;
     gravarRem(false); try { rem.R.desconectar(); } catch (_) {} location.reload();
   };
-  function desenharBarra(on, texto) {
+  // "Tampa" fixa e opaca só na altura do recorte (safe-area; 0 px fora do iPhone): o Safari passa a tratar o topo como barra sólida
+  // e não aplica o desfoque de borda de rolagem sobre a faixa, que deixava "Conectado a" e os botões borrados e com brilho.
+  const tampa = document.createElement("div");
+  tampa.id = "barra-remoto-tampa"; tampa.setAttribute("aria-hidden", "true");
+  tampa.style.cssText = "position:fixed;top:0;left:0;right:0;height:env(safe-area-inset-top);z-index:41;pointer-events:none";
+  function desenharBarra(on, texto, nome) {
     if (!barra.isConnected) document.body.insertBefore(barra, document.body.firstChild);
+    if (!tampa.isConnected) document.body.insertBefore(tampa, barra);
     barra.style.background = on ? "var(--cel-sucesso-fundo)" : "var(--cel-aviso-fundo)"; barra.style.color = on ? "var(--cel-acento)" : "var(--cel-aviso)";
-    barra.querySelector("#barra-remoto-txt").textContent = texto;
+    tampa.style.background = barra.style.background;
+    const t = barra.querySelector("#barra-remoto-txt");
+    if (!nome) { t.textContent = texto; return; }
+    // rótulo e nome do PC em partes próprias: no celular viram duas linhas nítidas (o nome longo termina em reticências)
+    const rot = document.createElement("span"), pc = document.createElement("strong");
+    rot.className = "br-rot"; rot.textContent = texto + " ";
+    pc.className = "br-pc"; pc.textContent = nome; pc.title = nome;
+    t.replaceChildren(rot, pc);
   }
   function desenharBarraConectada() {
     const d = rem.R.ler();
     const nome = d?.apelido ? rem.R.nomeDe(d) : rem.info?.pc || rem.R.nomeDe(d);
-    desenharBarra(true, "📱 Conectado a " + nome);
+    desenharBarra(true, "Conectado a", nome);
   }
 
   function entrarRemoto() {

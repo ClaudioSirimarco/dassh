@@ -279,18 +279,9 @@ addEventListener("beforeunload", () => sessoes.forEach((c) => c.fechar(true)));
 // sobe o app e já abre a entrada pelo código (do #código na URL ou digitado)
 window.dispatchEvent(new Event("pywebviewready"));
 document.body.classList.add("web");
-// --- fonte do terminal no navegador: ajusta só quando o ESPAÇO muda (sem laço de medir -> mudar -> medir) ---
-let _tam = "";
-window.ajustarFonte = () => {
-  const box = document.getElementById("terminal"); if (!box || !box.clientWidth) return;
-  const W = box.clientWidth - 30, H = box.clientHeight - 26, chave = W + "x" + H;
-  if (chave === _tam) return; _tam = chave;
-  abas.forEach((a) => {
-    const c = medirCelula({ options: { ...a.term.options, fontSize: 100 } });   // célula a 100 px: proporção estável
-    const alvo = Math.floor(Math.min(W / (a.term.cols * c.width / 100), H / (a.term.rows * c.height / 100)) * 2) / 2;
-    a.term.options.fontSize = Math.max(9, Math.min(17, alvo));
-  });
-};
+// --- fonte do terminal no navegador: a MESMA regra do app (ajustarFonte/calcularFonteTerminal em app.js, pixels CSS) ---
+// Não há cálculo próprio aqui: uma fórmula paralela (célula medida com outra assinatura, teto fixo e cache por área)
+// deixava a guia remota com fonte maior que a local e a grade 100 × 30 do anfitrião estourando a área.
 
 // --- portão de vidro fosco: o app só aparece depois que quem compartilhou APROVA a entrada ---
 const vidro = document.getElementById("vidro"), $v = (s) => vidro.querySelector(s);

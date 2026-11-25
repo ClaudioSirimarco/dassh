@@ -1582,6 +1582,22 @@ body.tela-cheia .sistema { display: none !important; }
   .sistema .marca div { display: block; } .sistema .marca small { display: none; }
   .guia-barra { margin-left: 0; width: 100%; justify-content: space-between; }
   .gb-btn { height: 36px; min-width: 36px; font-size: 14px; }
+  /* a faixa do celular conectado (ponte-agente.js) já desconta o recorte (safe-area): a barra do DASSH logo abaixo não o soma de novo */
+  #barra-remoto ~ .sistema { padding-top: 4px; }
+  /* "← Site" vai para o menu ☰: na barra estreita ele ficava sob a Ilha flutuante (a "moldura" vazia atrás da pílula) */
+  .sistema > #volta-site { display: none; }
+}
+#volta-site-grupo { display: none; }
+@media (max-width: 900px) { .sistema.aberto #volta-site-grupo { display: flex; } #volta-site-menu { display: inline-flex; align-items: center; text-decoration: none; } }
+/* faixa "Conectado a <PC>": texto plano, sem brilho; rótulo e nome em linha no PC */
+#barra-remoto, #barra-remoto * { text-shadow: none; -webkit-font-smoothing: antialiased; }
+#barra-remoto-txt .br-rot { font-weight: 500; color: var(--texto); }
+#barra-remoto-txt .br-pc { font-weight: 700; }
+@media (max-width: 600px) {
+  /* celular: os tipos da categoria ganham linha própria (o chip ativo, ex. "PowerShell", nunca fica cortado) */
+  .abas { flex-wrap: wrap; row-gap: 6px; }
+  .abas .cats { flex: 1 1 100%; justify-content: space-between; }
+  .abas .tipos { flex: 1 1 100%; }
 }
 
 /* ================= 💬 chat POR ABA compartilhada (faixa livre à direita do texto do terminal) ================= */
@@ -1836,6 +1852,7 @@ body.ao-vivo::before { content: none; }
   /* cada px de altura vale terminal: faixas, abas e botões mais baixos */
   #barra-remoto { padding: calc(1px + env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) 1px max(10px, env(safe-area-inset-left)) !important; font-size: 12px !important; }
   #barra-remoto button { padding: 1px 9px !important; }
+  #barra-remoto ~ .sistema { padding-top: 2px !important; }
   .sistema .marca img, .sistema .marca svg { width: 22px; height: 22px; }
   .sistema .marca div { font-size: 13px; }
   .term-barra { min-height: 0 !important; padding-top: 2px !important; padding-bottom: 0 !important; }
@@ -1995,6 +2012,9 @@ body.ao-vivo::before { content: none; }
   /* M6: banner de conexão em até duas linhas, sem cortar o essencial */
   #barra-remoto-txt { white-space: normal !important; overflow: visible !important; text-overflow: clip !important; line-height: 1.25; }
   #barra-remoto { align-items: center; }
+  /* "Conectado a" em cima, o nome do PC embaixo (uma linha, reticências se for longo) */
+  #barra-remoto-txt .br-rot { display: block; font-size: 12px; }
+  #barra-remoto-txt .br-pc { display: block; font-size: 15px; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .slot-con { height: auto; min-height: 44px; }
   .slot-con .campos.livre { min-height: 44px; display: flex; align-items: center; }
   #conectar.invisivel, .conexao:has(.cat.sel[data-cat="demos"]) :is(#slot-con, #conectar) { display: none; }   /* sem faixa vazia: nada a conectar = nada ocupando linha */
@@ -2154,6 +2174,7 @@ body.tela-cheia .ilha-slot { display: none; }
 /* toque: alvos de 44 px; sem dica de teclado */
 @media (pointer: coarse) {
   .ilha-zona, .ilha-zona[data-modo="slot"] { --ilha-alt: 44px; }
+  .ilha-cab { min-width: 44px; justify-content: center; }
   .ilha-acao { min-height: 44px; } .ilha-item { min-height: 44px; } .ilha-dispensar { width: 44px; height: 44px; margin: -.8em -.9em -.8em 0; }
   .ilha-dica { display: none; }
 }

@@ -143,7 +143,12 @@ function ajustarFonte() {
   const larguraTotal = box.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) - 6;
   const alturaTotal = box.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom) - 3;
   if (paineis.length && !cabeDivisao()) mostrarPaineis([]);
-  const W = larguraTotal, H = alturaTotal;
+  // A fonte é a MESMA para toda guia única (local, remota/observador ou compartilhada): mede a área da guia como se as
+  // faixas da guia ativa (sessão ao vivo, skill) não existissem. Assim a faixa "Sessão remota" não muda o tamanho das letras.
+  const faixas = ["#share-barra", "#roteiro-barra"].reduce((s, q) => {
+    const e = $(q); return s + (e && !e.classList.contains("oculto") ? e.offsetHeight : 0);
+  }, 0);
+  const W = larguraTotal, H = alturaTotal + faixas;
   // celular em pé: fonte legível fixa e o terminal (100 colunas) vira uma faixa larga que se arrasta para os lados
   const retrato = matchMedia("(max-width: 600px) and (orientation: portrait)").matches;
   abas.forEach((a) => {
@@ -153,7 +158,22 @@ function ajustarFonte() {
     if (retrato) { if (a.term.options.fontSize !== 10) a.term.options.fontSize = 10; return; }
     const minimo = innerWidth < 700 ? 5 : 9;   // preserva a grade 100 × 30 em telas estreitas
     const alvo = calcularFonteTerminal(a.term, W, H, 100, 30, minimo);
+    // Guia visível com faixa: só reduz se a grade REALMENTE não couber (nunca aumenta além da regra comum).
+    // A decisão fica guardada para a mesma área (sem alternar a fonte a cada ajuste periódico).
+    const chave = `${W}x${H}x${alturaTotal}x${alvo}`;
+    if (faixas && a.id === ativa && a.ajusteFaixa?.chave === chave) {
+      if (a.ajusteFaixa.alvo !== a.term.options.fontSize) a.term.options.fontSize = a.ajusteFaixa.alvo;
+      return;
+    }
     if (alvo !== a.term.options.fontSize) a.term.options.fontSize = alvo;
+    const tela = faixas && a.id === ativa && a.pane.querySelector(".xterm-screen");
+    if (!tela) return;
+    let final = alvo;
+    if (tela.offsetHeight > alturaTotal + 3) {
+      final = Math.min(alvo, calcularFonteTerminal(a.term, W, alturaTotal, 100, 30, minimo));
+      if (final !== a.term.options.fontSize) a.term.options.fontSize = final;
+    }
+    a.ajusteFaixa = { chave, alvo: final };
   });
 }
 function ajustarPainel(a) {
@@ -5861,6 +5881,14 @@ if (document.querySelector('script[src*="ponte-agente"]')) {
     const a = document.createElement("a");
     a.id = "volta-site"; a.href = "../"; a.textContent = "← Site"; a.title = "Voltar ao site do DASSH";
     m.after(a);
+    // na barra estreita (celular) o link mora no menu ☰ e não sob a Ilha flutuante
+    const itens = document.getElementById("sis-itens");
+    if (itens && !document.getElementById("volta-site-menu")) {
+      const g = document.createElement("div"), b = document.createElement("a");
+      g.className = "sis-grupo"; g.id = "volta-site-grupo"; g.setAttribute("role", "group"); g.setAttribute("aria-label", "Site");
+      b.id = "volta-site-menu"; b.className = "sis-btn"; b.href = "../"; b.textContent = "← Voltar ao site"; b.title = a.title;
+      g.appendChild(b); itens.appendChild(g);
+    }
   }
 }
 

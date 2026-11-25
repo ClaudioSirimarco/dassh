@@ -170,6 +170,8 @@
       ["#sistema", "#ilha-slot"].forEach((s) => { const n = doc.querySelector(s); if (n) ro.observe(n); });
     }
     global.addEventListener("resize", agendarPosicao);
+    // celular: a barra de sistema rola com a página; a pílula flutuante acompanha o centro dela (sem ficar desalinhada)
+    doc.addEventListener("scroll", () => { if (modo !== "slot") agendarPosicao(); }, { passive: true, capture: true });
     new MutationObserver(agendarPosicao).observe(doc.body, { attributes: true, attributeFilter: ["class"] });
     doc.addEventListener("visibilitychange", () => { if (doc.hidden) pararTick(); else programar(); });
   }
@@ -323,10 +325,12 @@
     let cy = 8 + seguro() + (alturaRef || 34) / 2, max = Math.min(340 * (parseFloat(getComputedStyle(doc.documentElement).getPropertyValue("--k")) || 1), vw - 24);
     if (b) {
       const pt = parseFloat(b.cs.paddingTop) || 0, pb = parseFloat(b.cs.paddingBottom) || 0;
-      cy = (b.r.top + pt + b.r.bottom - pb) / 2;
+      // no centro da barra; se ela já rolou para cima, para logo abaixo do recorte (nunca some sob a barra de status)
+      cy = Math.max((b.r.top + pt + b.r.bottom - pb) / 2, cy);
       const lim = (s) => { const n = doc.querySelector(s); if (!n) return null; const r = n.getBoundingClientRect(); return r.width ? r : null; };
-      const marca = lim("#sistema .marca"), menu = lim("#sis-menu");
-      const esq = marca ? marca.right + 8 : 12, dir = menu ? menu.left - 8 : vw - 12;
+      // o cursor do nome digitado (.mn-cursor) passa da caixa da marca; o "← Site" (plataforma web) fica ao lado dela
+      const marca = lim("#sistema .marca"), cursor = lim("#sistema .mn-cursor"), volta = lim("#sistema > #volta-site"), menu = lim("#sis-menu");
+      const esq = Math.max(marca ? marca.right + 8 : 12, cursor ? cursor.right + 3 : 0, volta ? volta.right + 8 : 0), dir = menu ? menu.left - 8 : vw - 12;
       max = Math.min(max, 2 * Math.min(vw / 2 - esq, dir - vw / 2));
     }
     return { cx: vw / 2, cy, max: Math.max(max, 110) };
